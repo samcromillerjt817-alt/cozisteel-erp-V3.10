@@ -1,0 +1,10 @@
+{
+  "version": "3.0.0",
+  "name": "Cozisteel ERP",
+  "buildDate": "2026-07-02",
+  "modules": ["dashboard", "orcamentos", "clientes", "produtos", "usuarios", "configuracoes"],
+  "requires": {
+    "node": ">=20.0.0 <23.0.0",
+    "npm": ">=9.0.0"
+  }
+}

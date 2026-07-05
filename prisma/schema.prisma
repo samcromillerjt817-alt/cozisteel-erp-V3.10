@@ -1,0 +1,541 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/* ═══════════════════════════════════════════════════════════
+   COZISTEEL ERP v3.0 - Schema Normalizado
+   Arquitetura: Repository + Service + Controller
+   ═══════════════════════════════════════════════════════════ */
+
+// ── SISTEMA ──────────────────────────────────────────────
+
+model SystemInfo {
+  id        String   @id @default("main")
+  version   String   @default("3.0.0")
+  installedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  maintenanceMode Boolean @default(false)
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String   // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, EXPORT, IMPORT, PATCH
+  module    String   // usuarios, orcamentos, produtos, clientes, sistema
+  entityId  String?
+  entityName String?
+  details   String   @default("")
+  ip        String   @default("")
+  userAgent String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([module])
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String @default("")
+  group String @default("general") // general, pdf, email, security, backup, numbering
+  type  String @default("string")  // string, number, boolean, json
+  label String @default("")
+  description String @default("")
+  updatedAt DateTime @updatedAt
+
+  @@index([group])
+}
+
+// ── USUÁRIOS E PERMISSÕES (RBAC) ────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  name      String
+  email     String   @default("")
+  password  String
+  avatar    String   @default("")
+  role      String   @default("user") // admin, manager, user, viewer
+  active    Boolean  @default(true)
+  lastLogin DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quotes     Quote[]
+  auditLogs  AuditLog[]
+  sequences  NumberSequence[]
+  productionOrders ProductionOrder[]
+  requisitions Requisition[]
+  stockMovements StockMovement[]
+
+  @@index([role])
+  @@index([active])
+}
+
+// ── SEQUÊNCIAS DE NUMERAÇÃO ─────────────────────────────
+
+model NumberSequence {
+  id          String   @id @default(cuid())
+  documentType String  @unique // orcamento, pedido, op, compra, nota_interna
+  prefix      String   @default("")
+  suffix      String   @default("")
+  nextNumber  Int      @default(1)
+  digits      Int      @default(6)
+  increment   Int      @default(1)
+  resetAnnual  Boolean  @default(false)
+  resetMonthly Boolean  @default(false)
+  currentYear  Int?
+  currentMonth Int?
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
+  user        User?    @relation(fields: [updatedBy], references: [id])
+}
+
+// ── CLIENTES ─────────────────────────────────────────────
+
+model Client {
+  id            String   @id @default(cuid())
+  type          String   @default("company") // company, person
+  corporateName String   @default("") // Razão Social
+  tradeName     String   @default("") // Nome Fantasia
+  cpfCnpj       String   @default("")
+  ie            String   @default("") // Inscrição Estadual
+  im            String   @default("") // Inscrição Municipal
+  email         String   @default("")
+  phone         String   @default("")
+  phone2        String   @default("")
+  contactName   String   @default("")
+  contactPhone  String   @default("")
+  contactEmail  String   @default("")
+  zipCode       String   @default("")
+  address       String   @default("")
+  number        String   @default("")
+  complement    String   @default("")
+  neighborhood  String   @default("")
+  city          String   @default("")
+  state         String   @default("")
+  notes         String   @default("")
+  internalCode  String   @default("")
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  quotes Quote[]
+
+  @@index([corporateName])
+  @@index([cpfCnpj])
+  @@index([active])
+}
+
+// ── CATEGORIAS DE PRODUTOS ──────────────────────────────
+
+model Category {
+  id        String     @id @default(cuid())
+  name      String
+  slug      String     @unique
+  parentId  String?
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryTree")
+  order     Int        @default(0)
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  products Product[]
+  materials Material[]
+
+  @@index([slug])
+  @@index([parentId])
+}
+
+// ── MATERIAIS (Matéria-Prima) ───────────────────────────
+
+model Material {
+  id           String   @id @default(cuid())
+  internalCode String   @default("") // código interno de estoque
+  name         String   @unique
+  categoryId   String?
+  category     Category? @relation(fields: [categoryId], references: [id])
+  density      Float    @default(0) // g/cm³
+  description  String   @default("")
+  unit         String   @default("KG") // unidade de compra/estoque: KG, UN, M, M2, M3, L, CHAPA
+  stockQty     Float    @default(0) // saldo atual em estoque
+  minStockQty  Float    @default(0) // estoque mínimo (dispara sugestão de requisição)
+  costPrice    Float    @default(0) // último custo de aquisição
+  notes        String   @default("")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  products         Product[]         // vínculo legado (1 material principal por produto)
+  productMaterials ProductMaterial[] // "receita" de matéria-prima por produto (N:N com quantidade)
+  suppliers        SupplierMaterial[]
+  requisitionItems RequisitionItem[]
+  stockMovements   StockMovement[] @relation("MaterialStockMovements")
+
+  @@index([internalCode])
+  @@index([categoryId])
+  @@index([active])
+}
+
+// ── FORNECEDORES ─────────────────────────────────────────
+
+model Supplier {
+  id            String   @id @default(cuid())
+  internalCode  String   @default("")
+  corporateName String   @default("") // Razão Social
+  tradeName     String   @default("") // Nome Fantasia
+  cpfCnpj       String   @default("")
+  ie            String   @default("")
+  email         String   @default("")
+  phone         String   @default("")
+  phone2        String   @default("")
+  contactName   String   @default("")
+  contactPhone  String   @default("")
+  contactEmail  String   @default("")
+  zipCode       String   @default("")
+  address       String   @default("")
+  number        String   @default("")
+  complement    String   @default("")
+  neighborhood  String   @default("")
+  city          String   @default("")
+  state         String   @default("")
+  paymentTerms  String   @default("") // condições de pagamento padrão
+  leadTimeDays  Int      @default(0)  // prazo médio de entrega, em dias
+  notes         String   @default("")
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  materials    SupplierMaterial[]
+  requisitionItems RequisitionItem[]
+  itemQuotes   RequisitionItemQuote[]
+
+  @@index([corporateName])
+  @@index([cpfCnpj])
+  @@index([active])
+}
+
+// Vínculo N:N Fornecedor <-> Matéria-prima (quais fornecedores atendem qual material)
+model SupplierMaterial {
+  id           String   @id @default(cuid())
+  supplierId   String
+  supplier     Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  materialId   String
+  material     Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  supplierCode String   @default("") // código do item na tabela do fornecedor
+  lastPrice    Float    @default(0)
+  leadTimeDays Int      @default(0)
+  isPreferred  Boolean  @default(false) // fornecedor preferencial para este material
+  notes        String   @default("")
+  updatedAt    DateTime @updatedAt
+
+  @@unique([supplierId, materialId])
+  @@index([materialId])
+  @@index([supplierId])
+}
+
+// Vínculo N:N Produto <-> Matéria-prima com quantidade ("receita" de consumo)
+model ProductMaterial {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+  quantity   Float    @default(1)  // quantidade consumida por 1 unidade do produto
+  unit       String   @default("KG")
+  scrapPct   Float    @default(0)  // % de perda/refugo previsto no processo
+  notes      String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([productId, materialId])
+  @@index([productId])
+  @@index([materialId])
+}
+
+// ── PRODUTOS ─────────────────────────────────────────────
+
+model Product {
+  id            String   @id @default(cuid())
+  internalCode  String   @default("")
+  sku           String   @default("")
+  barcode       String   @default("")
+  name          String
+  description   String   @default("")
+  categoryId    String?
+  category      Category? @relation(fields: [categoryId], references: [id])
+  materialId    String?
+  material      Material? @relation(fields: [materialId], references: [id])
+  unit          String   @default("UN")
+  costPrice     Float    @default(0)
+  salePrice     Float    @default(0)
+  width         Float    @default(0)    // cm
+  height        Float    @default(0)    // cm
+  length        Float    @default(0)    // cm
+  thickness     Float    @default(0)    // mm
+  weight        Float    @default(0)    // kg
+  volumeM3      Float    @default(0)    // m³ (calculado)
+  ncm           String   @default("")
+  ipi           Float    @default(0)    // %
+  icms          Float    @default(0)    // %
+  finish        String   @default("")   // Acabamento
+  family        String   @default("")   // Família
+  line          String   @default("")   // Linha
+  active        Boolean  @default(true)
+  notes         String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  quoteItems    QuoteItem[]
+  bomItems      BomItem[]
+  bomComponents BomItem[] @relation("BomComponent")
+  productionOrders ProductionOrder[]
+  materials     ProductMaterial[] // matérias-primas consumidas (receita)
+  stockQty      Float    @default(0) // saldo de produto acabado
+  minStockQty   Float    @default(0)
+  stockMovements StockMovement[] @relation("ProductStockMovements")
+
+  @@index([internalCode])
+  @@index([sku])
+  @@index([categoryId])
+  @@index([active])
+}
+
+// ── BOM (Lista de Materiais) ────────────────────────────
+
+model BomItem {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  componentId String
+  component   Product  @relation("BomComponent", fields: [componentId], references: [id])
+  quantity    Float    @default(1)
+  unit        String   @default("UN")
+  notes       String   @default("")
+
+  @@unique([productId, componentId])
+  @@index([productId])
+  @@index([componentId])
+}
+
+// ── ORDENS DE PRODUÇÃO ─────────────────────────────────
+
+model ProductionOrder {
+  id           String   @id @default(cuid())
+  number       String   @unique
+  status       String   @default("planned") // planned, in_progress, paused, completed, cancelled
+  date         String
+  dueDate      String   @default("")
+  productId    String?
+  product      Product? @relation(fields: [productId], references: [id])
+  productName  String   @default("")
+  quantity     Float    @default(1)
+  unit         String   @default("UN")
+  priority     String   @default("normal") // low, normal, high, urgent
+  description  String   @default("")
+  notes        String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@index([status])
+  @@index([productId])
+  @@index([userId])
+
+  requisitions Requisition[]
+}
+
+// ── REQUISIÇÕES DE MATÉRIA-PRIMA (compra ao fornecedor) ─
+
+model Requisition {
+  id                 String   @id @default(cuid())
+  number             String   @unique
+  status             String   @default("draft") // draft, sent, approved, ordered, partially_received, received, cancelled
+  originModule       String   @default("manual") // manual, production_order
+  productionOrderId  String?
+  productionOrder    ProductionOrder? @relation(fields: [productionOrderId], references: [id])
+  date               String
+  neededBy           String   @default("")
+  notes              String   @default("")
+  approvedBy         String?
+  approvedAt         DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  userId             String
+  user               User     @relation(fields: [userId], references: [id])
+
+  items RequisitionItem[]
+
+  @@index([status])
+  @@index([productionOrderId])
+  @@index([userId])
+}
+
+model RequisitionItem {
+  id             String      @id @default(cuid())
+  requisitionId  String
+  requisition    Requisition @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  materialId     String
+  material       Material    @relation(fields: [materialId], references: [id])
+  supplierId     String?
+  supplier       Supplier?   @relation(fields: [supplierId], references: [id])
+  quantity       Float       @default(1)
+  unit           String      @default("KG")
+  estimatedPrice Float       @default(0)
+  notes          String      @default("")
+  quotes         RequisitionItemQuote[]
+
+  @@index([requisitionId])
+  @@index([materialId])
+  @@index([supplierId])
+}
+
+// ── COTAÇÃO ──────────────────────────────────────────────
+// Cada fornecedor cotado para um item de requisição. Ao "selecionar" uma
+// cotação, ela grava o preço/fornecedor de volta no RequisitionItem, que
+// passa a representar o Pedido de Compra (status "ordered" da Requisition).
+
+model RequisitionItemQuote {
+  id                 String           @id @default(cuid())
+  requisitionItemId  String
+  requisitionItem    RequisitionItem  @relation(fields: [requisitionItemId], references: [id], onDelete: Cascade)
+  supplierId         String
+  supplier           Supplier         @relation(fields: [supplierId], references: [id])
+  price              Float
+  leadTimeDays       Int              @default(0)
+  notes              String           @default("")
+  isSelected         Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+
+  @@index([requisitionItemId])
+  @@index([supplierId])
+}
+
+// ── ESTOQUE (histórico de movimentações) ────────────────
+// Fonte oficial de rastreabilidade de saldo — cada alteração de stockQty
+// (seja de Material ou de Product) deve gerar um registro aqui.
+
+model StockMovement {
+  id              String   @id @default(cuid())
+  itemType        String   // "material" ou "product"
+  materialId      String?
+  material        Material? @relation("MaterialStockMovements", fields: [materialId], references: [id])
+  productId       String?
+  product         Product?  @relation("ProductStockMovements", fields: [productId], references: [id])
+  type            String   // IN (entrada), OUT (saida), ADJUST (ajuste de inventario), RESERVE, RELEASE
+  quantity        Float    // sempre positivo; o "type" define o sinal do efeito no saldo
+  balanceAfter    Float    @default(0) // saldo resultante após o movimento, para auditoria rápida
+  reason          String   @default("") // ex: "Requisicao REQ-000012", "OP OP-000045 concluida", "Ajuste de inventario"
+  referenceType   String   @default("") // "requisition", "production_order", "manual"
+  referenceId     String   @default("")
+  notes           String   @default("")
+  createdAt       DateTime @default(now())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@index([materialId])
+  @@index([productId])
+  @@index([itemType])
+  @@index([createdAt])
+}
+
+// ── ORÇAMENTOS ───────────────────────────────────────────
+
+model Quote {
+  id              String      @id @default(cuid())
+  number          String
+  version         Int         @default(1)
+  status          String      @default("draft") // draft, sent, approved, rejected, cancelled, expired
+  date            String
+  validUntil      String      @default("")
+  clientId        String?
+  client          Client?     @relation(fields: [clientId], references: [id])
+  clientName      String      @default("")
+  clientContact   String      @default("")
+  clientAddress   String      @default("")
+  clientNeighborhood String   @default("")
+  clientCep       String      @default("")
+  clientCnpj      String      @default("")
+  clientEmail     String      @default("")
+  clientPhone     String      @default("")
+  subtotal        Float       @default(0)
+  discountType    String      @default("value") // value, percent
+  discountValue   Float       @default(0)
+  discountTotal   Float       @default(0)
+  freightMode     String      @default("combined") // included, excluded, combined, quote
+  freightText     String      @default("A COMBINAR")
+  freightValue    Float       @default(0)
+  total           Float       @default(0)
+  warranty        String      @default("")
+  validity        String      @default("")
+  deliveryTime    String      @default("")
+  paymentTerms    String      @default("")
+  generalConditions String    @default("")
+  notes           String      @default("")
+  photoNote       String      @default("")
+  internalNotes   String      @default("")
+  approvedBy      String?
+  approvedAt      DateTime?
+  sentAt          DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
+
+  items QuoteItem[]
+
+  @@unique([number, version])
+  @@index([status])
+  @@index([clientId])
+  @@index([userId])
+  @@index([date])
+}
+
+model QuoteItem {
+  id          String  @id @default(cuid())
+  quoteId     String
+  quote       Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id])
+  code        String  @default("")
+  description String  @default("")
+  quantity    Float   @default(1)
+  unit        String  @default("UN")
+  unitPrice   Float   @default(0)
+  total       Float   @default(0)
+  weight      Float   @default(0)
+  width       Float   @default(0)
+  height      Float   @default(0)
+  length      Float   @default(0)
+  order       Int     @default(0)
+  notes       String  @default("")
+  createdAt   DateTime @default(now())
+
+  @@index([quoteId])
+  @@index([productId])
+}
+
+// ── ANEXOS ───────────────────────────────────────────────
+
+model Attachment {
+  id        String   @id @default(cuid())
+  module    String   // orcamentos, produtos, clientes
+  entityId  String
+  fileName  String
+  filePath  String
+  fileSize  Int      @default(0)
+  mimeType  String   @default("")
+  uploadedBy String?
+  createdAt DateTime @default(now())
+
+  @@index([module, entityId])
+}
