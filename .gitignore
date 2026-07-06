@@ -16,6 +16,17 @@ dist/
 build/
 
 # ========================================
+# Turbopack
+# ========================================
+.turbo/
+
+# ========================================
+# Cache
+# ========================================
+.cache/
+*.tsbuildinfo
+
+# ========================================
 # Logs
 # ========================================
 logs/
@@ -34,7 +45,7 @@ pnpm-debug.log*
 .env.test.local
 
 # ========================================
-# Banco de Dados
+# Banco de Dados (SQLite)
 # ========================================
 data/
 *.db
@@ -42,18 +53,19 @@ data/
 *.sqlite3
 
 # ========================================
-# Storage temporário
+# Storage
 # ========================================
 storage/cache/
 storage/temp/
+storage/uploads/
 
-# Se os uploads dos clientes NÃO devem ir para o Git:
-# storage/
+# Manter a pasta caso seja necessária
+!storage/.gitkeep
 
 # ========================================
-# Turbopack
+# PM2
 # ========================================
-.turbo/
+.pm2/
 
 # ========================================
 # IDEs
@@ -68,7 +80,7 @@ storage/temp/
 Thumbs.db
 Desktop.ini
 
-# Windows ADS
+# Windows Alternate Data Streams
 *:Zone.Identifier
 
 # ========================================
@@ -77,6 +89,25 @@ Desktop.ini
 coverage/
 
 # ========================================
-# TypeScript
+# Arquivos temporários e backups
 # ========================================
-*.tsbuildinfo
+*.bak
+*.backup
+*.old
+*.tmp
+*.temp
+
+# ========================================
+# Arquivos compactados
+# ========================================
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+
+# ========================================
+# Certificados e chaves
+# ========================================
+*.pem
+*.key

@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { settingService } from '@/app/services/setting.service'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import fs from 'fs'
@@ -6,9 +7,12 @@ import path from 'path'
 
 // ── Identidade visual Cozisteel ──────────────────────────────────────────
 const BRAND_RED: [number, number, number] = [178, 17, 25]      // #B21119 — cor exata extraída da logo oficial
-const BRAND_RED_DARK: [number, number, number] = [122, 12, 17] // tom mais escuro, para gradientes/hover
-const BRAND_GRAY: [number, number, number] = [90, 90, 90]
-const BRAND_LIGHT: [number, number, number] = [246, 238, 238]  // fundo suave para faixas/realces
+const BRAND_DARK: [number, number, number] = [26, 26, 26]      // "card" escuro (dados da empresa)
+const BRAND_GRAY: [number, number, number] = [100, 100, 100]
+const BRAND_LIGHT: [number, number, number] = [247, 247, 247]  // fundo do card claro (dados do cliente)
+const BRAND_BORDER: [number, number, number] = [225, 225, 225]
+
+const PAGE_SAFE_Y = 252 // abaixo disso, reserva nova página pro fechamento do documento
 
 let cachedLogo: string | null = null
 function getLogoBase64(): string | null {
@@ -21,6 +25,31 @@ function getLogoBase64(): string | null {
     cachedLogo = ''
   }
   return cachedLogo || null
+}
+
+interface CompanyInfo {
+  name: string; tradeName: string; cnpj: string; ie: string
+  address: string; neighborhood: string; cityState: string; cep: string
+  phone: string; email: string; contact: string
+}
+
+async function getCompanyInfo(): Promise<CompanyInfo> {
+  const rows = await settingService.getGroup('company')
+  const map: Record<string, string> = {}
+  for (const r of rows) map[r.key] = r.value
+  return {
+    name: map['company.name'] || 'COZISTEEL',
+    tradeName: map['company.tradeName'] || 'COZISTEEL',
+    cnpj: map['company.cnpj'] || '',
+    ie: map['company.ie'] || '',
+    address: map['company.address'] || '',
+    neighborhood: map['company.neighborhood'] || '',
+    cityState: map['city.state'] || '',
+    cep: map['company.cep'] || '',
+    phone: map['company.phone'] || '',
+    email: map['company.email'] || '',
+    contact: map['company.contact'] || '',
+  }
 }
 
 /**
@@ -57,8 +86,6 @@ function drawHeader(doc: jsPDF, docTitle: string, docNumber?: string): number {
   }
 
   doc.setTextColor(0, 0, 0)
-
-  // Faixa de destaque na cor institucional
   doc.setFillColor(...BRAND_RED)
   doc.rect(0, 34, pageWidth, 1.2, 'F')
 
@@ -88,6 +115,38 @@ function drawFooter(doc: jsPDF, extraLine?: string) {
   }
 }
 
+/**
+ * Barra de rodapé "institucional" (marca + selos de qualidade) — usada só no
+ * modelo comercial (documentos voltados ao cliente, como o Orçamento).
+ */
+function drawBrandFooterBar(doc: jsPDF, y: number) {
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const badges: [string, string][] = [['✓', 'QUALIDADE'], ['★', 'EXCELÊNCIA'], ['✓', 'COMPROMISSO'], ['♦', 'CONFIANÇA']]
+  const zoneWidth = (pageWidth - 28) / badges.length
+
+  badges.forEach(([symbol, label], i) => {
+    const cx = 14 + zoneWidth * i + zoneWidth / 2
+    doc.setDrawColor(...BRAND_RED)
+    doc.setLineWidth(0.5)
+    doc.circle(cx - 12, y, 3.2, 'S')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.setTextColor(...BRAND_RED)
+    doc.text(symbol, cx - 12, y + 1.2, { align: 'center' })
+    doc.setFontSize(7.5)
+    doc.setTextColor(60, 60, 60)
+    doc.text(label, cx - 6, y + 1.2)
+  })
+
+  doc.setFillColor(...BRAND_RED)
+  doc.rect(0, y + 8, pageWidth, 7, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(255, 255, 255)
+  doc.text('COZISTEEL — SOLUÇÕES EM AÇO INOXIDÁVEL', pageWidth / 2, y + 12.7, { align: 'center' })
+  doc.setTextColor(0, 0, 0)
+}
+
 /** Estilo padrão de tabela na identidade Cozisteel (cabeçalho vermelho institucional). */
 const brandTableStyles = {
   theme: 'grid' as const,
@@ -107,6 +166,153 @@ function sectionTitle(doc: jsPDF, text: string, x: number, y: number) {
   doc.setTextColor(0, 0, 0)
 }
 
+/**
+ * Desenha os dois cartões lado a lado: DADOS DO CLIENTE (claro) e DADOS DA EMPRESA (escuro).
+ * Retorna o Y logo abaixo dos cartões.
+ */
+function drawInfoCards(doc: jsPDF, y: number, clientLines: string[], company: CompanyInfo): number {
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const cardWidth = (pageWidth - 28 - 6) / 2
+  const cardHeight = 5 + Math.max(clientLines.length, 5) * 4.6 + 4
+
+  // Card claro — Cliente
+  doc.setFillColor(...BRAND_LIGHT)
+  doc.setDrawColor(...BRAND_BORDER)
+  doc.roundedRect(14, y, cardWidth, cardHeight, 2, 2, 'FD')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(...BRAND_RED)
+  doc.text('DADOS DO CLIENTE', 18, y + 6)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.5)
+  doc.setTextColor(40, 40, 40)
+  clientLines.forEach((line, i) => doc.text(line, 18, y + 12 + i * 4.6, { maxWidth: cardWidth - 8 }))
+
+  // Card escuro — Empresa
+  const rightX = 14 + cardWidth + 6
+  doc.setFillColor(...BRAND_DARK)
+  doc.roundedRect(rightX, y, cardWidth, cardHeight, 2, 2, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(255, 255, 255)
+  doc.text('DADOS DA EMPRESA', rightX + 4, y + 6)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.5)
+  doc.setTextColor(225, 225, 225)
+  const companyLines = [
+    company.tradeName,
+    `CNPJ: ${company.cnpj}${company.ie ? `  IE: ${company.ie}` : ''}`,
+    `${company.address}${company.neighborhood ? ` - ${company.neighborhood}` : ''}`,
+    `${company.cityState}${company.cep ? ` - ${company.cep}` : ''}`,
+    `Tel: ${company.phone}`,
+    `${company.email}`,
+  ]
+  companyLines.forEach((line, i) => doc.text(line, rightX + 4, y + 12 + i * 4.6, { maxWidth: cardWidth - 8 }))
+  doc.setTextColor(0, 0, 0)
+
+  return y + cardHeight + 8
+}
+
+/** Caixa de totais (subtotal / desconto / frete / total em destaque). */
+function drawSummaryBox(doc: jsPDF, y: number, subtotal: number, discountTotal: number, discountLabel: string, freightValue: number, freightText: string, total: number): number {
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const boxWidth = 82
+  const boxX = pageWidth - 14 - boxWidth
+  let rows = [[`Subtotal:`, `R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`]]
+  if (discountTotal > 0) rows.push([discountLabel, `- R$ ${discountTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`])
+  if (freightValue > 0) rows.push(['Frete:', `R$ ${freightValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`])
+  else if (freightText) rows.push(['Frete:', freightText])
+
+  const rowHeight = 6.5
+  const boxHeight = rows.length * rowHeight + 12
+
+  doc.setDrawColor(...BRAND_BORDER)
+  doc.setFillColor(252, 252, 252)
+  doc.roundedRect(boxX, y, boxWidth, boxHeight, 2, 2, 'FD')
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(60, 60, 60)
+  rows.forEach((row, i) => {
+    doc.text(row[0], boxX + 5, y + 7 + i * rowHeight)
+    doc.text(row[1], boxX + boxWidth - 5, y + 7 + i * rowHeight, { align: 'right' })
+  })
+
+  const totalY = y + rows.length * rowHeight + 6
+  doc.setFillColor(...BRAND_RED)
+  doc.rect(boxX, totalY, boxWidth, 9, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.setTextColor(255, 255, 255)
+  doc.text('TOTAL:', boxX + 5, totalY + 6)
+  doc.text(`R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, boxX + boxWidth - 5, totalY + 6, { align: 'right' })
+  doc.setTextColor(0, 0, 0)
+
+  return y + boxHeight + 10
+}
+
+/** Duas caixas lado a lado: Condições Comerciais | Observações. */
+function drawTwoColumnBoxes(doc: jsPDF, y: number, leftTitle: string, leftLines: string[], rightTitle: string, rightLines: string[]): number {
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const colWidth = (pageWidth - 28 - 6) / 2
+  const lineCount = Math.max(leftLines.length, rightLines.length, 2)
+  const boxHeight = 8 + lineCount * 4.4
+
+  doc.setDrawColor(...BRAND_BORDER)
+  doc.setFillColor(255, 255, 255)
+  doc.roundedRect(14, y, colWidth, boxHeight, 2, 2, 'FD')
+  doc.roundedRect(14 + colWidth + 6, y, colWidth, boxHeight, 2, 2, 'FD')
+
+  sectionTitle(doc, leftTitle, 18, y + 6)
+  sectionTitle(doc, rightTitle, 18 + colWidth + 6, y + 6)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.5)
+  doc.setTextColor(50, 50, 50)
+  leftLines.forEach((line, i) => doc.text(line, 18, y + 13 + i * 4.4, { maxWidth: colWidth - 8 }))
+  rightLines.forEach((line, i) => doc.text(line, 18 + colWidth + 6, y + 13 + i * 4.4, { maxWidth: colWidth - 8 }))
+  doc.setTextColor(0, 0, 0)
+
+  return y + boxHeight + 10
+}
+
+/** Bloco de assinatura / aprovação do cliente. */
+function drawSignatureBlock(doc: jsPDF, y: number, approvedBy?: string, approvedAt?: Date | null): number {
+  const pageWidth = doc.internal.pageSize.getWidth()
+
+  if (approvedAt) {
+    doc.setFillColor(230, 247, 237)
+    doc.setDrawColor(16, 150, 90)
+    doc.roundedRect(14, y, pageWidth - 28, 14, 2, 2, 'FD')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    doc.setTextColor(16, 120, 75)
+    doc.text(`✓ APROVADO em ${approvedAt.toLocaleDateString('pt-BR')}`, 20, y + 9)
+    doc.setTextColor(0, 0, 0)
+    return y + 20
+  }
+
+  const lineY = y + 18
+  doc.setDrawColor(150, 150, 150)
+  doc.line(14, lineY, 90, lineY)
+  doc.line(pageWidth - 90, lineY, pageWidth - 14, lineY)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  doc.setTextColor(...BRAND_GRAY)
+  doc.text('Assinatura do Cliente', 14, lineY + 5)
+  doc.text('Data', pageWidth - 90, lineY + 5)
+  doc.setTextColor(0, 0, 0)
+  return lineY + 12
+}
+
+function ensureSpace(doc: jsPDF, y: number, needed: number): number {
+  if (y + needed > PAGE_SAFE_Y) {
+    doc.addPage()
+    return 20
+  }
+  return y
+}
+
 class PdfService {
   async generateQuotePdf(quoteId: string): Promise<Buffer> {
     const quote = await db.quote.findUnique({
@@ -119,6 +325,7 @@ class PdfService {
     })
 
     if (!quote) throw new Error('Orçamento não encontrado')
+    const company = await getCompanyInfo()
 
     const doc = new jsPDF('p', 'mm', 'a4')
     const pageWidth = doc.internal.pageSize.getWidth()
@@ -126,38 +333,31 @@ class PdfService {
 
     doc.setFontSize(9)
     doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...BRAND_GRAY)
     doc.text(`Data: ${quote.date}`, 14, y)
-    doc.text(`Validade: ${quote.validity || quote.validUntil || '-'}`, 90, y)
-    if (quote.approvedAt) doc.text(`Aprovado em: ${quote.approvedAt.toLocaleDateString('pt-BR')}`, 150, y)
-    y += 10
+    doc.text(`Validade: ${quote.validity || quote.validUntil || '-'}`, pageWidth - 14, y, { align: 'right' })
+    doc.setTextColor(0, 0, 0)
+    y += 8
 
-    sectionTitle(doc, 'DADOS DO CLIENTE', 14, y)
-    y += 6
-
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(9)
     const clientName = quote.clientName || quote.client?.corporateName || '-'
     const clientCnpj = quote.clientCnpj || quote.client?.cpfCnpj || '-'
     const clientAddr = quote.clientAddress || quote.client?.address || '-'
     const clientNeigh = quote.clientNeighborhood || quote.client?.neighborhood || ''
     const clientCep = quote.clientCep || quote.client?.zipCode || ''
-    const clientCity = quote.client?.city || ''
-    const clientState = quote.client?.state || ''
+    const clientCityState = quote.client ? `${quote.client.city || ''}${quote.client.state ? `/${quote.client.state}` : ''}` : ''
 
-    doc.setFont('helvetica', 'bold')
-    doc.text(clientName, 14, y)
-    doc.setFont('helvetica', 'normal')
-    y += 5
-    doc.text(`CNPJ/CPF: ${clientCnpj}`, 14, y)
-    y += 5
-    doc.text(`${clientAddr}${clientNeigh ? ` - ${clientNeigh}` : ''}${clientCep ? ` - ${clientCep}` : ''}`, 14, y)
-    y += 5
-    if (clientCity || clientState) { doc.text(`${clientCity}${clientState ? `/${clientState}` : ''}`, 14, y); y += 5 }
-    if (quote.clientContact) { doc.text(`Contato: ${quote.clientContact}`, 14, y); y += 5 }
-    if (quote.clientPhone) { doc.text(`Tel: ${quote.clientPhone}`, 14, y); y += 5 }
+    const clientLines = [
+      clientName,
+      `CNPJ/CPF: ${clientCnpj}`,
+      `${clientAddr}${clientNeigh ? ` - ${clientNeigh}` : ''}`,
+      `${clientCityState}${clientCep ? ` - ${clientCep}` : ''}`,
+      quote.clientContact ? `Contato: ${quote.clientContact}` : '',
+      quote.clientPhone ? `Tel: ${quote.clientPhone}` : '',
+    ].filter(Boolean)
 
-    y += 4
-    sectionTitle(doc, 'ITENS', 14, y)
+    y = drawInfoCards(doc, y, clientLines, company)
+
+    sectionTitle(doc, 'ITENS DO ORÇAMENTO', 14, y)
     y += 4
 
     const tableData = quote.items.map((item, idx) => [
@@ -182,60 +382,30 @@ class PdfService {
         5: { halign: 'right', cellWidth: 25 },
         6: { halign: 'right', cellWidth: 25 },
       },
+      margin: { bottom: 30 },
     })
 
-    const finalY = (doc as any).lastAutoTable?.finalY ?? y + 40
-    const totalsX = pageWidth - 80
+    y = ((doc as any).lastAutoTable?.finalY ?? y + 40) + 8
+    y = ensureSpace(doc, y, 45)
 
-    doc.setFontSize(9)
-    doc.setFont('helvetica', 'normal')
-    doc.text('Subtotal:', totalsX, finalY + 8)
-    doc.text(`R$ ${quote.subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, pageWidth - 14, finalY + 8, { align: 'right' })
+    const discountLabel = `Desconto${quote.discountType === 'percent' ? ` (${quote.discountValue}%)` : ''}:`
+    y = drawSummaryBox(doc, y, quote.subtotal, quote.discountTotal, discountLabel, quote.freightValue, quote.freightText, quote.total)
 
-    let totalsY = finalY + 8
-    if (quote.discountTotal > 0) {
-      totalsY += 6
-      doc.text(`Desconto${quote.discountType === 'percent' ? ` (${quote.discountValue}%)` : ''}:`, totalsX, totalsY)
-      doc.text(`- R$ ${quote.discountTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, pageWidth - 14, totalsY, { align: 'right' })
-    }
+    y = ensureSpace(doc, y, 45)
+    const conditionLines = [
+      quote.paymentTerms ? `Pagamento: ${quote.paymentTerms}` : '',
+      quote.deliveryTime ? `Prazo de entrega: ${quote.deliveryTime}` : '',
+      quote.warranty ? `Garantia: ${quote.warranty}` : '',
+      quote.validity ? `Validade da proposta: ${quote.validity}` : '',
+    ].filter(Boolean)
+    const noteLines = doc.splitTextToSize(quote.notes || quote.generalConditions || 'Nenhuma observação adicional.', 78)
+    y = drawTwoColumnBoxes(doc, y, 'CONDIÇÕES COMERCIAIS', conditionLines.length ? conditionLines : ['A combinar'], 'OBSERVAÇÕES', noteLines)
 
-    totalsY += 10
-    doc.setFillColor(...BRAND_RED)
-    doc.rect(totalsX - 4, totalsY - 6, pageWidth - 14 - (totalsX - 4), 9, 'F')
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(12)
-    doc.setTextColor(255, 255, 255)
-    doc.text('TOTAL:', totalsX, totalsY)
-    doc.text(`R$ ${quote.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, pageWidth - 14, totalsY, { align: 'right' })
-    doc.setTextColor(0, 0, 0)
+    y = ensureSpace(doc, y, 35)
+    y = drawSignatureBlock(doc, y, quote.approvedBy || undefined, quote.approvedAt)
 
-    let footY = totalsY + 14
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'normal')
-    if (quote.paymentTerms) {
-      doc.setFont('helvetica', 'bold'); doc.text('Condições de Pagamento:', 14, footY); doc.setFont('helvetica', 'normal')
-      footY += 5; doc.text(quote.paymentTerms, 14, footY); footY += 5
-    }
-    if (quote.deliveryTime) {
-      doc.setFont('helvetica', 'bold'); doc.text('Prazo de Entrega:', 14, footY); doc.setFont('helvetica', 'normal')
-      footY += 5; doc.text(quote.deliveryTime, 14, footY); footY += 5
-    }
-    if (quote.warranty) {
-      doc.setFont('helvetica', 'bold'); doc.text('Garantia:', 14, footY); doc.setFont('helvetica', 'normal')
-      footY += 5; doc.text(quote.warranty, 14, footY); footY += 5
-    }
-    if (quote.generalConditions) {
-      doc.setFont('helvetica', 'bold'); doc.text('Condições Gerais:', 14, footY); doc.setFont('helvetica', 'normal')
-      footY += 5
-      const lines = doc.splitTextToSize(quote.generalConditions, pageWidth - 28)
-      doc.text(lines, 14, footY)
-      footY += lines.length * 4
-    }
-    if (quote.freightText && quote.freightText !== 'A COMBINAR') {
-      footY += 5
-      doc.setFont('helvetica', 'bold'); doc.text('Frete:', 14, footY); doc.setFont('helvetica', 'normal')
-      footY += 5; doc.text(quote.freightText, 14, footY)
-    }
+    y = ensureSpace(doc, y, 20)
+    drawBrandFooterBar(doc, y + 4)
 
     drawFooter(doc)
     return Buffer.from(doc.output('arraybuffer'))
@@ -300,6 +470,7 @@ class PdfService {
     return Buffer.from(doc.output('arraybuffer'))
   }
 
+  /** Modelo técnico (interno): mesma identidade visual, layout mais direto e sem apelo comercial. */
   async generateRequisitionPdf(requisitionId: string): Promise<Buffer> {
     const requisition = await db.requisition.findUnique({
       where: { id: requisitionId },
@@ -311,25 +482,22 @@ class PdfService {
     })
 
     if (!requisition) throw new Error('Requisição não encontrada')
+    const company = await getCompanyInfo()
 
     const doc = new jsPDF('p', 'mm', 'a4')
     const pageWidth = doc.internal.pageSize.getWidth()
     let y = drawHeader(doc, 'REQUISIÇÃO DE COMPRA', `Nº ${requisition.number}`)
 
-    doc.setFontSize(9)
-    doc.setFont('helvetica', 'normal')
-    doc.text(`Data: ${requisition.date}`, 14, y)
-    doc.text(`Necessário até: ${requisition.neededBy || '-'}`, 90, y)
-    doc.text(`Status: ${requisition.status}`, 150, y)
-    y += 6
-    doc.text(`Solicitante: ${requisition.user.name}`, 14, y)
-    if (requisition.productionOrder) {
-      doc.text(`Origem: OP ${requisition.productionOrder.number} (${requisition.productionOrder.productName || ''})`, 90, y)
-    }
-    y += 6
-    if (requisition.approvedAt) { doc.text(`Aprovado em: ${requisition.approvedAt.toLocaleDateString('pt-BR')}`, 14, y); y += 6 }
+    const infoLines = [
+      `Solicitante: ${requisition.user.name}`,
+      `Status: ${requisition.status}`,
+      `Necessário até: ${requisition.neededBy || '-'}`,
+      requisition.productionOrder ? `Origem: OP ${requisition.productionOrder.number} (${requisition.productionOrder.productName || ''})` : 'Origem: manual',
+      requisition.approvedAt ? `Aprovado em: ${requisition.approvedAt.toLocaleDateString('pt-BR')}` : '',
+    ].filter(Boolean)
 
-    y += 4
+    y = drawInfoCards(doc, y, infoLines, company)
+
     sectionTitle(doc, 'ITENS DA REQUISIÇÃO', 14, y)
     y += 4
 
@@ -391,29 +559,21 @@ class PdfService {
     })
 
     if (!order) throw new Error('Ordem de produção não encontrada')
+    const company = await getCompanyInfo()
 
     const doc = new jsPDF('p', 'mm', 'a4')
     const pageWidth = doc.internal.pageSize.getWidth()
     let y = drawHeader(doc, 'ORDEM DE PRODUÇÃO', `Nº ${order.number}`)
 
-    doc.setFontSize(9)
-    doc.setFont('helvetica', 'normal')
-    doc.text(`Data: ${order.date}`, 14, y)
-    doc.text(`Prazo: ${order.dueDate || '-'}`, 90, y)
-    doc.text(`Prioridade: ${order.priority}`, 150, y)
-    y += 6
-    doc.text(`Status: ${order.status}`, 14, y)
-    doc.text(`Responsável: ${order.user.name}`, 90, y)
-    y += 10
+    const infoLines = [
+      `Produto: ${order.productName || order.product?.name || '-'}`,
+      `Quantidade: ${order.quantity} ${order.unit}`,
+      `Status: ${order.status}    Prioridade: ${order.priority}`,
+      `Prazo: ${order.dueDate || '-'}`,
+      `Responsável: ${order.user.name}`,
+    ]
 
-    sectionTitle(doc, 'PRODUTO', 14, y)
-    y += 6
-    doc.setFont('helvetica', 'bold')
-    doc.text(`${order.productName || order.product?.name || '-'}`, 14, y)
-    doc.setFont('helvetica', 'normal')
-    y += 5
-    doc.text(`Quantidade: ${order.quantity} ${order.unit}`, 14, y)
-    y += 8
+    y = drawInfoCards(doc, y, infoLines, company)
 
     if (order.description) {
       sectionTitle(doc, 'DESCRIÇÃO', 14, y)
