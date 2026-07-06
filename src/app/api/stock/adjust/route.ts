@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, unauthorized, ok, badRequest, notFound } from '@/lib/api-utils'
+import { requireAuth, requireModulePermission, unauthorized, forbidden, ok, badRequest, notFound } from '@/lib/api-utils'
 import { auditService } from '@/app/services/audit.service'
 
 /**
@@ -12,7 +12,7 @@ import { auditService } from '@/app/services/audit.service'
  */
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireAuth()
+    const user = await requireModulePermission('estoque', 'update')
     const body = await req.json()
     const { itemType, itemId, newQuantity, reason } = body
 
@@ -75,6 +75,7 @@ export async function POST(req: NextRequest) {
     return ok({ movement, previousQty, newQuantity, delta })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') return unauthorized()
+    if (error instanceof Error && error.name === 'ForbiddenError') return forbidden(error.message)
     console.error('POST /api/stock/adjust error:', error)
     return badRequest('Erro ao ajustar estoque')
   }

@@ -36,6 +36,18 @@ export function checkPermission(user: SessionUser, module: Module, action: Actio
   return hasPermission(user.role, module, action)
 }
 
+/**
+ * Exige que o usuário esteja logado E tenha permissão para a ação no módulo informado.
+ * Lança ForbiddenError (403) se não tiver — use em toda rota de escrita (POST/PUT/PATCH/DELETE).
+ */
+export async function requireModulePermission(module: Module, action: Action): Promise<SessionUser> {
+  const user = await requireAuth()
+  if (!checkPermission(user, module, action)) {
+    throw new ForbiddenError(`Você não tem permissão para ${action === 'create' ? 'criar' : action === 'update' ? 'editar' : action === 'delete' ? 'excluir' : 'acessar'} este recurso`)
+  }
+  return user
+}
+
 export function unauthorized(): NextResponse {
   return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 }

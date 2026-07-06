@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, unauthorized, ok, badRequest, notFound } from '@/lib/api-utils'
+import { requireAuth, requireModulePermission, unauthorized, forbidden, ok, badRequest, notFound } from '@/lib/api-utils'
 import { auditService } from '@/app/services/audit.service'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -20,7 +20,7 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
 
 export async function PATCH(req: NextRequest, ctx: RouteContext) {
   try {
-    const user = await requireAuth()
+    const user = await requireModulePermission('requisicoes', 'update')
     const { id } = await ctx.params
     const { status } = await req.json()
 
@@ -88,6 +88,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     return ok(updated)
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') return unauthorized()
+    if (error instanceof Error && error.name === 'ForbiddenError') return forbidden(error.message)
     console.error('PATCH /api/requisitions/[id]/status error:', error)
     return badRequest('Erro ao alterar status da requisição')
   }

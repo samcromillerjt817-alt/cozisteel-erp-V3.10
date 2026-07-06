@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, unauthorized, ok, created, badRequest, parsePagination } from '@/lib/api-utils'
+import { requireAuth, requireModulePermission, unauthorized, forbidden, ok, created, badRequest, parsePagination } from '@/lib/api-utils'
 import { validateDto, createClientSchema } from '@/app/dto'
 
 export async function GET(req: NextRequest) {
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireAuth()
+    const user = await requireModulePermission('clientes', 'create')
     const body = await req.json()
     const data = validateDto(createClientSchema, body)
 
@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
     return created(client)
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') return unauthorized()
+    if (error instanceof Error && error.name === 'ForbiddenError') return forbidden(error.message)
     console.error('POST /api/clients error:', error)
     return badRequest('Erro ao criar cliente')
   }

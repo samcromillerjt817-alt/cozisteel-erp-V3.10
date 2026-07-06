@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, unauthorized, ok, badRequest, notFound } from '@/lib/api-utils'
+import { requireAuth, requireModulePermission, unauthorized, forbidden, ok, badRequest, notFound } from '@/lib/api-utils'
 import { auditService } from '@/app/services/audit.service'
 import type { CreateQuoteDto } from '@/app/dto'
 
@@ -55,7 +55,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
 
 export async function PUT(req: NextRequest, ctx: RouteContext) {
   try {
-    const user = await requireAuth()
+    const user = await requireModulePermission('orcamentos', 'update')
     const { id } = await ctx.params
     const body = await req.json()
 
@@ -140,6 +140,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
     return ok(updated)
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') return unauthorized()
+    if (error instanceof Error && error.name === 'ForbiddenError') return forbidden(error.message)
     console.error('PUT /api/quotes/[id] error:', error)
     // Em desenvolvimento/depuração, devolve a mensagem real do erro em vez de um texto genérico
     const message = error instanceof Error ? error.message : 'Erro ao atualizar orçamento'
@@ -149,7 +150,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
 export async function DELETE(_req: NextRequest, ctx: RouteContext) {
   try {
-    const user = await requireAuth()
+    const user = await requireModulePermission('orcamentos', 'delete')
     const { id } = await ctx.params
 
     const quote = await db.quote.findUnique({ where: { id } })
@@ -169,6 +170,7 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
     return ok({ success: true })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') return unauthorized()
+    if (error instanceof Error && error.name === 'ForbiddenError') return forbidden(error.message)
     console.error('DELETE /api/quotes/[id] error:', error)
     return badRequest('Erro ao excluir orçamento')
   }

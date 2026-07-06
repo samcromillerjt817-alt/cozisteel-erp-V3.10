@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, unauthorized, ok, created, badRequest, parsePagination } from '@/lib/api-utils'
+import { requireAuth, requireModulePermission, unauthorized, forbidden, ok, created, badRequest, parsePagination } from '@/lib/api-utils'
 import { validateDto, createMaterialSchema } from '@/app/dto'
 import { auditService } from '@/app/services/audit.service'
 
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireAuth()
+    const user = await requireModulePermission('materiais', 'create')
     const body = await req.json()
     const data = validateDto(createMaterialSchema, body)
 
@@ -83,6 +83,7 @@ export async function POST(req: NextRequest) {
     return created(material)
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') return unauthorized()
+    if (error instanceof Error && error.name === 'ForbiddenError') return forbidden(error.message)
     if (error instanceof Error && error.name === 'BadRequestException') return badRequest(error.message)
     console.error('POST /api/materials error:', error)
     return badRequest('Erro ao criar material')

@@ -5,6 +5,7 @@ import { useSession, signIn, signOut } from 'next-auth/react'
 import { toast } from 'sonner'
 import { formatCurrency, statusLabels, statusColors } from '@/lib/format'
 import { maskPhone, maskCpfCnpj, maskCep, fetchAddressByCep } from '@/lib/masks'
+import { hasPermission } from '@/app/middleware/rbac'
 import {
   LayoutDashboard, FileText, Package, Users, Settings, LogOut, Plus, Search,
   Edit, Copy, Trash2, X, Save, ChevronDown, ChevronRight, Menu, Bell,
@@ -42,7 +43,7 @@ interface Sequence { id: string; documentType: string; prefix: string; suffix: s
 interface DashboardStats { totalQuotes: number; totalClients: number; totalProducts: number; totalRevenue: number; quotesByStatus: Record<string, number>; recentQuotes: Quote[]; quotesThisMonth: number; quotesThisWeek: number }
 interface AuditEntry { id: string; action: string; module: string; entityId: string; details: string; userName: string; createdAt: string }
 
-type ModuleKey = 'dashboard' | 'orcamentos' | 'clientes' | 'produtos' | 'materiais' | 'producao' | 'fornecedores' | 'requisicoes' | 'estoque' | 'usuarios' | 'configuracoes'
+type ModuleKey = 'dashboard' | 'orcamentos' | 'clientes' | 'produtos' | 'materiais' | 'producao' | 'fornecedores' | 'requisicoes' | 'estoque' | 'relatorios' | 'usuarios' | 'configuracoes'
 type ConfigSubModule = 'empresa' | 'numeracao' | 'pdf' | 'sistema'
 
 /* ══════════════════════════════════════════════════════════════
@@ -102,7 +103,14 @@ const requisitionStatusLabels: Record<string, string> = {
   partially_received: 'Recebida parcial', received: 'Recebida', cancelled: 'Cancelada',
 }
 
-const roleLabels: Record<string, string> = { admin: 'Administrador', manager: 'Gerente', user: 'Usuario', viewer: 'Visualizador' }
+const productionStatusLabels: Record<string, string> = {
+  planned: 'Planejada', in_progress: 'Em execução', paused: 'Pausada', completed: 'Concluída', cancelled: 'Cancelada',
+}
+
+const roleLabels: Record<string, string> = {
+  admin: 'Administrador', manager: 'Gerente', user: 'Usuario', viewer: 'Visualizador',
+  comercial: 'Comercial', producao: 'Produção', compras: 'Compras', estoque: 'Estoque', financeiro: 'Financeiro',
+}
 
 /* ══════════════════════════════════════════════════════════════
    MAIN COMPONENT
@@ -235,6 +243,14 @@ export default function ERPPage() {
     itemType: '', itemId: '', itemName: '', currentQty: 0, unit: '', newQuantity: 0, reason: '',
   })
   const [adjustSaving, setAdjustSaving] = useState(false)
+
+  /* ── Relatorios ── */
+  const [reportType, setReportType] = useState<'sales' | 'production' | 'purchases' | 'stock'>('sales')
+  const [reportFrom, setReportFrom] = useState('')
+  const [reportTo, setReportTo] = useState('')
+  const [reportStatus, setReportStatus] = useState('')
+  const [reportLoading, setReportLoading] = useState(false)
+  const [reportResult, setReportResult] = useState<{ summary: Record<string, unknown>; rows: Record<string, unknown>[] } | null>(null)
 
   /* ── Usuarios ── */
   const [usersList, setUsersList] = useState<User[]>([])
@@ -1132,6 +1148,38 @@ export default function ERPPage() {
   }
 
   /* ══════════════════════════════════════════════════════════════
+     RELATORIOS ACTIONS
+     ══════════════════════════════════════════════════════════════ */
+
+  const reportQueryString = () => {
+    const params = new URLSearchParams()
+    if (reportFrom) params.set('from', reportFrom)
+    if (reportTo) params.set('to', reportTo)
+    if (reportStatus) params.set('status', reportStatus)
+    return params.toString()
+  }
+
+  const generateReport = async () => {
+    setReportLoading(true)
+    setReportResult(null)
+    try {
+      const r = await fetch(`/api/reports/${reportType}?${reportQueryString()}`)
+      const json = await r.json()
+      if (!r.ok) { toast.error(json.error || 'Erro ao gerar relatório'); return }
+      setReportResult({ summary: json.summary, rows: json.rows })
+    } catch { toast.error('Erro ao gerar relatório') }
+    setReportLoading(false)
+  }
+
+  const downloadReportCsv = () => {
+    window.open(`/api/reports/${reportType}?${reportQueryString()}&format=csv`, '_blank')
+  }
+
+  const downloadReportPdf = () => {
+    window.open(`/api/reports/${reportType}/pdf?${reportQueryString()}`, '_blank')
+  }
+
+  /* ══════════════════════════════════════════════════════════════
      USER ACTIONS
      ══════════════════════════════════════════════════════════════ */
 
@@ -1192,15 +1240,14 @@ export default function ERPPage() {
      ══════════════════════════════════════════════════════════════ */
 
   const canAccess = (mod: ModuleKey): boolean => {
-    if (mod === 'usuarios') return userRole === 'admin' || userRole === 'manager'
-    if (mod === 'configuracoes') return userRole === 'admin'
-    return true
+    if (mod === 'dashboard') return true // todo perfil enxerga o dashboard
+    return hasPermission(userRole, mod as any, 'read')
   }
 
   const breadcrumbMap: Record<string, string> = {
     dashboard: 'Dashboard', orcamentos: 'Orcamentos', clientes: 'Clientes',
     produtos: 'Produtos', materiais: 'Materias-Primas', producao: 'Producao', usuarios: 'Usuarios', configuracoes: 'Configuracoes',
-    fornecedores: 'Fornecedores', requisicoes: 'Requisicoes', estoque: 'Estoque',
+    fornecedores: 'Fornecedores', requisicoes: 'Requisicoes', estoque: 'Estoque', relatorios: 'Relatorios',
     empresa: 'Empresa', numeracao: 'Numeracao', pdf: 'PDF', sistema: 'Sistema',
   }
 
@@ -1212,6 +1259,7 @@ export default function ERPPage() {
     { key: 'materiais', icon: <Layers className="w-5 h-5" />, label: 'Materias-Primas' },
     { key: 'producao', icon: <Truck className="w-5 h-5" />, label: 'Producao' },
     { key: 'estoque', icon: <Package className="w-5 h-5" />, label: 'Estoque' },
+    { key: 'relatorios', icon: <FileText className="w-5 h-5" />, label: 'Relatorios' },
     { key: 'fornecedores', icon: <Users className="w-5 h-5" />, label: 'Fornecedores' },
     { key: 'requisicoes', icon: <FileOutput className="w-5 h-5" />, label: 'Requisicoes' },
     { key: 'usuarios', icon: <UserCog className="w-5 h-5" />, label: 'Usuarios' },
@@ -2566,6 +2614,92 @@ export default function ERPPage() {
           )}
 
           {/* ═══════════════════════════════════════════════════════
+              RELATORIOS MODULE
+              ═══════════════════════════════════════════════════════ */}
+          {activeModule === 'relatorios' && (
+            <div className="space-y-4">
+              <h2 className="text-2xl font-bold">Relatorios</h2>
+
+              <Card><CardContent className="p-4 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Tipo de relatório</Label>
+                    <Select value={reportType} onValueChange={v => { setReportType(v as any); setReportStatus(''); setReportResult(null) }}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="sales">Vendas (Orçamentos)</SelectItem>
+                        <SelectItem value="production">Produção</SelectItem>
+                        <SelectItem value="purchases">Compras (Requisições)</SelectItem>
+                        <SelectItem value="stock">Estoque</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5"><Label className="text-xs">De</Label><Input placeholder="dd/mm/aaaa" value={reportFrom} onChange={e => setReportFrom(e.target.value)} /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Até</Label><Input placeholder="dd/mm/aaaa" value={reportTo} onChange={e => setReportTo(e.target.value)} /></div>
+                  {reportType !== 'stock' && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Status</Label>
+                      <Select value={reportStatus || 'all'} onValueChange={v => setReportStatus(v === 'all' ? '' : v)}>
+                        <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos</SelectItem>
+                          {Object.entries(
+                            reportType === 'sales' ? statusLabels : reportType === 'production' ? productionStatusLabels : requisitionStatusLabels
+                          ).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <Button onClick={generateReport} disabled={reportLoading}>{reportLoading ? 'Gerando...' : 'Gerar Relatório'}</Button>
+                </div>
+              </CardContent></Card>
+
+              {reportResult && (
+                <>
+                  <div className="flex flex-wrap gap-4">
+                    {Object.entries(reportResult.summary || {}).map(([k, v]) => (
+                      <Card key={k} className="flex-1 min-w-[160px]"><CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground">{k}</p>
+                        <p className="text-xl font-bold">{typeof v === 'number' ? (k.toLowerCase().includes('valor') || k.toLowerCase().includes('value') || k.toLowerCase().includes('estimated') ? `R$ ${formatCurrency(v)}` : v) : String(v)}</p>
+                      </CardContent></Card>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={downloadReportCsv}><Download className="w-4 h-4 mr-1" /> Exportar Excel/CSV</Button>
+                    <Button variant="outline" onClick={downloadReportPdf}><FileOutput className="w-4 h-4 mr-1" /> Exportar PDF</Button>
+                  </div>
+
+                  <Card><CardContent className="p-0 overflow-x-auto">
+                    {reportResult.rows.length === 0 ? (
+                      <p className="text-center py-8 text-muted-foreground">Nenhum registro encontrado para os filtros selecionados</p>
+                    ) : (
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b bg-muted/50">
+                            {Object.keys(reportResult.rows[0]).map((h) => (
+                              <th key={h} className="text-left px-3 py-2 font-semibold whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reportResult.rows.map((row, idx) => (
+                            <tr key={idx} className="border-b last:border-b-0 hover:bg-muted/30">
+                              {Object.values(row).map((v, i) => (
+                                <td key={i} className="px-3 py-2 whitespace-nowrap">{String(v)}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </CardContent></Card>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════
               PRODUCAO MODULE
               ═══════════════════════════════════════════════════════ */}
           {activeModule === 'producao' && (
@@ -2709,6 +2843,11 @@ export default function ERPPage() {
                           <SelectItem value="manager">Gerente</SelectItem>
                           <SelectItem value="user">Usuario</SelectItem>
                           <SelectItem value="viewer">Visualizador</SelectItem>
+                          <SelectItem value="comercial">Comercial</SelectItem>
+                          <SelectItem value="producao">Produção</SelectItem>
+                          <SelectItem value="compras">Compras</SelectItem>
+                          <SelectItem value="estoque">Estoque</SelectItem>
+                          <SelectItem value="financeiro">Financeiro</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

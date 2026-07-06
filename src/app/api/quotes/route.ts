@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, unauthorized, ok, created, badRequest, parsePagination } from '@/lib/api-utils'
+import { requireAuth, requireModulePermission, unauthorized, forbidden, ok, created, badRequest, parsePagination } from '@/lib/api-utils'
 import { validateDto, createQuoteSchema, type CreateQuoteDto } from '@/app/dto'
 import { numberingService } from '@/app/services/numbering.service'
 import { auditService } from '@/app/services/audit.service'
@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireAuth()
+    const user = await requireModulePermission('orcamentos', 'create')
     const body = await req.json()
     const data = validateDto(createQuoteSchema, body)
 
@@ -169,6 +169,7 @@ export async function POST(req: NextRequest) {
     return created(quote)
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') return unauthorized()
+    if (error instanceof Error && error.name === 'ForbiddenError') return forbidden(error.message)
     console.error('POST /api/quotes error:', error)
     return badRequest('Erro ao criar orçamento')
   }

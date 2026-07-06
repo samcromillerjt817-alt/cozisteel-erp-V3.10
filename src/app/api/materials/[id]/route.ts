@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, unauthorized, ok, badRequest, notFound } from '@/lib/api-utils'
+import { requireAuth, requireModulePermission, unauthorized, forbidden, ok, badRequest, notFound } from '@/lib/api-utils'
 import { auditService } from '@/app/services/audit.service'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -31,7 +31,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
 
 export async function PUT(req: NextRequest, ctx: RouteContext) {
   try {
-    const user = await requireAuth()
+    const user = await requireModulePermission('materiais', 'update')
     const { id } = await ctx.params
     const body = await req.json()
 
@@ -58,6 +58,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
     return ok(updated)
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') return unauthorized()
+    if (error instanceof Error && error.name === 'ForbiddenError') return forbidden(error.message)
     console.error('PUT /api/materials/[id] error:', error)
     return badRequest('Erro ao atualizar matéria-prima')
   }
@@ -65,7 +66,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
 export async function DELETE(_req: NextRequest, ctx: RouteContext) {
   try {
-    const user = await requireAuth()
+    const user = await requireModulePermission('materiais', 'delete')
     const { id } = await ctx.params
 
     const material = await db.material.findUnique({
@@ -92,6 +93,7 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
     return ok({ success: true })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') return unauthorized()
+    if (error instanceof Error && error.name === 'ForbiddenError') return forbidden(error.message)
     console.error('DELETE /api/materials/[id] error:', error)
     return badRequest('Erro ao excluir matéria-prima')
   }
