@@ -223,13 +223,13 @@ cozisteel-erp/
 Clone o projeto
 
 ```bash
-git clone https://github.com/seu-usuario/cozisteel-erp.git
+git clone https://github.com/samcromillerjt817-alt/cozisteel-erp-V3.10.git
 ```
 
 Entre na pasta
 
 ```bash
-cd cozisteel-erp
+cd cozisteel-erp-V3.10
 ```
 
 Instale as dependências
