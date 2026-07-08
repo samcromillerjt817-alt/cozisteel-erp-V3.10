@@ -24,6 +24,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         materials: {
           include: { material: true },
         },
+        images: { orderBy: [{ isPrimary: 'desc' }, { order: 'asc' }] },
         _count: { select: { quoteItems: true } },
       },
     })

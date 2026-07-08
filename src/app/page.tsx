@@ -4,12 +4,12 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import { toast } from 'sonner'
 import { formatCurrency, statusLabels, statusColors } from '@/lib/format'
-import { maskPhone, maskCpfCnpj, maskCep, fetchAddressByCep } from '@/lib/masks'
+import { maskPhone, maskCpfCnpj, maskCep, fetchAddressByCep, fetchCompanyByCnpj, onlyDigits } from '@/lib/masks'
 import { hasPermission } from '@/app/middleware/rbac'
 import {
   LayoutDashboard, FileText, Package, Users, Settings, LogOut, Plus, Search,
   Edit, Copy, Trash2, X, Save, ChevronDown, ChevronRight, Menu, Bell,
-  UserCog, Building2, Hash, FileOutput, ShieldCheck, Eye, Download, Truck, Layers
+  UserCog, Building2, Hash, FileOutput, ShieldCheck, Eye, Download, Truck, Layers, ShoppingCart
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,14 +37,14 @@ interface SessionUser { id: string; name: string; role: string; email?: string }
 interface Quote { id: string; number: string; status: string; date: string; clientName: string; total: number; clientId: string; version: number; createdAt: string; items?: QuoteItem[] }
 interface QuoteItem { id?: string; productId?: string; code: string; description: string; quantity: number; unit: string; unitPrice: number; total: number; weight: number; width: number; height: number; length: number; order: number }
 interface Client { id: string; corporateName: string; tradeName: string; cpfCnpj: string; email: string; phone: string; city: string; state: string; active: boolean; createdAt: string }
-interface Product { id: string; internalCode: string; name: string; description: string; categoryName: string; materialName: string; costPrice: number; salePrice: number; weight: number; unit?: string; active: boolean; createdAt: string }
+interface Product { id: string; internalCode: string; name: string; description: string; categoryName: string; materialName: string; costPrice: number; salePrice: number; weight: number; unit?: string; active: boolean; createdAt: string; images?: { id: string; url: string; isPrimary: boolean }[] }
 interface User { id: string; username: string; name: string; role: string; email: string; active: boolean; lastLogin: string; createdAt: string }
 interface Sequence { id: string; documentType: string; prefix: string; suffix: string; nextNumber: number; digits: number; resetAnnual: boolean; resetMonthly: boolean }
 interface DashboardStats { totalQuotes: number; totalClients: number; totalProducts: number; totalRevenue: number; quotesByStatus: Record<string, number>; recentQuotes: Quote[]; quotesThisMonth: number; quotesThisWeek: number }
 interface AuditEntry { id: string; action: string; module: string; entityId: string; details: string; userName: string; createdAt: string }
 
-type ModuleKey = 'dashboard' | 'orcamentos' | 'clientes' | 'produtos' | 'materiais' | 'producao' | 'fornecedores' | 'requisicoes' | 'estoque' | 'relatorios' | 'usuarios' | 'configuracoes'
-type ConfigSubModule = 'empresa' | 'numeracao' | 'pdf' | 'sistema'
+type ModuleKey = 'dashboard' | 'orcamentos' | 'pedidos' | 'clientes' | 'produtos' | 'materiais' | 'producao' | 'fornecedores' | 'requisicoes' | 'estoque' | 'relatorios' | 'usuarios' | 'configuracoes'
+type ConfigSubModule = 'empresa' | 'numeracao' | 'pdf' | 'sistema' | 'atualizacoes'
 
 /* ══════════════════════════════════════════════════════════════
    EMPTY ITEM / FORM TEMPLATES
@@ -107,6 +107,10 @@ const productionStatusLabels: Record<string, string> = {
   planned: 'Planejada', in_progress: 'Em execução', paused: 'Pausada', completed: 'Concluída', cancelled: 'Cancelada',
 }
 
+const salesOrderStatusLabels: Record<string, string> = {
+  open: 'Aberto', in_production: 'Em produção', completed: 'Concluído', cancelled: 'Cancelado',
+}
+
 const roleLabels: Record<string, string> = {
   admin: 'Administrador', manager: 'Gerente', user: 'Usuario', viewer: 'Visualizador',
   comercial: 'Comercial', producao: 'Produção', compras: 'Compras', estoque: 'Estoque', financeiro: 'Financeiro',
@@ -149,6 +153,11 @@ export default function ERPPage() {
   const [quoteForm, setQuoteForm] = useState<Record<string, unknown>>(emptyQuote())
   const [quoteSaving, setQuoteSaving] = useState(false)
 
+  /* ── Pedidos de Venda ── */
+  const [salesOrders, setSalesOrders] = useState<any[]>([])
+  const [salesOrdersLoading, setSalesOrdersLoading] = useState(false)
+  const [salesOrderStatusFilter, setSalesOrderStatusFilter] = useState('all')
+
   /* ── Clientes ── */
   const [clients, setClients] = useState<Client[]>([])
   const [clientsLoading, setClientsLoading] = useState(false)
@@ -182,6 +191,7 @@ export default function ERPPage() {
     productId: '', productName: '', quantity: 1, unit: 'UN', status: 'planned', priority: 'normal', date: new Date().toLocaleDateString('pt-BR'), dueDate: '', description: '', notes: '',
   })
   const [productionOrderSaving, setProductionOrderSaving] = useState(false)
+  const [selectedSalesOrderForOP, setSelectedSalesOrderForOP] = useState('')
 
   /* ── Materiais (lista completa, com estoque/custo) ── */
   const [materialsFull, setMaterialsFull] = useState<any[]>([])
@@ -212,6 +222,8 @@ export default function ERPPage() {
 
   /* ── Produto x Materia-prima (dentro do dialog de Produto) ── */
   const [productMaterialLinks, setProductMaterialLinks] = useState<any[]>([])
+  const [productImages, setProductImages] = useState<any[]>([])
+  const [productImageUploading, setProductImageUploading] = useState(false)
   const [newProductMaterial, setNewProductMaterial] = useState({ materialId: '', quantity: 1, unit: 'KG', scrapPct: 0 })
 
   /* ── Requisicoes ── */
@@ -251,6 +263,13 @@ export default function ERPPage() {
   const [reportStatus, setReportStatus] = useState('')
   const [reportLoading, setReportLoading] = useState(false)
   const [reportResult, setReportResult] = useState<{ summary: Record<string, unknown>; rows: Record<string, unknown>[] } | null>(null)
+
+  /* ── Atualizacoes (sistema de patch) ── */
+  const [patchHistory, setPatchHistory] = useState<any[]>([])
+  const [currentVersion, setCurrentVersion] = useState('')
+  const [patchUploading, setPatchUploading] = useState(false)
+  const [patchStatus, setPatchStatus] = useState<{ state: string; message: string } | null>(null)
+  const [patchPolling, setPatchPolling] = useState(false)
 
   /* ── Usuarios ── */
   const [usersList, setUsersList] = useState<User[]>([])
@@ -311,6 +330,37 @@ export default function ERPPage() {
       }
     } catch { toast.error('Erro ao carregar orcamentos') }
   }, [quoteStatusFilter, quoteSearch])
+
+  const loadSalesOrders = useCallback(async () => {
+    try {
+      setSalesOrdersLoading(true)
+      const params = new URLSearchParams()
+      if (salesOrderStatusFilter !== 'all') params.set('status', salesOrderStatusFilter)
+      const r = await fetch(`/api/sales-orders?${params}`)
+      if (r.ok) { const json = await r.json(); setSalesOrders(json.data || []) }
+    } catch { toast.error('Erro ao carregar pedidos de venda') }
+    finally { setSalesOrdersLoading(false) }
+  }, [salesOrderStatusFilter])
+
+  const convertQuoteToOrder = async (quoteId: string) => {
+    if (!confirm('Converter este orçamento aprovado em Pedido de Venda?')) return
+    try {
+      const r = await fetch(`/api/quotes/${quoteId}/convert-to-order`, { method: 'POST' })
+      const json = await r.json()
+      if (r.ok) { toast.success(`Pedido de Venda ${json.number} criado!`); loadQuotes() }
+      else toast.error(json.error || 'Erro ao converter orçamento')
+    } catch { toast.error('Erro ao converter orçamento') }
+  }
+
+  const changeSalesOrderStatus = async (id: string, status: string) => {
+    try {
+      const r = await fetch(`/api/sales-orders/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+      })
+      if (r.ok) { toast.success('Status atualizado!'); loadSalesOrders() }
+      else { const err = await r.json(); toast.error(err.error || 'Erro ao mudar status') }
+    } catch { toast.error('Erro ao mudar status') }
+  }
 
   const loadClients = useCallback(async () => {
     try {
@@ -522,6 +572,10 @@ export default function ERPPage() {
   }, [activeModule, quoteStatusFilter, quoteSearch, loadQuotes])
 
   useEffect(() => {
+    if (activeModule === 'pedidos') loadSalesOrders()
+  }, [activeModule, salesOrderStatusFilter, loadSalesOrders])
+
+  useEffect(() => {
     if (activeModule === 'estoque' && stockView === 'movimentacoes') loadStockMovements()
   }, [activeModule, stockView, stockMovementFilter, loadStockMovements])
 
@@ -559,6 +613,59 @@ export default function ERPPage() {
     } catch { toast.error('Erro ao carregar informacoes do sistema') }
   }, [])
 
+  const loadPatchHistory = useCallback(async () => {
+    try {
+      const r = await fetch('/api/system/patches/history')
+      if (r.ok) {
+        const json = await r.json()
+        setPatchHistory(json.history || [])
+        setCurrentVersion(json.currentVersion || '')
+      }
+    } catch { toast.error('Erro ao carregar histórico de atualizações') }
+  }, [])
+
+  const uploadPatch = async (file: File) => {
+    if (!file.name.endsWith('.zip')) { toast.error('O patch precisa ser um arquivo .zip'); return }
+    if (!confirm('Aplicar esta atualização agora? O sistema fará backup automático, mas pode reiniciar e ficar indisponível por alguns instantes.')) return
+    setPatchUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const r = await fetch('/api/system/patches/upload', { method: 'POST', body: formData })
+      const json = await r.json()
+      if (r.ok) {
+        toast.success(json.message || 'Patch enviado, aplicando...')
+        setPatchPolling(true)
+      } else {
+        toast.error(json.error || 'Erro ao enviar patch')
+      }
+    } catch {
+      toast.error('Erro ao enviar patch (se o sistema reiniciou, isso pode ser esperado — aguarde e recarregue a página)')
+      setPatchPolling(true)
+    }
+    setPatchUploading(false)
+  }
+
+  useEffect(() => {
+    if (!patchPolling) return
+    const interval = setInterval(async () => {
+      try {
+        const r = await fetch('/api/system/patches/status')
+        if (r.ok) {
+          const json = await r.json()
+          setPatchStatus(json)
+          if (json.state === 'done' || json.state === 'failed') {
+            setPatchPolling(false)
+            loadPatchHistory()
+            if (json.state === 'done') toast.success(json.message)
+            else toast.error(json.message)
+          }
+        }
+      } catch { /* servidor pode estar reiniciando — tenta de novo no próximo tick */ }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [patchPolling, loadPatchHistory])
+
   /* ── Module change effect ── */
   const moduleRef = activeModule
   const configSubRef = configSub
@@ -568,12 +675,14 @@ export default function ERPPage() {
     const loads: Record<string, () => Promise<void>> = {
       dashboard: loadDashboard,
       orcamentos: loadQuotes,
+      pedidos: loadSalesOrders,
       clientes: loadClients,
       usuarios: loadUsers,
       producao: loadProductionOrders,
       empresa: loadSettings,
       numeracao: loadSequences,
       sistema: loadSystemInfo,
+      atualizacoes: loadPatchHistory,
       produtos: loadProducts,
       categoriesMaterials: loadCategoriesAndMaterials,
       fornecedores: loadSuppliers,
@@ -588,6 +697,7 @@ export default function ERPPage() {
     if (moduleRef === 'producao') {
       loads.producao()
       loadProducts()
+      loadSalesOrders()
     }
     if (moduleRef === 'orcamentos') {
       loadClients()
@@ -727,6 +837,28 @@ export default function ERPPage() {
     }
   }
 
+  /** Busca automática pelo CNPJ (razão social, endereço, telefone) — usado em Cliente e Fornecedor. */
+  const handleCnpjLookup = async (cnpj: string, setForm: React.Dispatch<React.SetStateAction<any>>, fieldMap: { corporateName?: string; tradeName?: string; address?: string; neighborhood?: string; city?: string; state?: string; zipCode?: string; phone?: string; email?: string }) => {
+    if (onlyDigits(cnpj).length !== 14) return // só busca para CNPJ (14 dígitos), não CPF
+    toast.info('Buscando dados do CNPJ...')
+    const data = await fetchCompanyByCnpj(cnpj)
+    if (!data) { toast.error('CNPJ não encontrado ou API indisponível'); return }
+    setForm((prev: any) => {
+      const next = { ...prev }
+      if (fieldMap.corporateName) next[fieldMap.corporateName] = data.razao_social || prev[fieldMap.corporateName]
+      if (fieldMap.tradeName) next[fieldMap.tradeName] = data.nome_fantasia || prev[fieldMap.tradeName]
+      if (fieldMap.address) next[fieldMap.address] = `${data.logradouro || ''}${data.numero ? `, ${data.numero}` : ''}`.trim() || prev[fieldMap.address]
+      if (fieldMap.neighborhood) next[fieldMap.neighborhood] = data.bairro || prev[fieldMap.neighborhood]
+      if (fieldMap.city) next[fieldMap.city] = data.municipio || prev[fieldMap.city]
+      if (fieldMap.state) next[fieldMap.state] = data.uf || prev[fieldMap.state]
+      if (fieldMap.zipCode) next[fieldMap.zipCode] = data.cep ? maskCep(data.cep) : prev[fieldMap.zipCode]
+      if (fieldMap.phone && data.ddd_telefone_1) next[fieldMap.phone] = maskPhone(data.ddd_telefone_1)
+      if (fieldMap.email && data.email) next[fieldMap.email] = data.email
+      return next
+    })
+    toast.success('Dados preenchidos a partir do CNPJ!')
+  }
+
   const openNewClient = () => { setEditingClientId(null); setClientForm(emptyClient()); setClientDialogOpen(true) }
 
   const openEditClient = (c: Client) => {
@@ -765,7 +897,7 @@ export default function ERPPage() {
      PRODUCT ACTIONS
      ══════════════════════════════════════════════════════════════ */
 
-  const openNewProduct = () => { setEditingProductId(null); setProductForm(emptyProduct()); setProductDialogOpen(true) }
+  const openNewProduct = () => { setEditingProductId(null); setProductForm(emptyProduct()); setProductImages([]); setProductDialogOpen(true) }
 
   const openEditProduct = (p: Product & { category?: { name: string } | null; material?: { name: string } | null }) => {
     setEditingProductId(p.id)
@@ -776,8 +908,10 @@ export default function ERPPage() {
       ncm: (p as any).ncm || '', ipi: (p as any).ipi || 0, icms: (p as any).icms || 0, finish: (p as any).finish || '', family: (p as any).family || '', line: (p as any).line || '', notes: (p as any).notes || '',
     })
     setProductMaterialLinks([])
+    setProductImages([])
     setProductDialogOpen(true)
     fetch(`/api/products/${p.id}/materials`).then(r => r.ok ? r.json() : []).then(links => setProductMaterialLinks(links || [])).catch(() => {})
+    fetch(`/api/products/${p.id}/images`).then(r => r.ok ? r.json() : []).then(imgs => setProductImages(imgs || [])).catch(() => {})
   }
 
   const saveProduct = async () => {
@@ -807,10 +941,25 @@ export default function ERPPage() {
 
   const openNewProductionOrder = () => {
     setEditingProductionOrderId(null)
+    setSelectedSalesOrderForOP('')
     setProductionOrderForm({
       productId: '', productName: '', quantity: 1, unit: 'UN', status: 'planned', priority: 'normal', date: new Date().toLocaleDateString('pt-BR'), dueDate: '', description: '', notes: '',
     })
     setProductionOrderDialogOpen(true)
+  }
+
+  const pickSalesOrderItem = (salesOrderId: string, itemId: string) => {
+    const so = salesOrders.find((s: any) => s.id === salesOrderId)
+    const item = so?.items?.find((i: any) => i.id === itemId)
+    if (!item) return
+    setProductionOrderForm(prev => ({
+      ...prev,
+      productId: item.productId || '',
+      productName: item.description || '',
+      quantity: item.quantity || 1,
+      unit: item.unit || 'UN',
+      salesOrderId,
+    }))
   }
 
   const openEditProductionOrder = (order: any) => {
@@ -873,6 +1022,52 @@ export default function ERPPage() {
       if (r.ok) { toast.success('Vinculo removido'); setProductMaterialLinks(prev => prev.filter((l: any) => l.materialId !== materialId)) }
       else toast.error('Erro ao remover vinculo')
     } catch { toast.error('Erro ao remover vinculo') }
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     PRODUTO — IMAGENS
+     ══════════════════════════════════════════════════════════════ */
+
+  const uploadProductImage = async (file: File) => {
+    if (!editingProductId) return
+    if (file.size > 8 * 1024 * 1024) { toast.error('Arquivo muito grande (máx. 8MB)'); return }
+    setProductImageUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const r = await fetch(`/api/products/${editingProductId}/images`, { method: 'POST', body: formData })
+      if (r.ok) {
+        toast.success('Imagem enviada!')
+        const imgs = await (await fetch(`/api/products/${editingProductId}/images`)).json()
+        setProductImages(imgs || [])
+      } else { const err = await r.json(); toast.error(err.error || 'Erro ao enviar imagem') }
+    } catch { toast.error('Erro ao enviar imagem') }
+    setProductImageUploading(false)
+  }
+
+  const deleteProductImage = async (imageId: string) => {
+    if (!editingProductId) return
+    try {
+      const r = await fetch(`/api/products/${editingProductId}/images/${imageId}`, { method: 'DELETE' })
+      if (r.ok) {
+        toast.success('Imagem removida')
+        const imgs = await (await fetch(`/api/products/${editingProductId}/images`)).json()
+        setProductImages(imgs || [])
+      } else toast.error('Erro ao remover imagem')
+    } catch { toast.error('Erro ao remover imagem') }
+  }
+
+  const setPrimaryProductImage = async (imageId: string) => {
+    if (!editingProductId) return
+    try {
+      const r = await fetch(`/api/products/${editingProductId}/images/${imageId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isPrimary: true }),
+      })
+      if (r.ok) {
+        const imgs = await (await fetch(`/api/products/${editingProductId}/images`)).json()
+        setProductImages(imgs || [])
+      }
+    } catch { toast.error('Erro ao definir imagem principal') }
   }
 
   /* ══════════════════════════════════════════════════════════════
@@ -1241,19 +1436,21 @@ export default function ERPPage() {
 
   const canAccess = (mod: ModuleKey): boolean => {
     if (mod === 'dashboard') return true // todo perfil enxerga o dashboard
+    if (mod === 'pedidos') return hasPermission(userRole, 'orcamentos' as any, 'read')
     return hasPermission(userRole, mod as any, 'read')
   }
 
   const breadcrumbMap: Record<string, string> = {
-    dashboard: 'Dashboard', orcamentos: 'Orcamentos', clientes: 'Clientes',
+    dashboard: 'Dashboard', orcamentos: 'Orcamentos', pedidos: 'Pedidos de Venda', clientes: 'Clientes',
     produtos: 'Produtos', materiais: 'Materias-Primas', producao: 'Producao', usuarios: 'Usuarios', configuracoes: 'Configuracoes',
     fornecedores: 'Fornecedores', requisicoes: 'Requisicoes', estoque: 'Estoque', relatorios: 'Relatorios',
-    empresa: 'Empresa', numeracao: 'Numeracao', pdf: 'PDF', sistema: 'Sistema',
+    empresa: 'Empresa', numeracao: 'Numeracao', pdf: 'PDF', sistema: 'Sistema', atualizacoes: 'Atualizacoes',
   }
 
   const navItems: { key: ModuleKey; icon: React.ReactNode; label: string }[] = [
     { key: 'dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard' },
     { key: 'orcamentos', icon: <FileText className="w-5 h-5" />, label: 'Orcamentos' },
+    { key: 'pedidos', icon: <Copy className="w-5 h-5" />, label: 'Pedidos de Venda' },
     { key: 'clientes', icon: <Users className="w-5 h-5" />, label: 'Clientes' },
     { key: 'produtos', icon: <Package className="w-5 h-5" />, label: 'Produtos' },
     { key: 'materiais', icon: <Layers className="w-5 h-5" />, label: 'Materias-Primas' },
@@ -1271,6 +1468,7 @@ export default function ERPPage() {
     { key: 'numeracao', icon: <Hash className="w-4 h-4" />, label: 'Numeracao' },
     { key: 'pdf', icon: <FileOutput className="w-4 h-4" />, label: 'PDF' },
     { key: 'sistema', icon: <ShieldCheck className="w-4 h-4" />, label: 'Sistema' },
+    { key: 'atualizacoes', icon: <Download className="w-4 h-4" />, label: 'Atualizações' },
   ]
 
   const handleNavClick = (key: ModuleKey) => {
@@ -1637,6 +1835,12 @@ export default function ERPPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-1 justify-end">
+                              {q.status === 'approved' && !q.salesOrder && (
+                                <Button variant="ghost" size="icon" onClick={() => convertQuoteToOrder(q.id)} title="Converter em Pedido de Venda"><ShoppingCart className="w-4 h-4 text-emerald-600" /></Button>
+                              )}
+                              {q.salesOrder && (
+                                <Button variant="ghost" size="icon" onClick={() => { setActiveModule('pedidos') }} title={`Já convertido: ${q.salesOrder.number}`}><ShoppingCart className="w-4 h-4 text-muted-foreground" /></Button>
+                              )}
                               <Button variant="ghost" size="icon" onClick={() => openEditQuote(q.id)} title="Editar"><Edit className="w-4 h-4" /></Button>
                               <Button variant="ghost" size="icon" onClick={() => duplicateQuote(q.id)} title="Duplicar"><Copy className="w-4 h-4" /></Button>
                               <Button variant="ghost" size="icon" onClick={() => window.open(`/api/quotes/${q.id}/pdf`, '_blank')} title="Baixar PDF"><Download className="w-4 h-4" /></Button>
@@ -1774,6 +1978,75 @@ export default function ERPPage() {
           )}
 
           {/* ═══════════════════════════════════════════════════════
+              PEDIDOS DE VENDA MODULE
+              ═══════════════════════════════════════════════════════ */}
+          {activeModule === 'pedidos' && (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
+                <h2 className="text-2xl font-bold">Pedidos de Venda</h2>
+                <Select value={salesOrderStatusFilter} onValueChange={setSalesOrderStatusFilter}>
+                  <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os status</SelectItem>
+                    {Object.entries(salesOrderStatusLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-sm text-muted-foreground -mt-2">
+                Pedidos nascem da conversão de um orçamento aprovado (botão de carrinho na aba Orçamentos).
+              </p>
+
+              <Card><CardContent className="p-0">
+                {salesOrdersLoading ? (
+                  <div className="p-6 space-y-3"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Número</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Origem</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>OPs geradas</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {salesOrders.length === 0 ? (
+                        <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Nenhum pedido de venda ainda</TableCell></TableRow>
+                      ) : salesOrders.map((so: any) => (
+                        <TableRow key={so.id}>
+                          <TableCell className="font-mono text-sm">{so.number}</TableCell>
+                          <TableCell className="font-medium">{so.clientName || so.client?.corporateName || '-'}</TableCell>
+                          <TableCell>{so.date}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">Orç. {so.quote?.number}</TableCell>
+                          <TableCell className="text-right font-mono">R$ {formatCurrency(so.total)}</TableCell>
+                          <TableCell>
+                            <Select value={so.status} onValueChange={v => changeSalesOrderStatus(so.id, v)}>
+                              <SelectTrigger className="w-36 h-8"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {Object.entries(salesOrderStatusLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell className="text-sm">{so.productionOrders?.length || 0}</TableCell>
+                          <TableCell>
+                            <div className="flex gap-1 justify-end">
+                              <Button variant="ghost" size="icon" onClick={() => window.open(`/api/sales-orders/${so.id}/pdf`, '_blank')} title="PDF"><FileOutput className="w-4 h-4" /></Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent></Card>
+            </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════
               CLIENTES MODULE
               ═══════════════════════════════════════════════════════ */}
           {activeModule === 'clientes' && (
@@ -1834,7 +2107,7 @@ export default function ERPPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                     <div className="space-y-1.5"><Label>Razao Social</Label><Input value={clientForm.corporateName as string || ''} onChange={e => setClientForm({ ...clientForm, corporateName: e.target.value })} /></div>
                     <div className="space-y-1.5"><Label>Nome Fantasia</Label><Input value={clientForm.tradeName as string || ''} onChange={e => setClientForm({ ...clientForm, tradeName: e.target.value })} /></div>
-                    <div className="space-y-1.5"><Label>CNPJ / CPF</Label><Input value={clientForm.cpfCnpj as string || ''} onChange={e => setClientForm({ ...clientForm, cpfCnpj: maskCpfCnpj(e.target.value) })} /></div>
+                    <div className="space-y-1.5"><Label>CNPJ / CPF</Label><Input value={clientForm.cpfCnpj as string || ''} onChange={e => setClientForm({ ...clientForm, cpfCnpj: maskCpfCnpj(e.target.value) })} onBlur={e => handleCnpjLookup(e.target.value, setClientForm, { corporateName: 'corporateName', tradeName: 'tradeName', address: 'address', neighborhood: 'neighborhood', city: 'city', state: 'state', zipCode: 'zipCode', phone: 'phone', email: 'email' })} /></div>
                     <div className="space-y-1.5"><Label>Inscricao Estadual</Label><Input value={clientForm.ie as string || ''} onChange={e => setClientForm({ ...clientForm, ie: e.target.value })} /></div>
                     <div className="space-y-1.5"><Label>E-mail</Label><Input type="email" value={clientForm.email as string || ''} onChange={e => setClientForm({ ...clientForm, email: e.target.value })} /></div>
                     <div className="space-y-1.5"><Label>Telefone</Label><Input value={clientForm.phone as string || ''} onChange={e => setClientForm({ ...clientForm, phone: maskPhone(e.target.value) })} /></div>
@@ -1878,6 +2151,7 @@ export default function ERPPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-14"></TableHead>
                         <TableHead>Codigo</TableHead>
                         <TableHead>Nome</TableHead>
                         <TableHead>Categoria</TableHead>
@@ -1888,9 +2162,16 @@ export default function ERPPage() {
                     </TableHeader>
                     <TableBody>
                       {products.length === 0 ? (
-                        <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhum produto encontrado</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum produto encontrado</TableCell></TableRow>
                       ) : products.map(p => (
                         <TableRow key={p.id}>
+                          <TableCell>
+                            {(p as any).images?.[0] ? (
+                              <img src={`/api/uploads/${(p as any).images[0].url}`} alt="" className="w-10 h-10 object-cover rounded border" />
+                            ) : (
+                              <div className="w-10 h-10 rounded border bg-muted flex items-center justify-center"><Package className="w-4 h-4 text-muted-foreground" /></div>
+                            )}
+                          </TableCell>
                           <TableCell className="font-mono text-sm">{p.internalCode || '-'}</TableCell>
                           <TableCell className="font-medium">{p.name}</TableCell>
                           <TableCell>{p.category?.name || '-'}</TableCell>
@@ -1958,6 +2239,40 @@ export default function ERPPage() {
                     <div className="space-y-1.5"><Label>Linha</Label><Input value={productForm.line as string || ''} onChange={e => setProductForm({ ...productForm, line: e.target.value })} /></div>
                     <div className="space-y-1 sm:col-span-2"><Label>Observações</Label><Textarea rows={3} value={productForm.notes as string || ''} onChange={e => setProductForm({ ...productForm, notes: e.target.value })} /></div>
                   </div>
+
+                  {editingProductId && (
+                    <div className="border-t pt-4 mt-2 space-y-3">
+                      <Label className="text-sm font-semibold">Imagens do produto</Label>
+                      {productImages.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">Nenhuma imagem enviada ainda.</p>
+                      ) : (
+                        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                          {productImages.map((img: any) => (
+                            <div key={img.id} className="relative group border rounded-lg overflow-hidden">
+                              <img src={`/api/uploads/${img.url}`} alt="" className="w-full h-24 object-cover" />
+                              {img.isPrimary && <Badge className="absolute top-1 left-1 text-[10px] bg-emerald-600">Principal</Badge>}
+                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                {!img.isPrimary && (
+                                  <Button size="icon" variant="secondary" className="h-7 w-7" onClick={() => setPrimaryProductImage(img.id)} title="Definir como principal"><ShieldCheck className="w-3.5 h-3.5" /></Button>
+                                )}
+                                <Button size="icon" variant="destructive" className="h-7 w-7" onClick={() => deleteProductImage(img.id)} title="Remover"><Trash2 className="w-3.5 h-3.5" /></Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div>
+                        <input
+                          type="file" accept="image/jpeg,image/png,image/webp,image/gif"
+                          id="product-image-upload" className="hidden"
+                          onChange={e => { const f = e.target.files?.[0]; if (f) uploadProductImage(f); e.target.value = '' }}
+                        />
+                        <Button size="sm" variant="outline" disabled={productImageUploading} onClick={() => document.getElementById('product-image-upload')?.click()}>
+                          {productImageUploading ? 'Enviando...' : 'Enviar imagem'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   {editingProductId && (
                     <div className="border-t pt-4 mt-2 space-y-3">
@@ -2193,7 +2508,7 @@ export default function ERPPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                     <div className="space-y-1.5"><Label>Razão Social</Label><Input value={supplierForm.corporateName as string || ''} onChange={e => setSupplierForm({ ...supplierForm, corporateName: e.target.value })} /></div>
                     <div className="space-y-1.5"><Label>Nome Fantasia</Label><Input value={supplierForm.tradeName as string || ''} onChange={e => setSupplierForm({ ...supplierForm, tradeName: e.target.value })} /></div>
-                    <div className="space-y-1.5"><Label>CNPJ/CPF</Label><Input value={supplierForm.cpfCnpj as string || ''} onChange={e => setSupplierForm({ ...supplierForm, cpfCnpj: maskCpfCnpj(e.target.value) })} /></div>
+                    <div className="space-y-1.5"><Label>CNPJ/CPF</Label><Input value={supplierForm.cpfCnpj as string || ''} onChange={e => setSupplierForm({ ...supplierForm, cpfCnpj: maskCpfCnpj(e.target.value) })} onBlur={e => handleCnpjLookup(e.target.value, setSupplierForm, { corporateName: 'corporateName', tradeName: 'tradeName', address: 'address', neighborhood: 'neighborhood', city: 'city', state: 'state', zipCode: 'zipCode', phone: 'phone', email: 'email' })} /></div>
                     <div className="space-y-1.5"><Label>Inscrição Estadual</Label><Input value={supplierForm.ie as string || ''} onChange={e => setSupplierForm({ ...supplierForm, ie: e.target.value })} /></div>
                     <div className="space-y-1.5"><Label>E-mail</Label><Input type="email" value={supplierForm.email as string || ''} onChange={e => setSupplierForm({ ...supplierForm, email: e.target.value })} /></div>
                     <div className="space-y-1.5"><Label>Telefone</Label><Input value={supplierForm.phone as string || ''} onChange={e => setSupplierForm({ ...supplierForm, phone: maskPhone(e.target.value) })} /></div>
@@ -2754,6 +3069,27 @@ export default function ERPPage() {
                   <DialogHeader>
                     <DialogTitle>{editingProductionOrderId ? 'Editar Ordem de Produção' : 'Nova Ordem de Produção'}</DialogTitle>
                   </DialogHeader>
+                  {!editingProductionOrderId && (
+                    <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
+                      <Label className="text-xs font-semibold">Gerar a partir do Pedido de Venda (opcional)</Label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <Select value={selectedSalesOrderForOP || undefined} onValueChange={setSelectedSalesOrderForOP}>
+                          <SelectTrigger><SelectValue placeholder="Selecione um Pedido de Venda" /></SelectTrigger>
+                          <SelectContent>{salesOrders.map((so: any) => <SelectItem key={so.id} value={so.id}>{so.number} — {so.clientName}</SelectItem>)}</SelectContent>
+                        </Select>
+                        {selectedSalesOrderForOP && (
+                          <Select onValueChange={v => pickSalesOrderItem(selectedSalesOrderForOP, v)}>
+                            <SelectTrigger><SelectValue placeholder="Selecione o item/produto" /></SelectTrigger>
+                            <SelectContent>
+                              {(salesOrders.find((s: any) => s.id === selectedSalesOrderForOP)?.items || []).map((item: any) => (
+                                <SelectItem key={item.id} value={item.id}>{item.description} (qtd {item.quantity})</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                     <div className="space-y-1.5"><Label>Produto</Label><Select value={productionOrderForm.productId as string || ''} onValueChange={v => setProductionOrderForm({ ...productionOrderForm, productId: v, productName: products.find(p => p.id === v)?.name || '' })}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
                     <div className="space-y-1.5"><Label>Quantidade</Label><Input type="number" step="0.01" value={productionOrderForm.quantity as number || 1} onChange={e => setProductionOrderForm({ ...productionOrderForm, quantity: parseFloat(e.target.value) || 1 })} /></div>
@@ -3041,6 +3377,84 @@ export default function ERPPage() {
                       </Card>
                     </>
                   )}
+                </div>
+              )}
+
+              {configSub === 'atualizacoes' && (
+                <div className="space-y-6">
+                  <h2 className="text-2xl font-bold">Atualizações do Sistema</h2>
+
+                  <Card>
+                    <CardHeader><CardTitle className="text-base">Versão Atual</CardTitle></CardHeader>
+                    <CardContent>
+                      <p className="text-3xl font-bold text-primary">{currentVersion || '-'}</p>
+                    </CardContent>
+                  </Card>
+
+                  {userRole === 'admin' && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-base">Aplicar Nova Atualização</CardTitle></CardHeader>
+                      <CardContent className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                          Envie o arquivo de patch (.zip) recebido. O sistema faz backup automático
+                          do código e do banco antes de aplicar — se algo der errado no meio do processo,
+                          reverte sozinho para a versão anterior. Durante a atualização (1–3 minutos),
+                          o sistema pode ficar temporariamente indisponível enquanto reinicia.
+                        </p>
+                        <div>
+                          <input
+                            type="file" accept=".zip" id="patch-upload" className="hidden"
+                            onChange={e => { const f = e.target.files?.[0]; if (f) uploadPatch(f); e.target.value = '' }}
+                          />
+                          <Button disabled={patchUploading || patchPolling} onClick={() => document.getElementById('patch-upload')?.click()}>
+                            {patchUploading ? 'Enviando...' : 'Selecionar arquivo de patch (.zip)'}
+                          </Button>
+                        </div>
+                        {patchStatus && patchPolling && (
+                          <div className="flex items-center gap-3 bg-muted/50 rounded p-3">
+                            <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
+                            <span className="text-sm">{patchStatus.message}</span>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  <Card>
+                    <CardHeader><CardTitle className="text-base">Histórico de Atualizações</CardTitle></CardHeader>
+                    <CardContent className="p-0">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Data</TableHead>
+                            <TableHead>Versão</TableHead>
+                            <TableHead>Título</TableHead>
+                            <TableHead>Via</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Usuário</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {patchHistory.length === 0 ? (
+                            <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhuma atualização registrada ainda</TableCell></TableRow>
+                          ) : patchHistory.map((p: any) => (
+                            <TableRow key={p.id}>
+                              <TableCell className="text-sm whitespace-nowrap">{new Date(p.createdAt).toLocaleString('pt-BR')}</TableCell>
+                              <TableCell className="font-mono text-sm">{p.fromVersion} → {p.toVersion}</TableCell>
+                              <TableCell className="text-sm">{p.title || '-'}</TableCell>
+                              <TableCell className="text-sm">{p.appliedVia === 'upload' ? 'Upload' : 'Terminal'}</TableCell>
+                              <TableCell>
+                                <Badge className={p.status === 'success' ? 'bg-emerald-100 text-emerald-800' : p.status === 'failed' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}>
+                                  {p.status === 'success' ? 'Sucesso' : p.status === 'failed' ? 'Falhou' : p.status === 'rolled_back' ? 'Revertido' : p.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-sm">{p.user?.name || '-'}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
                 </div>
               )}
             </div>

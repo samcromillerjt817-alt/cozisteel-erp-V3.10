@@ -22,6 +22,23 @@ model SystemInfo {
   maintenanceMode Boolean @default(false)
 }
 
+// ── ATUALIZAÇÕES (Sistema de Patch) ─────────────────────
+model PatchLog {
+  id           String   @id @default(cuid())
+  fromVersion  String
+  toVersion    String
+  title        String   @default("")
+  description  String   @default("")
+  appliedVia   String   @default("terminal") // terminal, upload
+  status       String   @default("success")  // applying, success, failed, rolled_back
+  errorMessage String   @default("")
+  createdAt    DateTime @default(now())
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+}
+
 model AuditLog {
   id        String   @id @default(cuid())
   userId    String?
@@ -74,6 +91,8 @@ model User {
   productionOrders ProductionOrder[]
   requisitions Requisition[]
   stockMovements StockMovement[]
+  salesOrders SalesOrder[]
+  patchLogs PatchLog[]
 
   @@index([role])
   @@index([active])
@@ -128,6 +147,7 @@ model Client {
   updatedAt     DateTime @updatedAt
 
   quotes Quote[]
+  salesOrders SalesOrder[]
 
   @@index([corporateName])
   @@index([cpfCnpj])
@@ -295,6 +315,8 @@ model Product {
   updatedAt     DateTime @updatedAt
 
   quoteItems    QuoteItem[]
+  salesOrderItems SalesOrderItem[]
+  images        ProductImage[]
   bomItems      BomItem[]
   bomComponents BomItem[] @relation("BomComponent")
   productionOrders ProductionOrder[]
@@ -346,12 +368,84 @@ model ProductionOrder {
   updatedAt    DateTime @updatedAt
   userId       String
   user         User     @relation(fields: [userId], references: [id])
+  salesOrderId String?
+  salesOrder   SalesOrder? @relation(fields: [salesOrderId], references: [id])
 
   @@index([status])
   @@index([productId])
   @@index([userId])
+  @@index([salesOrderId])
 
   requisitions Requisition[]
+}
+
+// ── IMAGENS DE PRODUTO ───────────────────────────────────
+// Arquivos ficam em STORAGE_PATH (fora de .next), sobrevivem a rebuilds.
+// url guarda o caminho relativo dentro de STORAGE_PATH, ex: "products/<id>/foto.jpg"
+
+model ProductImage {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url        String
+  isPrimary  Boolean  @default(false)
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([productId])
+}
+
+// ── PEDIDO DE VENDA ──────────────────────────────────────
+// Representa a venda efetivamente aprovada. Nasce da conversão de um Orçamento
+// aprovado (ação manual, não automática), herdando os dados relevantes e
+// mantendo o vínculo com o orçamento de origem para rastreabilidade.
+
+model SalesOrder {
+  id         String   @id @default(cuid())
+  number     String   @unique
+  status     String   @default("open") // open, in_production, completed, cancelled
+  date       String
+  quoteId    String   @unique // 1 orçamento -> no máximo 1 pedido de venda
+  quote      Quote    @relation(fields: [quoteId], references: [id])
+  clientId   String?
+  client     Client?  @relation(fields: [clientId], references: [id])
+  clientName String   @default("")
+  clientCnpj String   @default("")
+  subtotal   Float    @default(0)
+  discountTotal Float @default(0)
+  total      Float    @default(0)
+  paymentTerms String @default("")
+  deliveryTime String @default("")
+  notes      String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+
+  items            SalesOrderItem[]
+  productionOrders ProductionOrder[]
+
+  @@index([quoteId])
+  @@index([clientId])
+  @@index([status])
+}
+
+model SalesOrderItem {
+  id           String     @id @default(cuid())
+  salesOrderId String
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  productId    String?
+  product      Product?   @relation(fields: [productId], references: [id])
+  code         String     @default("")
+  description  String     @default("")
+  quantity     Float      @default(1)
+  unit         String     @default("UN")
+  unitPrice    Float      @default(0)
+  total        Float      @default(0)
+  order        Int        @default(0)
+
+  @@index([salesOrderId])
+  @@index([productId])
 }
 
 // ── REQUISIÇÕES DE MATÉRIA-PRIMA (compra ao fornecedor) ─
@@ -492,6 +586,7 @@ model Quote {
   user            User        @relation(fields: [userId], references: [id])
 
   items QuoteItem[]
+  salesOrder SalesOrder?
 
   @@unique([number, version])
   @@index([status])

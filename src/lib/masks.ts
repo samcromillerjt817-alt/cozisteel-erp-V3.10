@@ -1,5 +1,5 @@
 /**
- * Máscaras de campo (telefone, CPF/CNPJ) e busca automática de endereço por CEP.
+ * Máscaras de campo (telefone, CPF/CNPJ) e busca automática de endereço por CEP / dados por CNPJ.
  * Todas as funções recebem/retornam string já formatada para uso direto em <Input value=...>.
  */
 
@@ -77,6 +77,38 @@ export async function fetchAddressByCep(cep: string): Promise<ViaCepAddress | nu
     const data = await res.json()
     if (data.erro) return null
     return data as ViaCepAddress
+  } catch {
+    return null
+  }
+}
+
+export interface CnpjData {
+  razao_social: string
+  nome_fantasia: string
+  logradouro: string
+  numero: string
+  bairro: string
+  municipio: string
+  uf: string
+  cep: string
+  ddd_telefone_1: string
+  email: string
+  descricao_situacao_cadastral: string
+}
+
+/**
+ * Busca dados de uma empresa pelo CNPJ usando a BrasilAPI (pública, gratuita, sem chave).
+ * Retorna null se o CNPJ for inválido, não encontrado, ou a busca falhar (sem lançar erro).
+ */
+export async function fetchCompanyByCnpj(cnpj: string): Promise<CnpjData | null> {
+  const digits = onlyDigits(cnpj)
+  if (digits.length !== 14) return null
+  try {
+    const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`)
+    if (!res.ok) return null
+    const data = await res.json()
+    if (!data || data.type === 'service_error' || data.name === 'CnpjError') return null
+    return data as CnpjData
   } catch {
     return null
   }

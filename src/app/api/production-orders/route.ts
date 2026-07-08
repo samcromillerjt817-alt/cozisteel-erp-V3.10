@@ -64,10 +64,12 @@ export async function POST(req: NextRequest) {
         description: body.description || '',
         notes: body.notes || '',
         userId: user.id,
+        salesOrderId: body.salesOrderId || null,
       },
       include: {
         product: { select: { id: true, name: true, internalCode: true } },
         user: { select: { id: true, name: true } },
+        salesOrder: { select: { id: true, number: true } },
       },
     })
 

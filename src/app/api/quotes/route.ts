@@ -58,6 +58,7 @@ export async function GET(req: NextRequest) {
         include: {
           client: { select: { id: true, corporateName: true, tradeName: true, cpfCnpj: true } },
           user: { select: { id: true, name: true, username: true } },
+          salesOrder: { select: { id: true, number: true } },
           _count: { select: { items: true } },
         },
         orderBy: { createdAt: 'desc' },

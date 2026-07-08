@@ -104,12 +104,23 @@ else
   npx next build --no-turbopack 2>&1 | tail -10
 fi
 
-# Copia estaticos para standalone
-rm -rf .next/standalone/.next/static 2>/dev/null
-rm -rf .next/standalone/public 2>/dev/null
-cp -r .next/static .next/standalone/.next/
-cp -r public .next/standalone/
-echo -e "${GREEN}  Build concluido (Webpack + standalone)${NC}"
+# Corrigir estrutura standalone
+STANDALONE_DIR=".next/standalone"
+
+APP_DIR=$(find "$STANDALONE_DIR" -maxdepth 1 -mindepth 1 -type d | head -1)
+
+echo "Standalone encontrado em: $APP_DIR"
+
+
+rm -rf "$APP_DIR/.next/static"
+rm -rf "$APP_DIR/public"
+
+
+cp -r .next/static "$APP_DIR/.next/"
+cp -r public "$APP_DIR/"
+
+
+echo "Arquivos static copiados"
 
 # ── 7. Corrige permissoes ──
 echo -e "${YELLOW}[7/9] Corrigindo permissoes...${NC}"

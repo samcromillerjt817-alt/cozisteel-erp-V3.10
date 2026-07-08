@@ -115,27 +115,56 @@ function drawFooter(doc: jsPDF, extraLine?: string) {
   }
 }
 
+function drawCheckIcon(doc: jsPDF, cx: number, cy: number) {
+  doc.setDrawColor(...BRAND_RED)
+  doc.setLineWidth(0.7)
+  doc.line(cx - 1.6, cy, cx - 0.3, cy + 1.4)
+  doc.line(cx - 0.3, cy + 1.4, cx + 1.8, cy - 1.6)
+}
+
+function drawStarIcon(doc: jsPDF, cx: number, cy: number, r = 1.9) {
+  const points: [number, number][] = []
+  for (let i = 0; i < 10; i++) {
+    const radius = i % 2 === 0 ? r : r * 0.42
+    const angle = (Math.PI / 5) * i - Math.PI / 2
+    points.push([cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)])
+  }
+  doc.setFillColor(...BRAND_RED)
+  const lines = points.slice(1).map((p, i) => [p[0] - points[i][0], p[1] - points[i][1]])
+  ;(doc as any).lines(lines, points[0][0], points[0][1], [1, 1], 'F', true)
+}
+
+function drawDiamondIcon(doc: jsPDF, cx: number, cy: number, r = 1.8) {
+  doc.setFillColor(...BRAND_RED)
+  const points: [number, number][] = [[cx, cy - r], [cx + r, cy], [cx, cy + r], [cx - r, cy]]
+  const lines = points.slice(1).map((p, i) => [p[0] - points[i][0], p[1] - points[i][1]])
+  ;(doc as any).lines(lines, points[0][0], points[0][1], [1, 1], 'F', true)
+}
+
 /**
  * Barra de rodapé "institucional" (marca + selos de qualidade) — usada só no
  * modelo comercial (documentos voltados ao cliente, como o Orçamento).
  */
 function drawBrandFooterBar(doc: jsPDF, y: number) {
   const pageWidth = doc.internal.pageSize.getWidth()
-  const badges: [string, string][] = [['✓', 'QUALIDADE'], ['★', 'EXCELÊNCIA'], ['✓', 'COMPROMISSO'], ['♦', 'CONFIANÇA']]
+  const badges: [string, 'check' | 'star' | 'diamond'][] = [
+    ['QUALIDADE', 'check'], ['EXCELÊNCIA', 'star'], ['COMPROMISSO', 'check'], ['CONFIANÇA', 'diamond'],
+  ]
   const zoneWidth = (pageWidth - 28) / badges.length
 
-  badges.forEach(([symbol, label], i) => {
-    const cx = 14 + zoneWidth * i + zoneWidth / 2
+  badges.forEach(([label, icon], i) => {
+    const cx = 14 + zoneWidth * i + zoneWidth / 2 - 12
     doc.setDrawColor(...BRAND_RED)
     doc.setLineWidth(0.5)
-    doc.circle(cx - 12, y, 3.2, 'S')
+    doc.circle(cx, y, 3.2, 'S')
+    if (icon === 'check') drawCheckIcon(doc, cx, y)
+    else if (icon === 'star') drawStarIcon(doc, cx, y)
+    else drawDiamondIcon(doc, cx, y)
+
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(9)
-    doc.setTextColor(...BRAND_RED)
-    doc.text(symbol, cx - 12, y + 1.2, { align: 'center' })
     doc.setFontSize(7.5)
     doc.setTextColor(60, 60, 60)
-    doc.text(label, cx - 6, y + 1.2)
+    doc.text(label, cx + 6, y + 1.2)
   })
 
   doc.setFillColor(...BRAND_RED)
@@ -418,6 +447,7 @@ class PdfService {
     })
 
     if (!quote) throw new Error('Orçamento não encontrado')
+    const company = await getCompanyInfo()
 
     const doc = new jsPDF('p', 'mm', 'a4')
     const pageWidth = doc.internal.pageSize.getWidth()
@@ -425,22 +455,28 @@ class PdfService {
 
     doc.setFontSize(9)
     doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...BRAND_GRAY)
     doc.text(`Data: ${quote.date}`, 14, y)
-    y += 10
+    doc.setTextColor(0, 0, 0)
+    y += 8
 
     const clientName = quote.clientName || quote.client?.corporateName || '-'
     const clientCnpj = quote.clientCnpj || quote.client?.cpfCnpj || '-'
     const clientAddr = quote.clientAddress || quote.client?.address || '-'
+    const clientNeigh = quote.clientNeighborhood || quote.client?.neighborhood || ''
+    const clientCityState = quote.client ? `${quote.client.city || ''}${quote.client.state ? `/${quote.client.state}` : ''}` : ''
 
-    sectionTitle(doc, 'DESTINATÁRIO', 14, y)
-    y += 6
-    doc.setFont('helvetica', 'bold')
-    doc.text(clientName, 14, y)
-    doc.setFont('helvetica', 'normal')
-    y += 5
-    doc.text(`CNPJ/CPF: ${clientCnpj}`, 14, y); y += 5
-    doc.text(`Endereço: ${clientAddr}`, 14, y); y += 5
-    if (quote.clientPhone) { doc.text(`Tel: ${quote.clientPhone}`, 14, y); y += 5 }
+    const clientLines = [
+      clientName,
+      `CNPJ/CPF: ${clientCnpj}`,
+      `${clientAddr}${clientNeigh ? ` - ${clientNeigh}` : ''}`,
+      clientCityState,
+      quote.clientPhone ? `Tel: ${quote.clientPhone}` : '',
+    ].filter(Boolean)
+
+    y = drawInfoCards(doc, y, clientLines, company)
+
+    sectionTitle(doc, 'ITENS PARA TRANSPORTE', 14, y)
     y += 4
 
     const tableData = quote.items.map((item, idx) => [
@@ -620,9 +656,17 @@ class PdfService {
   }
 
   async generateReportPdf(title: string, rows: Record<string, unknown>[], summaryLines: string[] = []): Promise<Buffer> {
+    const company = await getCompanyInfo()
     const doc = new jsPDF('l', 'mm', 'a4') // paisagem — relatórios costumam ter muitas colunas
     const pageWidth = doc.internal.pageSize.getWidth()
     let y = drawHeader(doc, title.toUpperCase())
+
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...BRAND_GRAY)
+    doc.text(`${company.tradeName} — CNPJ ${company.cnpj}`, 14, y)
+    doc.setTextColor(0, 0, 0)
+    y += 7
 
     if (summaryLines.length > 0) {
       doc.setFontSize(9)
@@ -647,6 +691,70 @@ class PdfService {
       doc.setFontSize(10)
       doc.text('Nenhum registro encontrado para os filtros selecionados.', 14, y)
     }
+
+    drawFooter(doc)
+    return Buffer.from(doc.output('arraybuffer'))
+  }
+  async generateSalesOrderPdf(salesOrderId: string): Promise<Buffer> {
+    const salesOrder = await db.salesOrder.findUnique({
+      where: { id: salesOrderId },
+      include: { items: true, client: true, quote: { select: { number: true } }, user: { select: { name: true } } },
+    })
+
+    if (!salesOrder) throw new Error('Pedido de venda não encontrado')
+    const company = await getCompanyInfo()
+
+    const doc = new jsPDF('p', 'mm', 'a4')
+    const pageWidth = doc.internal.pageSize.getWidth()
+    let y = drawHeader(doc, 'PEDIDO DE VENDA', `Nº ${salesOrder.number}`)
+
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...BRAND_GRAY)
+    doc.text(`Data: ${salesOrder.date}`, 14, y)
+    doc.text(`Origem: Orçamento ${salesOrder.quote.number}`, pageWidth - 14, y, { align: 'right' })
+    doc.setTextColor(0, 0, 0)
+    y += 8
+
+    const clientName = salesOrder.clientName || salesOrder.client?.corporateName || '-'
+    const clientCnpj = salesOrder.clientCnpj || salesOrder.client?.cpfCnpj || '-'
+    const clientLines = [
+      clientName,
+      `CNPJ/CPF: ${clientCnpj}`,
+      salesOrder.client?.address ? `${salesOrder.client.address}${salesOrder.client.neighborhood ? ` - ${salesOrder.client.neighborhood}` : ''}` : '',
+      salesOrder.client ? `${salesOrder.client.city || ''}${salesOrder.client.state ? `/${salesOrder.client.state}` : ''}` : '',
+      salesOrder.client?.phone ? `Tel: ${salesOrder.client.phone}` : '',
+    ].filter(Boolean)
+
+    y = drawInfoCards(doc, y, clientLines, company)
+
+    sectionTitle(doc, 'ITENS DO PEDIDO', 14, y)
+    y += 4
+
+    const tableData = salesOrder.items.map((item, idx) => [
+      String(idx + 1), item.code || '', item.description || '', String(item.quantity), item.unit,
+      item.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+      item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+    ])
+
+    autoTable(doc, {
+      startY: y,
+      head: [['#', 'Código', 'Descrição', 'Qtd', 'Unid', 'Preço Unit.', 'Total']],
+      body: tableData,
+      ...brandTableStyles,
+      columnStyles: { 0: { cellWidth: 10 }, 3: { halign: 'right', cellWidth: 18 }, 4: { halign: 'center', cellWidth: 12 }, 5: { halign: 'right', cellWidth: 25 }, 6: { halign: 'right', cellWidth: 25 } },
+    })
+
+    y = ((doc as any).lastAutoTable?.finalY ?? y + 40) + 8
+    y = drawSummaryBox(doc, y, salesOrder.subtotal, salesOrder.discountTotal, 'Desconto:', 0, '', salesOrder.total)
+
+    const conditionLines = [
+      salesOrder.paymentTerms ? `Pagamento: ${salesOrder.paymentTerms}` : '',
+      salesOrder.deliveryTime ? `Prazo de entrega: ${salesOrder.deliveryTime}` : '',
+      `Vendedor: ${salesOrder.user.name}`,
+    ].filter(Boolean)
+    const noteLines = doc.splitTextToSize(salesOrder.notes || 'Nenhuma observação.', 78)
+    drawTwoColumnBoxes(doc, y, 'CONDIÇÕES', conditionLines, 'OBSERVAÇÕES', noteLines)
 
     drawFooter(doc)
     return Buffer.from(doc.output('arraybuffer'))

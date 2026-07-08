@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
         include: {
           category: { select: { id: true, name: true, slug: true } },
           material: { select: { id: true, name: true, density: true } },
+          images: { where: { isPrimary: true }, take: 1 },
         },
         orderBy: { name: 'asc' },
         skip: (page - 1) * limit,
