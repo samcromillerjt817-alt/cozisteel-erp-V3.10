@@ -1,10 +1,23 @@
 {
-  "version": "3.0.0",
+  "version": "3.1.0",
   "name": "Cozisteel ERP",
-  "buildDate": "2026-07-02",
-  "modules": ["dashboard", "orcamentos", "clientes", "produtos", "usuarios", "configuracoes"],
+  "buildDate": "2026-07-08",
+  "modules": [
+    "dashboard",
+    "orcamentos",
+    "clientes",
+    "produtos",
+    "usuarios",
+    "configuracoes"
+  ],
   "requires": {
     "node": ">=20.0.0 <23.0.0",
     "npm": ">=9.0.0"
-  }
+  },
+  "history": [
+    {
+      "version": "3.0.0",
+      "date": "2026-07-08"
+    }
+  ]
 }

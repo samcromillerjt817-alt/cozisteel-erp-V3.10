@@ -830,11 +830,17 @@ export default function ERPPage() {
      CLIENT ACTIONS
      ══════════════════════════════════════════════════════════════ */
 
-  const handleCepLookup = async (cep: string, setForm: React.Dispatch<React.SetStateAction<any>>) => {
+  const handleCepLookup = async (cep: string, setForm: React.Dispatch<React.SetStateAction<any>>, fieldMap: { address?: string; neighborhood?: string; city?: string; state?: string } = { address: 'address', neighborhood: 'neighborhood', city: 'city', state: 'state' }) => {
     const addr = await fetchAddressByCep(cep)
-    if (addr) {
-      setForm((prev: any) => ({ ...prev, address: addr.logradouro || prev.address, neighborhood: addr.bairro || prev.neighborhood, city: addr.localidade || prev.city, state: addr.uf || prev.state }))
-    }
+    if (!addr) return
+    setForm((prev: any) => {
+      const next = { ...prev }
+      if (fieldMap.address) next[fieldMap.address] = addr.logradouro || prev[fieldMap.address]
+      if (fieldMap.neighborhood) next[fieldMap.neighborhood] = addr.bairro || prev[fieldMap.neighborhood]
+      if (fieldMap.city) next[fieldMap.city] = addr.localidade || prev[fieldMap.city]
+      if (fieldMap.state) next[fieldMap.state] = addr.uf || prev[fieldMap.state]
+      return next
+    })
   }
 
   /** Busca automática pelo CNPJ (razão social, endereço, telefone) — usado em Cliente e Fornecedor. */
@@ -1447,20 +1453,50 @@ export default function ERPPage() {
     empresa: 'Empresa', numeracao: 'Numeracao', pdf: 'PDF', sistema: 'Sistema', atualizacoes: 'Atualizacoes',
   }
 
-  const navItems: { key: ModuleKey; icon: React.ReactNode; label: string }[] = [
-    { key: 'dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard' },
-    { key: 'orcamentos', icon: <FileText className="w-5 h-5" />, label: 'Orcamentos' },
-    { key: 'pedidos', icon: <Copy className="w-5 h-5" />, label: 'Pedidos de Venda' },
-    { key: 'clientes', icon: <Users className="w-5 h-5" />, label: 'Clientes' },
-    { key: 'produtos', icon: <Package className="w-5 h-5" />, label: 'Produtos' },
-    { key: 'materiais', icon: <Layers className="w-5 h-5" />, label: 'Materias-Primas' },
-    { key: 'producao', icon: <Truck className="w-5 h-5" />, label: 'Producao' },
-    { key: 'estoque', icon: <Package className="w-5 h-5" />, label: 'Estoque' },
-    { key: 'relatorios', icon: <FileText className="w-5 h-5" />, label: 'Relatorios' },
-    { key: 'fornecedores', icon: <Users className="w-5 h-5" />, label: 'Fornecedores' },
-    { key: 'requisicoes', icon: <FileOutput className="w-5 h-5" />, label: 'Requisicoes' },
-    { key: 'usuarios', icon: <UserCog className="w-5 h-5" />, label: 'Usuarios' },
-    { key: 'configuracoes', icon: <Settings className="w-5 h-5" />, label: 'Configuracoes' },
+  const navGroups: { label: string | null; items: { key: ModuleKey; icon: React.ReactNode; label: string }[] }[] = [
+    {
+      label: null,
+      items: [
+        { key: 'dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard' },
+      ],
+    },
+    {
+      label: 'COMERCIAL',
+      items: [
+        { key: 'orcamentos', icon: <FileText className="w-5 h-5" />, label: 'Orcamentos' },
+        { key: 'pedidos', icon: <Copy className="w-5 h-5" />, label: 'Pedidos de Venda' },
+        { key: 'clientes', icon: <Users className="w-5 h-5" />, label: 'Clientes' },
+      ],
+    },
+    {
+      label: 'PRODUÇÃO',
+      items: [
+        { key: 'producao', icon: <Truck className="w-5 h-5" />, label: 'Producao' },
+        { key: 'produtos', icon: <Package className="w-5 h-5" />, label: 'Produtos' },
+      ],
+    },
+    {
+      label: 'SUPRIMENTOS',
+      items: [
+        { key: 'materiais', icon: <Layers className="w-5 h-5" />, label: 'Materias-Primas' },
+        { key: 'fornecedores', icon: <Users className="w-5 h-5" />, label: 'Fornecedores' },
+        { key: 'requisicoes', icon: <FileOutput className="w-5 h-5" />, label: 'Requisicoes' },
+        { key: 'estoque', icon: <Package className="w-5 h-5" />, label: 'Estoque' },
+      ],
+    },
+    {
+      label: 'GESTÃO',
+      items: [
+        { key: 'relatorios', icon: <FileText className="w-5 h-5" />, label: 'Relatorios' },
+      ],
+    },
+    {
+      label: 'ADMINISTRAÇÃO',
+      items: [
+        { key: 'usuarios', icon: <UserCog className="w-5 h-5" />, label: 'Usuarios' },
+        { key: 'configuracoes', icon: <Settings className="w-5 h-5" />, label: 'Configuracoes' },
+      ],
+    },
   ]
 
   const configSubItems: { key: ConfigSubModule; icon: React.ReactNode; label: string }[] = [
@@ -1543,18 +1579,29 @@ export default function ERPPage() {
       </div>
       <ScrollArea className="flex-1 py-2">
         <div className="space-y-1 px-2">
-          {navItems.filter(n => canAccess(n.key)).map(n => (
-            <button
-              key={n.key}
-              onClick={() => handleNavClick(n.key)}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${
-                activeModule === n.key ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              {n.icon} {n.label}
-              {n.key === 'configuracoes' && activeModule === 'configuracoes' && <ChevronDown className="w-4 h-4 ml-auto" />}
-            </button>
-          ))}
+          {navGroups.map((group, gi) => {
+            const visibleItems = group.items.filter(n => canAccess(n.key))
+            if (visibleItems.length === 0) return null
+            return (
+              <div key={gi} className={gi > 0 ? 'mt-4' : ''}>
+                {group.label && (
+                  <p className="px-3 mb-1 text-[11px] font-semibold tracking-wider text-muted-foreground/70">{group.label}</p>
+                )}
+                {visibleItems.map(n => (
+                  <button
+                    key={n.key}
+                    onClick={() => handleNavClick(n.key)}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${
+                      activeModule === n.key ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    {n.icon} {n.label}
+                    {n.key === 'configuracoes' && activeModule === 'configuracoes' && <ChevronDown className="w-4 h-4 ml-auto" />}
+                  </button>
+                ))}
+              </div>
+            )
+          })}
           {activeModule === 'configuracoes' && (
             <div className="ml-7 mt-1 space-y-1 border-l-2 border-primary/20 pl-3">
               {configSubItems.map(sub => (
@@ -1867,13 +1914,13 @@ export default function ERPPage() {
                       <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">Dados do Cliente</h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         <div className="space-y-1.5"><Label>Nome / Razao Social</Label><Input value={quoteForm.clientName as string || ''} onChange={e => setQuoteForm({ ...quoteForm, clientName: e.target.value })} /></div>
-                        <div className="space-y-1.5"><Label>CNPJ / CPF</Label><Input value={quoteForm.clientCnpj as string || ''} onChange={e => setQuoteForm({ ...quoteForm, clientCnpj: maskCpfCnpj(e.target.value) })} /></div>
+                        <div className="space-y-1.5"><Label>CNPJ / CPF</Label><Input value={quoteForm.clientCnpj as string || ''} onChange={e => setQuoteForm({ ...quoteForm, clientCnpj: maskCpfCnpj(e.target.value) })} onBlur={e => handleCnpjLookup(e.target.value, setQuoteForm, { corporateName: 'clientName', address: 'clientAddress', neighborhood: 'clientNeighborhood', zipCode: 'clientCep', phone: 'clientPhone', email: 'clientEmail' })} /></div>
                         <div className="space-y-1.5"><Label>Contato</Label><Input value={quoteForm.clientContact as string || ''} onChange={e => setQuoteForm({ ...quoteForm, clientContact: e.target.value })} /></div>
                         <div className="space-y-1.5"><Label>Telefone</Label><Input value={quoteForm.clientPhone as string || ''} onChange={e => setQuoteForm({ ...quoteForm, clientPhone: maskPhone(e.target.value) })} /></div>
                         <div className="space-y-1.5"><Label>E-mail</Label><Input value={quoteForm.clientEmail as string || ''} onChange={e => setQuoteForm({ ...quoteForm, clientEmail: e.target.value })} /></div>
                         <div className="space-y-1 sm:col-span-2 lg:col-span-2"><Label>Endereco</Label><Input value={quoteForm.clientAddress as string || ''} onChange={e => setQuoteForm({ ...quoteForm, clientAddress: e.target.value })} /></div>
                         <div className="space-y-1.5"><Label>Bairro</Label><Input value={quoteForm.clientNeighborhood as string || ''} onChange={e => setQuoteForm({ ...quoteForm, clientNeighborhood: e.target.value })} /></div>
-                        <div className="space-y-1.5"><Label>CEP</Label><Input value={quoteForm.clientCep as string || ''} onChange={e => setQuoteForm({ ...quoteForm, clientCep: maskCep(e.target.value) })} onBlur={e => handleCepLookup(e.target.value, setQuoteForm)} /></div>
+                        <div className="space-y-1.5"><Label>CEP</Label><Input value={quoteForm.clientCep as string || ''} onChange={e => setQuoteForm({ ...quoteForm, clientCep: maskCep(e.target.value) })} onBlur={e => handleCepLookup(e.target.value, setQuoteForm, { address: 'clientAddress', neighborhood: 'clientNeighborhood' })} /></div>
                       </div>
                     </div>
 
