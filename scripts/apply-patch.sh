@@ -121,6 +121,7 @@ fi
 echo "  Backup salvo em: $BACKUP_FILE"
 
 rollback() {
+  trap - ERR
   echo ""
   echo "⚠ Revertendo para o backup anterior (rollback automático)..."
   write_status "rolling_back" "Erro detectado — revertendo para a versão anterior..."
@@ -143,10 +144,15 @@ rollback() {
   echo "✓ Sistema revertido para $CURRENT_VERSION. Nenhuma alteração foi mantida."
 }
 
+# A partir daqui, QUALQUER comando que falhar (não só os que a gente checa manualmente)
+# aciona o rollback automático — isso pega casos inesperados (ex: avisos do unzip,
+# variável de ambiente ausente, etc.) que antes derrubavam o script sem reverter nada.
+trap 'rollback; exit 1' ERR
+
 # ── 3. Extrai o patch ──
 write_status "extracting" "Extraindo arquivos do patch..."
 echo "→ Extraindo patch..."
-unzip -o "$PATCH_ZIP" -x "patch.json" -d "$PROJECT_ROOT" > /dev/null
+unzip -o "$PATCH_ZIP" -d "$PROJECT_ROOT" > /dev/null
 
 # ── 4. npm install / prisma ──
 if [ "$NEEDS_NPM" = "true" ]; then
@@ -194,6 +200,11 @@ if pm2 describe "$PM2_APP_NAME" > /dev/null 2>&1; then
 else
   pm2 start ecosystem.config.cjs
 fi
+
+# A partir daqui o build e o restart já funcionaram — desliga o rollback automático,
+# problemas nos passos finais (registro de histórico) não devem desfazer uma atualização
+# que já está no ar com sucesso.
+trap - ERR
 
 # ── 8. Atualiza version.json local (histórico simples em arquivo, além do banco) ──
 node -e "

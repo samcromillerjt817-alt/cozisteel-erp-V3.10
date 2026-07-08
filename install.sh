@@ -158,10 +158,22 @@ module.exports = {
 }
 PM2EOF
 
-# Para servico antigo se existir
-pm2 delete cozisteel-erp 2>/dev/null || true
-pm2 start ecosystem.config.cjs 2>&1 | tail -3
-pm2 save 2>/dev/null || true
+# Roda o PM2 como o usuario real, nunca como root — senao fica registrado no
+# daemon do root (/root/.pm2), separado do daemon do usuario (usado pelo start.sh),
+# e os dois acabam brigando pela porta 3000 em vez de ser o mesmo processo.
+if [ "$REAL_USER" != "root" ]; then
+  chown "$REAL_USER:$REAL_USER" ecosystem.config.cjs
+  su - "$REAL_USER" -c "cd '$SCRIPT_DIR' && pm2 delete cozisteel-erp 2>/dev/null; pm2 start ecosystem.config.cjs && pm2 save" 2>&1 | tail -5
+else
+  pm2 delete cozisteel-erp 2>/dev/null || true
+  pm2 start ecosystem.config.cjs 2>&1 | tail -3
+  pm2 save 2>/dev/null || true
+fi
+
+# Registra o PM2 para religar o ERP sozinho quando o Linux reiniciar (precisa
+# rodar como root para instalar o servico systemd, por isso fica fora do "su" acima).
+echo -e "${YELLOW}  Configurando inicializacao automatica apos reiniciar...${NC}"
+pm2 startup systemd -u "$REAL_USER" --hp "$REAL_HOME" >/dev/null 2>&1 || true
 
 # ── 9. Resumo ──
 echo ""
