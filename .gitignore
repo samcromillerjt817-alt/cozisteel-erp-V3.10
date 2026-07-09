@@ -53,13 +53,9 @@ data/
 *.sqlite3
 
 # ========================================
-# Storage
+# Storage (uploads, backups de patch, cache)
 # ========================================
-storage/cache/
-storage/temp/
-storage/uploads/
-
-# Manter a pasta caso seja necessária
+storage/*
 !storage/.gitkeep
 
 # ========================================

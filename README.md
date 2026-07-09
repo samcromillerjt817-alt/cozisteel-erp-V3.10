@@ -1,338 +1,130 @@
-# 🚀 Cozisteel ERP v3.10
+# 🚀 Cozisteel ERP
 
-> Sistema ERP moderno desenvolvido para empresas do ramo de móveis planejados, marcenarias, serralherias e fabricantes sob medida.
+> Sistema de gestão empresarial para empresas do ramo de móveis planejados, marcenarias, serralherias e fabricantes sob medida.
 
-![Version](https://img.shields.io/badge/version-v3.10-blue)
-![Status](https://img.shields.io/badge/status-Em%20Desenvolvimento-success)
+![Version](https://img.shields.io/badge/version-v3.1.0-blue)
+![Status](https://img.shields.io/badge/status-Em%20Produção-success)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
 
 # 📖 Sobre o Projeto
 
-O **Cozisteel ERP** é um sistema de gestão empresarial desenvolvido para centralizar todos os processos da empresa em uma única plataforma.
-
-O objetivo do projeto é eliminar controles em planilhas, reduzir retrabalho e automatizar processos como:
-
-- Cadastro de clientes
-- Cadastro de produtos
-- Controle de fornecedores
-- Orçamentos
-- Geração de PDF profissional
-- Compras
-- Estoque
-- Financeiro
-- Gestão de usuários
-- Dashboard com indicadores
-
-O sistema está sendo desenvolvido com foco em **performance**, **usabilidade**, **segurança** e **facilidade de implantação**.
+O **Cozisteel ERP** centraliza os processos da empresa numa única plataforma, eliminando controles em planilhas: comercial, produção, compras, estoque, relatórios e gestão de usuários.
 
 ---
 
-# 🎯 Objetivos
+# ✨ Módulos
 
-O Cozisteel ERP busca oferecer uma solução completa para empresas que precisam controlar:
+O menu é organizado por área de negócio:
 
-- Comercial
-- Produção
-- Compras
-- Estoque
-- Financeiro
-- Clientes
-- Fornecedores
-- Usuários
+## Comercial
+- **Orçamentos** — criação rápida, cálculo automático (subtotal/desconto/frete), preenchimento automático de dados do cliente por **CNPJ** e **CEP**, PDF profissional, controle de status
+- **Pedidos de Venda** — gerados a partir de um orçamento aprovado (fluxo `Orçamento → Pedido de Venda → OP`), mantendo o vínculo com o orçamento de origem
+- **Clientes** — cadastro completo (CPF/CNPJ com preenchimento automático via BrasilAPI, endereço com preenchimento automático via ViaCEP, contatos, histórico)
 
-Tudo em um único sistema.
+## Produção
+- **Produção** — Ordens de Produção, geradas manualmente ou a partir de um Pedido de Venda; ao concluir, dá baixa automática na matéria-prima (conforme a receita do produto) e entrada no estoque do produto acabado
+- **Produtos** — cadastro completo, categoria, unidade, código interno, valores de custo/venda, múltiplas imagens por produto (uma marcada como principal)
 
----
+## Suprimentos
+- **Matérias-Primas** — cadastro dedicado (código, categoria, unidade, densidade, custo, estoque atual/mínimo), com visão de fornecedores vinculados e produtos que a consomem
+- **Fornecedores** — cadastro completo com preenchimento automático por CNPJ, dados fiscais, histórico de compras
+- **Requisições** — fluxo completo `Requisição → Cotação de Fornecedores → Pedido de Compra → Recebimento → Estoque`; a tela de cotação compara preços/prazos de múltiplos fornecedores por item e seleciona o vencedor automaticamente
+- **Estoque** — saldo consolidado (matéria-prima + produto acabado), histórico de movimentações com motivo e origem (OP, requisição ou ajuste manual), ajuste manual de inventário
 
-# ✨ Principais Funcionalidades
+## Gestão
+- **Relatórios** — Vendas, Produção, Compras e Estoque, com filtro de período/status, exportação em Excel/CSV e PDF
 
-## 👥 Clientes
-
-- Cadastro completo
-- CPF/CNPJ
-- Endereços
-- Contatos
-- Histórico
-- Situação do cliente
+## Administração
+- **Usuários** — autenticação, 9 perfis de acesso (Administrador, Gerente, Usuário, Visualizador, Comercial, Produção, Compras, Estoque, Financeiro), permissão aplicada tanto no menu quanto nas rotas de API (403 para quem não tem permissão)
+- **Configurações** — dados da empresa (usados em todos os PDFs e relatórios gerados), numeração de documentos, atualizações do sistema
 
 ---
 
-## 🏭 Fornecedores
+# 📄 Geração de PDF
 
-- Cadastro completo
-- Dados fiscais
-- Contatos
-- Histórico de compras
-
----
-
-## 📦 Produtos
-
-- Cadastro de produtos
-- Categoria
-- Unidade
-- Código interno
-- Código de barras
-- Controle de estoque
-- Valor de custo
-- Valor de venda
-
----
-
-## 📄 Orçamentos
-
-Um dos principais módulos do sistema.
-
-Permite:
-
-- Criar orçamentos rapidamente
-- Inserir produtos
-- Calcular automaticamente
-- Aplicar descontos
-- Inserir observações
-- Alterar status
-
-Além disso, o sistema gera um **PDF profissional** para envio ao cliente.
-
----
-
-## 🖼️ PDF Inteligente
-
-O sistema possui geração automática de PDF.
-
-Entre as melhorias planejadas:
-
-- PDF com imagens dos produtos
-- PDF sem imagens (modo compacto)
-- Logotipo da empresa
-- Layout profissional
-- Assinatura
-- Observações
-- Condições comerciais
-
----
-
-## 🛒 Requisição de Compra
-
-Módulo desenvolvido para facilitar o processo de compras.
-
-Permite:
-
-- Criar requisições
-- Informar prioridade
-- Centro de custo
-- Solicitante
-- Justificativa
-- Aprovação
-- Controle de status
-
----
-
-## 📊 Dashboard
-
-Painel com indicadores da empresa.
-
-Exemplos:
-
-- Total de clientes
-- Total de produtos
-- Total de vendas
-- Pedidos pendentes
-- Estoque
-- Financeiro
-
----
-
-## 🔐 Controle de Usuários
-
-Sistema de autenticação.
-
-Controle de:
-
-- Login
-- Senha
-- Perfis
-- Permissões
-- Auditoria
-
----
-
-## 📈 Futuras Implementações
-
-Planejamento da versão 3.x
-
-- CRM
-- Agenda
-- Controle financeiro completo
-- Fluxo de caixa
-- Contas a pagar
-- Contas a receber
-- Emissão de NF-e
-- Integração com APIs
-- Integração por CNPJ (preenchimento automático de empresa)
-- Backup automático
-- Logs do sistema
-- Multiempresa
-- Multiusuário
-- Relatórios inteligentes
-- Indicadores em tempo real
+Todos os documentos (proposta comercial, romaneio de transporte, requisição de compra, ordem de produção, relatórios) compartilham a mesma identidade visual: logo da empresa, cor institucional `#B21119`, cabeçalho e rodapé padronizados. Os dados da empresa exibidos vêm sempre de **Configurações → Empresa** — nunca fixos no código.
 
 ---
 
 # 🛠️ Tecnologias
 
-O projeto utiliza tecnologias modernas para garantir desempenho e escalabilidade.
-
-Exemplos:
-
-- Next.js
-- React
-- TypeScript
-- Node.js
-- Prisma
-- PostgreSQL
+- Next.js + React + TypeScript
+- Prisma ORM + SQLite
 - TailwindCSS
-- PM2
-- Docker (planejado)
-
----
-
-# 📁 Estrutura do Projeto
-
-```
-cozisteel-erp/
-
-├── app/
-├── components/
-├── prisma/
-├── public/
-├── lib/
-├── scripts/
-├── styles/
-├── docs/
-├── package.json
-└── README.md
-```
+- PM2 (produção)
 
 ---
 
 # ⚙️ Instalação
 
-Clone o projeto
-
 ```bash
 git clone https://github.com/samcromillerjt817-alt/cozisteel-erp-V3.10.git
-```
-
-Entre na pasta
-
-```bash
 cd cozisteel-erp-V3.10
+chmod +x install.sh
+sudo bash install.sh
 ```
 
-Instale as dependências
+O `install.sh` instala o Node.js 20 LTS e o PM2 se necessário, cria o `.env` com segredo único, instala dependências, sincroniza o banco (`prisma db push`), builda em produção, sobe o processo no PM2 e registra a inicialização automática após reiniciar o Linux (`pm2 startup`).
+
+Login padrão após a instalação: usuário `admin`, senha `cozisteel2024` (altere no primeiro acesso).
+
+## Desenvolvimento local
 
 ```bash
 npm install
-```
-
-Configure o banco de dados.
-
-Execute as migrations
-
-```bash
-npx prisma migrate deploy
-```
-
-Inicie o sistema
-
-```bash
+npx prisma generate
+npx prisma db push
 npm run dev
 ```
 
-Ou utilize o script de instalação:
+## Operação do dia a dia
 
 ```bash
-chmod +x install.sh
-
-./install.sh
+pm2 restart cozisteel-erp   # reiniciar (precisa de build novo se o código mudou)
+pm2 stop cozisteel-erp      # parar
+pm2 logs cozisteel-erp      # ver logs
+pm2 status                  # ver se está online
 ```
+
+Se o site não subir sozinho após reiniciar o servidor, rode `bash start.sh` — ele mata qualquer processo preso na porta 3000, recria o processo no PM2 e garante que o `pm2 startup` esteja registrado.
 
 ---
 
-# 🚀 Produção
+# 🔄 Sistema de Atualização por Patch
 
-Build
-
-```bash
-npm run build
-```
-
-Executar
+Além do `install.sh` (setup completo do zero), o sistema tem um mecanismo próprio para aplicar atualizações incrementais sem reinstalar tudo:
 
 ```bash
-npm start
+./scripts/apply-patch.sh caminho/para/patch.zip
 ```
 
-Ou utilizando PM2
-
-```bash
-pm2 start ecosystem.config.js
-```
+Faz backup automático (código + banco) antes de aplicar, builda, e **reverte sozinho** se o build falhar. Também pode ser aplicado direto pela tela **Configurações → Atualizações** (upload do `.zip`, restrito a admin), que mostra o progresso e mantém histórico de todas as atualizações aplicadas.
 
 ---
 
 # 📌 Roadmap
 
-- [x] Cadastro de clientes
-- [x] Cadastro de produtos
-- [x] Cadastro de fornecedores
-- [x] Orçamentos
-- [x] Geração de PDF
-- [x] Dashboard
-- [x] Sistema de login
-- [x] Controle de usuários
-- [ ] Financeiro
-- [ ] Compras completas
+- [ ] Financeiro completo (contas a pagar/receber, fluxo de caixa)
+- [ ] Emissão de NF-e
 - [ ] CRM
-- [ ] NF-e
-- [ ] API pública
-- [ ] Aplicativo Mobile
+- [ ] Permissão por rota nas áreas ainda cobertas só por login simples (categorias, sequências numéricas, configurações, auditoria)
+- [ ] Backup automático externo (hoje o backup de patch fica no mesmo servidor, em `storage/patches/backups/`)
+- [ ] Multiempresa
+- [ ] Aplicativo mobile
 
 ---
 
 # 🔒 Segurança
 
-O sistema foi desenvolvido seguindo boas práticas de segurança:
-
-- Autenticação
-- Controle de permissões
-- Proteção de rotas
-- Validação de dados
-- Tratamento de erros
-
----
-
-# 🤝 Contribuições
-
-Contribuições são bem-vindas.
-
-Caso encontre algum problema ou tenha sugestões, abra uma Issue ou envie um Pull Request.
+- Autenticação por sessão
+- Controle de permissões por perfil, reforçado tanto no menu quanto nas rotas de API sensíveis (criar/editar/excluir/mudar status)
+- Validação de dados de entrada (Zod)
+- Backup automático antes de cada atualização, com rollback em caso de falha
 
 ---
 
 # 👨‍💻 Desenvolvedor
 
-**Julio Augusto**
-
-Projeto desenvolvido com foco em criar um ERP moderno, rápido e escalável para empresas brasileiras.
-
----
-
-# ⭐ Apoie o Projeto
-
-Se este projeto foi útil para você, deixe uma ⭐ no repositório.
-
-Isso ajuda bastante no crescimento do projeto.
+**Julio Augusto** — Cozisteel ERP, desenvolvido sob medida para as necessidades da empresa.
