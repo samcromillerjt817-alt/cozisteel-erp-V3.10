@@ -759,6 +759,71 @@ class PdfService {
     drawFooter(doc)
     return Buffer.from(doc.output('arraybuffer'))
   }
+
+  /** Documento externo/comercial enviado ao fornecedor (mesmo shape de generateSalesOrderPdf). */
+  async generatePurchaseOrderPdf(purchaseOrderId: string): Promise<Buffer> {
+    const po = await db.purchaseOrder.findUnique({
+      where: { id: purchaseOrderId },
+      include: { items: { include: { material: true } }, supplier: true, requisition: { select: { number: true } }, user: { select: { name: true } } },
+    })
+
+    if (!po) throw new Error('Pedido de compra não encontrado')
+    const company = await getCompanyInfo()
+
+    const doc = new jsPDF('p', 'mm', 'a4')
+    const pageWidth = doc.internal.pageSize.getWidth()
+    let y = drawHeader(doc, 'PEDIDO DE COMPRA', `Nº ${po.number}`)
+
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...BRAND_GRAY)
+    doc.text(`Data: ${po.date}`, 14, y)
+    doc.text(`Origem: Requisição ${po.requisition.number}`, pageWidth - 14, y, { align: 'right' })
+    doc.setTextColor(0, 0, 0)
+    y += 8
+
+    const supplierName = po.supplier.corporateName || po.supplier.tradeName || '-'
+    const supplierLines = [
+      supplierName,
+      `CNPJ/CPF: ${po.supplier.cpfCnpj || '-'}`,
+      po.supplier.address ? `${po.supplier.address}${po.supplier.neighborhood ? ` - ${po.supplier.neighborhood}` : ''}` : '',
+      `${po.supplier.city || ''}${po.supplier.state ? `/${po.supplier.state}` : ''}`,
+      po.supplier.phone ? `Tel: ${po.supplier.phone}` : '',
+    ].filter(Boolean)
+
+    y = drawInfoCards(doc, y, supplierLines, company)
+
+    sectionTitle(doc, 'ITENS DO PEDIDO', 14, y)
+    y += 4
+
+    const tableData = po.items.map((item, idx) => [
+      String(idx + 1), item.material.name, String(item.quantity), item.unit,
+      item.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+      item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+    ])
+
+    autoTable(doc, {
+      startY: y,
+      head: [['#', 'Matéria-Prima', 'Qtd', 'Unid', 'Preço Unit.', 'Total']],
+      body: tableData,
+      ...brandTableStyles,
+      columnStyles: { 0: { cellWidth: 10 }, 2: { halign: 'right', cellWidth: 18 }, 3: { halign: 'center', cellWidth: 14 }, 4: { halign: 'right', cellWidth: 28 }, 5: { halign: 'right', cellWidth: 28 } },
+    })
+
+    y = ((doc as any).lastAutoTable?.finalY ?? y + 40) + 8
+    y = drawSummaryBox(doc, y, po.subtotal, 0, '', 0, '', po.total)
+
+    const conditionLines = [
+      po.paymentTerms ? `Pagamento: ${po.paymentTerms}` : '',
+      po.expectedDate ? `Previsão de entrega: ${po.expectedDate}` : '',
+      `Comprador: ${po.user.name}`,
+    ].filter(Boolean)
+    const noteLines = doc.splitTextToSize(po.notes || 'Nenhuma observação.', 78)
+    drawTwoColumnBoxes(doc, y, 'CONDIÇÕES', conditionLines, 'OBSERVAÇÕES', noteLines)
+
+    drawFooter(doc)
+    return Buffer.from(doc.output('arraybuffer'))
+  }
 }
 
 export const pdfService = new PdfService()

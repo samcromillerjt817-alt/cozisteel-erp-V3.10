@@ -176,6 +176,21 @@ export const updateRequisitionSchema = z.object({
   items: z.array(requisitionItemSchema).optional(),
 })
 
+export const receivePurchaseOrderItemSchema = z.object({
+  purchaseOrderItemId: z.string().min(1, 'Item é obrigatório'),
+  quantityReceived: z.number().positive('Quantidade recebida deve ser maior que zero'),
+})
+
+export const receivePurchaseOrderSchema = z.object({
+  items: z.array(receivePurchaseOrderItemSchema).min(1, 'Informe ao menos um item recebido'),
+})
+
+export const updatePurchaseOrderSchema = z.object({
+  expectedDate: z.string().optional(),
+  paymentTerms: z.string().optional(),
+  notes: z.string().optional(),
+})
+
 export const createUserSchema = z.object({
   username: z.string().min(3, 'Username deve ter no mínimo 3 caracteres'),
   name: z.string().min(2, 'Nome é obrigatório'),

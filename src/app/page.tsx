@@ -43,7 +43,7 @@ interface Sequence { id: string; documentType: string; prefix: string; suffix: s
 interface DashboardStats { totalQuotes: number; totalClients: number; totalProducts: number; totalRevenue: number; quotesByStatus: Record<string, number>; recentQuotes: Quote[]; quotesThisMonth: number; quotesThisWeek: number }
 interface AuditEntry { id: string; action: string; module: string; entityId: string; details: string; userName: string; createdAt: string }
 
-type ModuleKey = 'dashboard' | 'orcamentos' | 'pedidos' | 'clientes' | 'produtos' | 'materiais' | 'producao' | 'fornecedores' | 'requisicoes' | 'estoque' | 'relatorios' | 'usuarios' | 'configuracoes'
+type ModuleKey = 'dashboard' | 'orcamentos' | 'pedidos' | 'clientes' | 'produtos' | 'materiais' | 'producao' | 'fornecedores' | 'requisicoes' | 'compras' | 'estoque' | 'relatorios' | 'usuarios' | 'configuracoes'
 type ConfigSubModule = 'empresa' | 'numeracao' | 'pdf' | 'sistema' | 'atualizacoes'
 
 /* ══════════════════════════════════════════════════════════════
@@ -99,8 +99,12 @@ const emptyRequisition = (): { productionOrderId: string; neededBy: string; note
 })
 
 const requisitionStatusLabels: Record<string, string> = {
-  draft: 'Rascunho', sent: 'Enviada', approved: 'Aprovada', ordered: 'Pedido feito',
-  partially_received: 'Recebida parcial', received: 'Recebida', cancelled: 'Cancelada',
+  draft: 'Rascunho', sent: 'Enviada', approved: 'Aprovada', ordered: 'Pedido feito', cancelled: 'Cancelada',
+}
+
+const purchaseOrderStatusLabels: Record<string, string> = {
+  draft: 'Rascunho', sent: 'Enviado', confirmed: 'Confirmado',
+  partially_received: 'Recebido parcial', received: 'Recebido', cancelled: 'Cancelado',
 }
 
 const productionStatusLabels: Record<string, string> = {
@@ -239,6 +243,15 @@ export default function ERPPage() {
   const [cotacaoRequisition, setCotacaoRequisition] = useState<any>(null)
   const [cotacaoLoading, setCotacaoLoading] = useState(false)
   const [cotacaoNewQuote, setCotacaoNewQuote] = useState<Record<string, { supplierId: string; price: number; leadTimeDays: number }>>({})
+
+  /* ── Compras (Pedidos de Compra) ── */
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([])
+  const [purchaseOrdersLoading, setPurchaseOrdersLoading] = useState(false)
+  const [purchaseOrderStatusFilter, setPurchaseOrderStatusFilter] = useState('all')
+  const [receiveDialogOpen, setReceiveDialogOpen] = useState(false)
+  const [receivePurchaseOrder, setReceivePurchaseOrder] = useState<any>(null)
+  const [receiveQuantities, setReceiveQuantities] = useState<Record<string, number>>({})
+  const [receiveSaving, setReceiveSaving] = useState(false)
 
   /* ── Estoque ── */
   const [stockSummary, setStockSummary] = useState<any[]>([])
@@ -509,6 +522,16 @@ export default function ERPPage() {
     finally { setRequisitionsLoading(false) }
   }, [requisitionStatusFilter])
 
+  const loadPurchaseOrders = useCallback(async () => {
+    try {
+      setPurchaseOrdersLoading(true)
+      const qs = purchaseOrderStatusFilter !== 'all' ? `?status=${purchaseOrderStatusFilter}&limit=100` : '?limit=100'
+      const r = await fetch(`/api/purchase-orders${qs}`)
+      if (r.ok) { const json = await r.json(); setPurchaseOrders(json.data || []) }
+    } catch { toast.error('Erro ao carregar pedidos de compra') }
+    finally { setPurchaseOrdersLoading(false) }
+  }, [purchaseOrderStatusFilter])
+
   const loadStockSummary = useCallback(async () => {
     try {
       setStockSummaryLoading(true)
@@ -687,6 +710,7 @@ export default function ERPPage() {
       categoriesMaterials: loadCategoriesAndMaterials,
       fornecedores: loadSuppliers,
       requisicoes: loadRequisitions,
+      compras: loadPurchaseOrders,
       estoque: loadStockSummary,
       materiais: loadMaterialsPage,
     }
@@ -1279,7 +1303,14 @@ export default function ERPPage() {
       const r = await fetch(`/api/requisitions/${id}/status`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
       })
-      if (r.ok) { toast.success('Status atualizado!'); loadRequisitions() }
+      if (r.ok) {
+        const json = await r.json()
+        toast.success('Status atualizado!')
+        if (json.generatedPurchaseOrders?.length) {
+          toast.success(`Pedido(s) de compra gerado(s): ${json.generatedPurchaseOrders.map((o: any) => o.number).join(', ')}`)
+        }
+        loadRequisitions()
+      }
       else { const err = await r.json(); toast.error(err.error || 'Erro ao mudar status') }
     } catch { toast.error('Erro ao mudar status') }
   }
@@ -1335,6 +1366,42 @@ export default function ERPPage() {
       if (r.ok) { toast.success('Cotação vencedora selecionada!'); reloadCotacao() }
       else { const err = await r.json(); toast.error(err.error || 'Erro ao selecionar cotação') }
     } catch { toast.error('Erro ao selecionar cotação') }
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     COMPRAS (PEDIDO DE COMPRA) ACTIONS
+     ══════════════════════════════════════════════════════════════ */
+
+  const changePurchaseOrderStatus = async (id: string, status: string) => {
+    try {
+      const r = await fetch(`/api/purchase-orders/${id}/status`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+      })
+      if (r.ok) { toast.success('Status atualizado!'); loadPurchaseOrders() }
+      else { const err = await r.json(); toast.error(err.error || 'Erro ao mudar status') }
+    } catch { toast.error('Erro ao mudar status') }
+  }
+
+  const openReceiveDialog = (po: any) => {
+    setReceivePurchaseOrder(po)
+    setReceiveQuantities(Object.fromEntries(po.items.map((i: any) => [i.id, Math.max(0, i.quantity - i.quantityReceived)])))
+    setReceiveDialogOpen(true)
+  }
+
+  const confirmReceive = async () => {
+    const items = Object.entries(receiveQuantities)
+      .filter(([, q]) => Number(q) > 0)
+      .map(([purchaseOrderItemId, quantityReceived]) => ({ purchaseOrderItemId, quantityReceived: Number(quantityReceived) }))
+    if (items.length === 0) { toast.error('Informe ao menos uma quantidade recebida'); return }
+    setReceiveSaving(true)
+    try {
+      const r = await fetch(`/api/purchase-orders/${receivePurchaseOrder.id}/receive`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }),
+      })
+      if (r.ok) { toast.success('Recebimento registrado!'); setReceiveDialogOpen(false); loadPurchaseOrders() }
+      else { const err = await r.json(); toast.error(err.error || 'Erro ao registrar recebimento') }
+    } catch { toast.error('Erro ao registrar recebimento') }
+    setReceiveSaving(false)
   }
 
   /* ══════════════════════════════════════════════════════════════
@@ -1466,7 +1533,7 @@ export default function ERPPage() {
   const breadcrumbMap: Record<string, string> = {
     dashboard: 'Dashboard', orcamentos: 'Orcamentos', pedidos: 'Pedidos de Venda', clientes: 'Clientes',
     produtos: 'Produtos', materiais: 'Materias-Primas', producao: 'Producao', usuarios: 'Usuarios', configuracoes: 'Configuracoes',
-    fornecedores: 'Fornecedores', requisicoes: 'Requisicoes', estoque: 'Estoque', relatorios: 'Relatorios',
+    fornecedores: 'Fornecedores', requisicoes: 'Requisicoes', compras: 'Compras', estoque: 'Estoque', relatorios: 'Relatorios',
     empresa: 'Empresa', numeracao: 'Numeracao', pdf: 'PDF', sistema: 'Sistema', atualizacoes: 'Atualizacoes',
   }
 
@@ -1498,6 +1565,7 @@ export default function ERPPage() {
         { key: 'materiais', icon: <Layers className="w-5 h-5" />, label: 'Materias-Primas' },
         { key: 'fornecedores', icon: <Users className="w-5 h-5" />, label: 'Fornecedores' },
         { key: 'requisicoes', icon: <FileOutput className="w-5 h-5" />, label: 'Requisicoes' },
+        { key: 'compras', icon: <ShoppingCart className="w-5 h-5" />, label: 'Compras' },
         { key: 'estoque', icon: <Package className="w-5 h-5" />, label: 'Estoque' },
       ],
     },
@@ -2832,6 +2900,112 @@ export default function ERPPage() {
                   )}
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setCotacaoDialogOpen(false)}>Fechar</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════
+              COMPRAS (PEDIDO DE COMPRA) MODULE
+              ═══════════════════════════════════════════════════════ */}
+          {activeModule === 'compras' && (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
+                <h2 className="text-2xl font-bold">Pedidos de Compra</h2>
+                <div className="flex gap-2">
+                  <Select value={purchaseOrderStatusFilter} onValueChange={v => setPurchaseOrderStatusFilter(v)}>
+                    <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os status</SelectItem>
+                      {Object.entries(purchaseOrderStatusLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <Card><CardContent className="p-0">
+                {purchaseOrdersLoading ? (
+                  <div className="p-6 space-y-3"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Número</TableHead>
+                        <TableHead>Fornecedor</TableHead>
+                        <TableHead>Requisição de origem</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {purchaseOrders.length === 0 ? (
+                        <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhum pedido de compra encontrado</TableCell></TableRow>
+                      ) : purchaseOrders.map((po: any) => (
+                        <TableRow key={po.id}>
+                          <TableCell className="font-mono text-sm">{po.number}</TableCell>
+                          <TableCell>{po.supplier?.corporateName || po.supplier?.tradeName}</TableCell>
+                          <TableCell className="text-sm">{po.requisition?.number || '-'}</TableCell>
+                          <TableCell>
+                            {['draft', 'sent', 'confirmed'].includes(po.status) ? (
+                              <Select value={po.status} onValueChange={v => changePurchaseOrderStatus(po.id, v)}>
+                                <SelectTrigger className="w-40 h-8"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  {['draft', 'sent', 'confirmed', 'cancelled'].map(k => <SelectItem key={k} value={k}>{purchaseOrderStatusLabels[k]}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Badge variant="outline">{purchaseOrderStatusLabels[po.status] || po.status}</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">{formatCurrency(po.total)}</TableCell>
+                          <TableCell>
+                            <div className="flex gap-1 justify-end">
+                              <Button variant="ghost" size="icon" onClick={() => window.open(`/api/purchase-orders/${po.id}/pdf`, '_blank')} title="PDF"><FileOutput className="w-4 h-4" /></Button>
+                              {['confirmed', 'partially_received'].includes(po.status) && (
+                                <Button variant="ghost" size="icon" onClick={() => openReceiveDialog(po)} title="Receber mercadoria"><Package className="w-4 h-4" /></Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent></Card>
+
+              <Dialog open={receiveDialogOpen} onOpenChange={setReceiveDialogOpen}>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader><DialogTitle>Receber Pedido de Compra — {receivePurchaseOrder?.number || ''}</DialogTitle></DialogHeader>
+                  {receivePurchaseOrder && (
+                    <div className="space-y-3">
+                      {(receivePurchaseOrder.items || []).map((item: any) => {
+                        const outstanding = Math.max(0, item.quantity - item.quantityReceived)
+                        return (
+                          <div key={item.id} className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-end border rounded p-2">
+                            <div className="sm:col-span-2">
+                              <Label className="text-xs">Matéria-prima</Label>
+                              <p className="text-sm font-medium">{item.material?.name}</p>
+                            </div>
+                            <div><Label className="text-xs">Qtd Pedida</Label><p className="text-sm">{item.quantity} {item.unit}</p></div>
+                            <div><Label className="text-xs">Já Recebida</Label><p className="text-sm">{item.quantityReceived} {item.unit}</p></div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Qtd a Receber</Label>
+                              <Input
+                                type="number" step="0.01" max={outstanding}
+                                value={receiveQuantities[item.id] ?? outstanding}
+                                onChange={e => setReceiveQuantities(prev => ({ ...prev, [item.id]: parseFloat(e.target.value) || 0 }))}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setReceiveDialogOpen(false)}>Cancelar</Button>
+                    <Button onClick={confirmReceive} disabled={receiveSaving}>{receiveSaving ? 'Salvando...' : 'Confirmar Recebimento'}</Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
