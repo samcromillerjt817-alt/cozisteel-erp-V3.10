@@ -1,7 +1,7 @@
 {
-  "version": "3.1.0",
+  "version": "3.1.2",
   "name": "Cozisteel ERP",
-  "buildDate": "2026-07-08",
+  "buildDate": "2026-07-09",
   "modules": [
     "dashboard",
     "orcamentos",
@@ -15,6 +15,10 @@
     "npm": ">=9.0.0"
   },
   "history": [
+    {
+      "version": "3.1.0",
+      "date": "2026-07-08"
+    },
     {
       "version": "3.0.0",
       "date": "2026-07-08"
