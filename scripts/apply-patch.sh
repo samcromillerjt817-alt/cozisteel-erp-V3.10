@@ -40,6 +40,15 @@ if [ -z "$PATCH_ZIP" ] || [ ! -f "$PATCH_ZIP" ]; then
 fi
 PATCH_ZIP="$(cd "$(dirname "$PATCH_ZIP")" && pwd)/$(basename "$PATCH_ZIP")"
 
+# Um "next dev" escreve na mesma pasta .next/ que o build de producao usa —
+# rodando junto com o build do patch, corrompe o .next mesmo que o build "passe"
+# (foi exatamente isso que derrubou o site em 2026-07-09). Aborta cedo se achar um.
+if pgrep -f "next dev" > /dev/null 2>&1; then
+  echo "ERRO: ha um servidor 'next dev' rodando nesta maquina."
+  echo "  Pare o servidor de desenvolvimento antes de aplicar o patch (ele usa a mesma pasta .next/ da producao)."
+  exit 1
+fi
+
 PROJECT_ROOT="$(pwd)"
 if [ ! -f "$PROJECT_ROOT/package.json" ] || [ ! -f "$PROJECT_ROOT/ecosystem.config.cjs" ]; then
   echo "ERRO: rode este script a partir da raiz do projeto (onde ficam package.json e ecosystem.config.cjs)."
@@ -185,26 +194,30 @@ if ! npm run build; then
   exit 1
 fi
 
+# A build é o único ponto de risco real de deixar o sistema num estado quebrado —
+# a partir daqui já existe um build novo e válido. Desliga o rollback automático:
+# um solavanco em "copiar estáticos" ou "reiniciar o PM2" deve virar aviso e ser
+# corrigido manualmente, NUNCA desfazer uma atualização cujo build já funcionou.
+trap - ERR
+
 # ── 6. Copia estáticos ──
 write_status "finalizing" "Finalizando..."
 echo "→ Copiando arquivos estáticos..."
-rm -rf .next/standalone/.next/static .next/standalone/public
-mkdir -p .next/standalone/.next
-cp -r .next/static .next/standalone/.next/
-cp -r public .next/standalone/
+if ! ( rm -rf .next/standalone/.next/static .next/standalone/public \
+    && mkdir -p .next/standalone/.next \
+    && cp -r .next/static .next/standalone/.next/ \
+    && cp -r public .next/standalone/ ); then
+  echo "⚠ AVISO: falha ao copiar arquivos estáticos. O build existe, mas pode faltar CSS/JS/imagens."
+  echo "  Rode manualmente: rm -rf .next/standalone/.next/static .next/standalone/public && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/"
+fi
 
 # ── 7. Reinicia ──
 echo "→ Reiniciando o sistema (PM2: $PM2_APP_NAME)..."
 if pm2 describe "$PM2_APP_NAME" > /dev/null 2>&1; then
-  pm2 restart "$PM2_APP_NAME"
+  pm2 restart "$PM2_APP_NAME" || echo "⚠ AVISO: 'pm2 restart' retornou erro — confira 'pm2 list' manualmente, o build em si está OK."
 else
-  pm2 start ecosystem.config.cjs
+  pm2 start ecosystem.config.cjs || echo "⚠ AVISO: 'pm2 start' retornou erro — confira 'pm2 list' manualmente, o build em si está OK."
 fi
-
-# A partir daqui o build e o restart já funcionaram — desliga o rollback automático,
-# problemas nos passos finais (registro de histórico) não devem desfazer uma atualização
-# que já está no ar com sucesso.
-trap - ERR
 
 # ── 8. Atualiza version.json local (histórico simples em arquivo, além do banco) ──
 node -e "

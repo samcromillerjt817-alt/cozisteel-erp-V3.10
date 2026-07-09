@@ -714,6 +714,23 @@ export default function ERPPage() {
 
   const openNewQuote = () => { setEditingQuoteId(null); setQuoteForm(emptyQuote()); setQuoteDialogOpen(true) }
 
+  /** Preenche os dados do cliente no orçamento a partir de um cliente já cadastrado. */
+  const selectQuoteClient = (clientId: string) => {
+    const c: any = clients.find(cl => cl.id === clientId)
+    if (!c) return
+    setQuoteForm(prev => ({
+      ...prev, clientId,
+      clientName: c.corporateName || c.tradeName || '',
+      clientCnpj: c.cpfCnpj || '',
+      clientContact: c.contactName || '',
+      clientPhone: c.phone || c.contactPhone || '',
+      clientEmail: c.email || '',
+      clientAddress: [c.address, c.number].filter(Boolean).join(', '),
+      clientNeighborhood: c.neighborhood || '',
+      clientCep: c.zipCode || '',
+    }))
+  }
+
   const openEditQuote = async (id: string) => {
     try {
       const r = await fetch(`/api/quotes/${id}`)
@@ -1913,6 +1930,13 @@ export default function ERPPage() {
                     <div>
                       <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">Dados do Cliente</h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div className="space-y-1.5 sm:col-span-2 lg:col-span-3">
+                          <Label>Cliente cadastrado</Label>
+                          <Select value={quoteForm.clientId as string || undefined} onValueChange={selectQuoteClient}>
+                            <SelectTrigger><SelectValue placeholder="Selecionar um cliente já cadastrado (preenche os campos abaixo)" /></SelectTrigger>
+                            <SelectContent>{clients.map(c => <SelectItem key={c.id} value={c.id}>{(c.tradeName || c.corporateName) + (c.cpfCnpj ? ` — ${c.cpfCnpj}` : '')}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
                         <div className="space-y-1.5"><Label>Nome / Razao Social</Label><Input value={quoteForm.clientName as string || ''} onChange={e => setQuoteForm({ ...quoteForm, clientName: e.target.value })} /></div>
                         <div className="space-y-1.5"><Label>CNPJ / CPF</Label><Input value={quoteForm.clientCnpj as string || ''} onChange={e => setQuoteForm({ ...quoteForm, clientCnpj: maskCpfCnpj(e.target.value) })} onBlur={e => handleCnpjLookup(e.target.value, setQuoteForm, { corporateName: 'clientName', address: 'clientAddress', neighborhood: 'clientNeighborhood', zipCode: 'clientCep', phone: 'clientPhone', email: 'clientEmail' })} /></div>
                         <div className="space-y-1.5"><Label>Contato</Label><Input value={quoteForm.clientContact as string || ''} onChange={e => setQuoteForm({ ...quoteForm, clientContact: e.target.value })} /></div>
