@@ -53,19 +53,30 @@ data/
 *.sqlite3
 
 # ========================================
-# Storage
+# Storage (uploads, backups de patch, cache)
 # ========================================
-storage/cache/
-storage/temp/
-storage/uploads/
-
-# Manter a pasta caso seja necessária
+storage/*
 !storage/.gitkeep
 
 # ========================================
 # PM2
 # ========================================
 .pm2/
+
+# ecosystem.config.cjs e gerado do zero pelo install.sh a cada instalacao (segredo de
+# sessao + IP/caminho da maquina) - nunca deve ser commitado
+ecosystem.config.cjs
+
+# Claude Code: settings.json e compartilhado (hooks do time), settings.local.json e pessoal
+.claude/settings.local.json
+
+# ========================================
+# Graphify (cache/artefatos regeneraveis do grafo de conhecimento)
+# ========================================
+graphify-out/
+
+# Pasta perdida de um cofre do Obsidian, sem relacao com o codigo do ERP
+Teste/
 
 # ========================================
 # IDEs

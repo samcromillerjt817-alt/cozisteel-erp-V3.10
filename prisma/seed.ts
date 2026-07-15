@@ -29,6 +29,7 @@ const DEFAULT_SEQUENCES = [
   { documentType: 'pedido',    prefix: 'PED-', nextNumber: 1, digits: 6 },
   { documentType: 'op',        prefix: 'OP-',  nextNumber: 1, digits: 6 },
   { documentType: 'requisicao', prefix: 'REQ-', nextNumber: 1, digits: 6 },
+  { documentType: 'compra',    prefix: 'PC-',  nextNumber: 1, digits: 6 },
 ]
 
 const DEFAULT_SETTINGS = [
@@ -63,6 +64,8 @@ const DEFAULT_SETTINGS = [
   { key: 'numbering.pedido.digits',    value: '6',     group: 'numbering', type: 'number', label: 'Dígitos Pedido',      description: 'Número de dígitos' },
   { key: 'numbering.op.prefix',        value: 'OP-',   group: 'numbering', type: 'string', label: 'Prefixo OP',          description: 'Prefixo do número de OP' },
   { key: 'numbering.op.digits',        value: '6',     group: 'numbering', type: 'number', label: 'Dígitos OP',          description: 'Número de dígitos' },
+  { key: 'numbering.compra.prefix',    value: 'PC-',   group: 'numbering', type: 'string', label: 'Prefixo Pedido de Compra', description: 'Prefixo do número de pedido de compra' },
+  { key: 'numbering.compra.digits',    value: '6',     group: 'numbering', type: 'number', label: 'Dígitos Pedido de Compra', description: 'Número de dígitos' },
 
   // ── Quote Defaults ────────────────────────────
   { key: 'quotes.defaultValidity',     value: '10 DIAS',                                        group: 'quotes', type: 'string', label: 'Validade Padrão',           description: 'Prazo de validade padrão' },
@@ -90,11 +93,11 @@ async function seedSystemInfo(): Promise<void> {
   await db.systemInfo.create({
     data: {
       id: 'main',
-      version: '3.0.0',
+      version: '4.0.0',
       maintenanceMode: false,
     },
   })
-  console.log('✅ SystemInfo created (v3.0.0)')
+  console.log('✅ SystemInfo created (v4.0.0)')
 }
 
 async function seedAdminUser(): Promise<void> {

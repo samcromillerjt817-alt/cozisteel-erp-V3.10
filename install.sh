@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════
-#  COZISTEEL ERP v3.0 — Instalador Profissional
+#  COZISTEEL ERP v4.0 — Instalador Profissional
 #  Compativel com: Ubuntu 20.04+, Debian 11+, CentOS 8+
 #  Requer: Node.js 20 LTS, SQLite3
 # ═══════════════════════════════════════════════════════════
@@ -10,7 +10,7 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC
 
 echo ""
 echo -e "${RED}╔══════════════════════════════════════════════════════╗${NC}"
-echo -e "${RED}║        COZISTEEL ERP v3.0 — Instalador              ║${NC}"
+echo -e "${RED}║        COZISTEEL ERP v4.0 — Instalador              ║${NC}"
 echo -e "${RED}║        Sistema de Gestao Empresarial Profissional       ║${NC}"
 echo -e "${RED}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -62,7 +62,7 @@ if [ ! -f .env ]; then
 DATABASE_URL=file:$SCRIPT_DIR/data/cozisteel.db
 NEXTAUTH_SECRET=$SECRET
 NEXTAUTH_URL=http://$SERVER_IP:3000
-APP_VERSION=3.0.0
+APP_VERSION=4.0.0
 APP_ENV=production
 STORAGE_PATH=$SCRIPT_DIR/storage
 LOG_PATH=$SCRIPT_DIR/logs
@@ -178,7 +178,7 @@ pm2 startup systemd -u "$REAL_USER" --hp "$REAL_HOME" >/dev/null 2>&1 || true
 # ── 9. Resumo ──
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║  COZISTEEL ERP v3.0 — Instalado com Sucesso!        ║${NC}"
+echo -e "${GREEN}║  COZISTEEL ERP v4.0 — Instalado com Sucesso!        ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${CYAN}  Acesso:   ${GREEN}http://$SERVER_IP:3000${NC}"

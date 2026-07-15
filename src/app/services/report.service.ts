@@ -1,4 +1,37 @@
 import { db } from '@/lib/db'
+import { REPORT_SUMMARY_LABELS, REPORT_SUMMARY_MONEY_KEYS } from '@/lib/report-labels'
+import { formatCurrency } from '@/lib/format'
+
+export const REPORT_TITLES: Record<string, string> = {
+  sales: 'RELATÓRIO DE VENDAS (ORÇAMENTOS)',
+  production: 'RELATÓRIO DE PRODUÇÃO',
+  purchases: 'RELATÓRIO DE COMPRAS',
+  stock: 'RELATÓRIO DE ESTOQUE',
+}
+
+/** Serializa linhas de relatório em CSV (separador ";", célula entre aspas quando necessário). */
+export function toCsv(rows: Record<string, unknown>[]): string {
+  if (rows.length === 0) return ''
+  const headers = Object.keys(rows[0])
+  const escape = (v: unknown) => {
+    const s = v === null || v === undefined ? '' : String(v)
+    return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const lines = [headers.join(';'), ...rows.map((r) => headers.map((h) => escape(r[h])).join(';'))]
+  return lines.join('\n')
+}
+
+/** Formata o resumo de um relatório como linhas "rótulo: valor", usado no PDF — mesmos rótulos e
+ * mesma formatação numérica (pt-BR, R$ só para chaves monetárias) da tela (`RelatoriosPage`). */
+export function getSummaryLines(summary: Record<string, unknown>): string[] {
+  return Object.entries(summary || {}).map(([k, v]) => {
+    const label = REPORT_SUMMARY_LABELS[k] || k
+    const formatted = typeof v === 'number'
+      ? (REPORT_SUMMARY_MONEY_KEYS.has(k) ? formatCurrency(v) : v.toLocaleString('pt-BR'))
+      : String(v)
+    return `${label}: ${formatted}`
+  })
+}
 
 /** Converte uma data no formato dd/mm/aaaa (usado no app) para um Date comparável */
 function parseBrDate(d: string): Date | null {

@@ -7,19 +7,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/* ═══════════════════════════════════════════════════════════
-   COZISTEEL ERP v3.0 - Schema Normalizado
-   Arquitetura: Repository + Service + Controller
-   ═══════════════════════════════════════════════════════════ */
+/**
+ * ═══════════════════════════════════════════════════════════
+ * COZISTEEL ERP v3.0 - Schema Normalizado
+ * Arquitetura: Repository + Service + Controller
+ * ═══════════════════════════════════════════════════════════
+ */
 
 // ── SISTEMA ──────────────────────────────────────────────
 
 model SystemInfo {
-  id        String   @id @default("main")
-  version   String   @default("3.0.0")
-  installedAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  maintenanceMode Boolean @default(false)
+  id              String   @id @default("main")
+  version         String   @default("4.0.0")
+  installedAt     DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  maintenanceMode Boolean  @default(false)
 }
 
 // ── ATUALIZAÇÕES (Sistema de Patch) ─────────────────────
@@ -30,7 +32,7 @@ model PatchLog {
   title        String   @default("")
   description  String   @default("")
   appliedVia   String   @default("terminal") // terminal, upload
-  status       String   @default("success")  // applying, success, failed, rolled_back
+  status       String   @default("success") // applying, success, failed, rolled_back
   errorMessage String   @default("")
   createdAt    DateTime @default(now())
   userId       String?
@@ -40,32 +42,53 @@ model PatchLog {
 }
 
 model AuditLog {
-  id        String   @id @default(cuid())
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id])
-  action    String   // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, EXPORT, IMPORT, PATCH
-  module    String   // usuarios, orcamentos, produtos, clientes, sistema
-  entityId  String?
-  entityName String?
-  details   String   @default("")
-  ip        String   @default("")
-  userAgent String   @default("")
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  action      String // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, EXPORT, IMPORT, PATCH
+  module      String // usuarios, orcamentos, produtos, clientes, sistema
+  entityId    String?
+  entityName  String?
+  details     String   @default("")
+  ip          String   @default("")
+  userAgent   String   @default("")
+  beforeValue Json? // só os campos efetivamente alterados, nunca um snapshot completo (Fase 5.9)
+  afterValue  Json? // mesmas chaves de beforeValue, com o valor novo (Fase 5.9)
+  createdAt   DateTime @default(now())
 
   @@index([userId])
   @@index([module])
   @@index([createdAt])
 }
 
+// ── HISTÓRICO DE TRANSIÇÃO DE STATUS (ADR-001, Princípio 7 / Fase 2.1) ──
+// Registro append-only de toda transição validada por checkTransition() nos 6 domínios com ciclo
+// de vida (Orçamento, Pedido de Venda, Ordem de Produção, Requisição, Pedido de Compra, Revisão de
+// BOM). Mesmo padrão de discriminador já usado em AuditLog/StockMovement — write-only, sem
+// consulta complexa nesta fase.
+model StatusHistory {
+  id         String   @id @default(cuid())
+  entityType String // "quote" | "sales_order" | "production_order" | "requisition" | "purchase_order" | "bom_revision"
+  entityId   String
+  fromStatus String
+  toStatus   String
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
 model SystemSetting {
-  id    String @id @default(cuid())
-  key   String @unique
-  value String @default("")
-  group String @default("general") // general, pdf, email, security, backup, numbering
-  type  String @default("string")  // string, number, boolean, json
-  label String @default("")
-  description String @default("")
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String   @default("")
+  group       String   @default("general") // general, pdf, email, security, backup, numbering
+  type        String   @default("string") // string, number, boolean, json
+  label       String   @default("")
+  description String   @default("")
+  updatedAt   DateTime @updatedAt
 
   @@index([group])
 }
@@ -73,26 +96,37 @@ model SystemSetting {
 // ── USUÁRIOS E PERMISSÕES (RBAC) ────────────────────────
 
 model User {
-  id        String   @id @default(cuid())
-  username  String   @unique
+  id        String    @id @default(cuid())
+  username  String    @unique
   name      String
-  email     String   @default("")
+  email     String    @default("")
   password  String
-  avatar    String   @default("")
-  role      String   @default("user") // admin, manager, user, viewer
-  active    Boolean  @default(true)
+  avatar    String    @default("")
+  role      String    @default("user") // admin, manager, user, viewer
+  active    Boolean   @default(true)
   lastLogin DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  quotes     Quote[]
-  auditLogs  AuditLog[]
-  sequences  NumberSequence[]
-  productionOrders ProductionOrder[]
-  requisitions Requisition[]
-  stockMovements StockMovement[]
-  salesOrders SalesOrder[]
-  patchLogs PatchLog[]
+  quotes                    Quote[]
+  auditLogs                 AuditLog[]
+  sequences                 NumberSequence[]
+  productionOrders          ProductionOrder[]
+  requisitions              Requisition[]
+  stockMovements            StockMovement[]
+  salesOrders               SalesOrder[]
+  patchLogs                 PatchLog[]
+  purchaseOrders            PurchaseOrder[]
+  bomRevisionsCreated       BomRevision[]              @relation("BomRevisionCreatedBy")
+  bomRevisionsReleased      BomRevision[]              @relation("BomRevisionReleasedBy")
+  statusHistories           StatusHistory[]
+  mrpRuns                   MrpRun[]
+  productionOrderExecutions ProductionOrderExecution[]
+  invoices                  Invoice[]
+  accountReceivables        AccountReceivable[]
+  receipts                  Receipt[]
+  accountPayables           AccountPayable[]
+  payments                  Payment[]
 
   @@index([role])
   @@index([active])
@@ -101,20 +135,20 @@ model User {
 // ── SEQUÊNCIAS DE NUMERAÇÃO ─────────────────────────────
 
 model NumberSequence {
-  id          String   @id @default(cuid())
-  documentType String  @unique // orcamento, pedido, op, compra, nota_interna
-  prefix      String   @default("")
-  suffix      String   @default("")
-  nextNumber  Int      @default(1)
-  digits      Int      @default(6)
-  increment   Int      @default(1)
+  id           String   @id @default(cuid())
+  documentType String   @unique // orcamento, pedido, op, compra, nota_interna
+  prefix       String   @default("")
+  suffix       String   @default("")
+  nextNumber   Int      @default(1)
+  digits       Int      @default(6)
+  increment    Int      @default(1)
   resetAnnual  Boolean  @default(false)
   resetMonthly Boolean  @default(false)
   currentYear  Int?
   currentMonth Int?
-  updatedAt   DateTime @updatedAt
-  updatedBy   String?
-  user        User?    @relation(fields: [updatedBy], references: [id])
+  updatedAt    DateTime @updatedAt
+  updatedBy    String?
+  user         User?    @relation(fields: [updatedBy], references: [id])
 }
 
 // ── CLIENTES ─────────────────────────────────────────────
@@ -124,7 +158,10 @@ model Client {
   type          String   @default("company") // company, person
   corporateName String   @default("") // Razão Social
   tradeName     String   @default("") // Nome Fantasia
-  cpfCnpj       String   @default("")
+  // Nullable (não `@default("")`): permite `@unique` real — múltiplos clientes sem documento
+  // compartilhariam a mesma string vazia e violariam a constraint; `NULL` é o único valor que o
+  // SQL nunca considera colidente em índice único. Normalização (''→null) fica no Service.
+  cpfCnpj       String?  @unique
   ie            String   @default("") // Inscrição Estadual
   im            String   @default("") // Inscrição Municipal
   email         String   @default("")
@@ -142,15 +179,19 @@ model Client {
   state         String   @default("")
   notes         String   @default("")
   internalCode  String   @default("")
+  // Campos inteligentes (Fase 13, Lote 4, ADR-015) — preenchidos automaticamente pela busca de CNPJ
+  // (BrasilAPI), permanecem editáveis como os demais campos autopreenchidos deste cadastro.
+  situacaoCadastral String @default("") // ex: "ATIVA" (descricao_situacao_cadastral da Receita Federal)
+  cnaeCode          String @default("") // CNAE fiscal principal (código numérico)
+  cnaeDescription   String @default("") // CNAE fiscal principal (descrição)
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  quotes Quote[]
+  quotes      Quote[]
   salesOrders SalesOrder[]
 
   @@index([corporateName])
-  @@index([cpfCnpj])
   @@index([active])
 }
 
@@ -168,7 +209,7 @@ model Category {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
-  products Product[]
+  products  Product[]
   materials Material[]
 
   @@index([slug])
@@ -178,27 +219,36 @@ model Category {
 // ── MATERIAIS (Matéria-Prima) ───────────────────────────
 
 model Material {
-  id           String   @id @default(cuid())
-  internalCode String   @default("") // código interno de estoque
-  name         String   @unique
-  categoryId   String?
-  category     Category? @relation(fields: [categoryId], references: [id])
-  density      Float    @default(0) // g/cm³
-  description  String   @default("")
-  unit         String   @default("KG") // unidade de compra/estoque: KG, UN, M, M2, M3, L, CHAPA
-  stockQty     Float    @default(0) // saldo atual em estoque
-  minStockQty  Float    @default(0) // estoque mínimo (dispara sugestão de requisição)
-  costPrice    Float    @default(0) // último custo de aquisição
-  notes        String   @default("")
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String    @id @default(cuid())
+  internalCode    String    @default("") // código interno de estoque
+  name            String    @unique
+  categoryId      String?
+  category        Category? @relation(fields: [categoryId], references: [id])
+  density         Float     @default(0) // g/cm³
+  description     String    @default("")
+  unit            String    @default("KG") // unidade de compra/estoque: KG, UN, M, M2, M3, L, CHAPA
+  stockQty        Float     @default(0) // saldo físico atual em estoque
+  reservedQty     Float     @default(0) // comprometido com OPs abertas, ainda não consumido (Fase 5, ADR-006)
+  onOrderQty      Float     @default(0) // a caminho via Pedido de Compra confirmado — só contabilizado nesta fase, sem gatilho automático (Fase 5, ADR-006)
+  inProductionQty Float     @default(0) // sendo produzido como saída de outra OP (Fase 5, ADR-006)
+  minStockQty     Float     @default(0) // estoque mínimo (dispara sugestão de requisição)
+  costPrice       Float     @default(0) // último custo de aquisição
+  notes           String    @default("")
+  active          Boolean   @default(true)
+  lotControlled   Boolean   @default(false) // rastreabilidade por lote opt-in (Fase 10, ADR-013)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  products         Product[]         // vínculo legado (1 material principal por produto)
-  productMaterials ProductMaterial[] // "receita" de matéria-prima por produto (N:N com quantidade)
-  suppliers        SupplierMaterial[]
-  requisitionItems RequisitionItem[]
-  stockMovements   StockMovement[] @relation("MaterialStockMovements")
+  products             Product[] // vínculo legado (1 material principal por produto)
+  productMaterials     ProductMaterial[] // "receita" de matéria-prima por produto (N:N com quantidade)
+  suppliers            SupplierMaterial[]
+  requisitionItems     RequisitionItem[]
+  stockMovements       StockMovement[]       @relation("MaterialStockMovements")
+  purchaseOrderItems   PurchaseOrderItem[]
+  bomLines             BomLine[] // uso deste material em linhas de BOM (Fase 4, ADR-005)
+  materialReservations MaterialReservation[] @relation("MaterialReservationMaterial")
+  mrpSuggestions       MrpSuggestion[] // sugestões de compra geradas para este material (Fase 6, ADR-007)
+  materialBatches      MaterialBatch[] // lotes recebidos deste material (Fase 10, ADR-013)
 
   @@index([internalCode])
   @@index([categoryId])
@@ -212,7 +262,9 @@ model Supplier {
   internalCode  String   @default("")
   corporateName String   @default("") // Razão Social
   tradeName     String   @default("") // Nome Fantasia
-  cpfCnpj       String   @default("")
+  // Nullable (não `@default("")`): mesmo motivo do Client.cpfCnpj — permite `@unique` real sem
+  // colidir múltiplos fornecedores sem documento na mesma string vazia. Normalização no Service.
+  cpfCnpj       String?  @unique
   ie            String   @default("")
   email         String   @default("")
   phone         String   @default("")
@@ -228,18 +280,24 @@ model Supplier {
   city          String   @default("")
   state         String   @default("")
   paymentTerms  String   @default("") // condições de pagamento padrão
-  leadTimeDays  Int      @default(0)  // prazo médio de entrega, em dias
+  leadTimeDays  Int      @default(0) // prazo médio de entrega, em dias
   notes         String   @default("")
+  // Campos inteligentes (Fase 13, Lote 4, ADR-015) — mesmo padrão de Client, ver comentário lá.
+  situacaoCadastral String @default("")
+  cnaeCode          String @default("")
+  cnaeDescription   String @default("")
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  materials    SupplierMaterial[]
+  materials        SupplierMaterial[]
   requisitionItems RequisitionItem[]
-  itemQuotes   RequisitionItemQuote[]
+  itemQuotes       RequisitionItemQuote[]
+  purchaseOrders   PurchaseOrder[]
+  mrpSuggestions   MrpSuggestion[] // fornecedor preferencial sugerido pelo MRP (Fase 6, ADR-007)
+  materialBatches  MaterialBatch[] // lotes recebidos deste fornecedor (Fase 10, ADR-013)
 
   @@index([corporateName])
-  @@index([cpfCnpj])
   @@index([active])
 }
 
@@ -269,9 +327,9 @@ model ProductMaterial {
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   materialId String
   material   Material @relation(fields: [materialId], references: [id])
-  quantity   Float    @default(1)  // quantidade consumida por 1 unidade do produto
+  quantity   Float    @default(1) // quantidade consumida por 1 unidade do produto
   unit       String   @default("KG")
-  scrapPct   Float    @default(0)  // % de perda/refugo previsto no processo
+  scrapPct   Float    @default(0) // % de perda/refugo previsto no processo
   notes      String   @default("")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -284,46 +342,56 @@ model ProductMaterial {
 // ── PRODUTOS ─────────────────────────────────────────────
 
 model Product {
-  id            String   @id @default(cuid())
-  internalCode  String   @default("")
-  sku           String   @default("")
-  barcode       String   @default("")
+  id            String    @id @default(cuid())
+  internalCode  String    @default("")
+  sku           String    @default("")
+  barcode       String    @default("")
   name          String
-  description   String   @default("")
+  description   String    @default("")
   categoryId    String?
   category      Category? @relation(fields: [categoryId], references: [id])
   materialId    String?
   material      Material? @relation(fields: [materialId], references: [id])
-  unit          String   @default("UN")
-  costPrice     Float    @default(0)
-  salePrice     Float    @default(0)
-  width         Float    @default(0)    // cm
-  height        Float    @default(0)    // cm
-  length        Float    @default(0)    // cm
-  thickness     Float    @default(0)    // mm
-  weight        Float    @default(0)    // kg
-  volumeM3      Float    @default(0)    // m³ (calculado)
-  ncm           String   @default("")
-  ipi           Float    @default(0)    // %
-  icms          Float    @default(0)    // %
-  finish        String   @default("")   // Acabamento
-  family        String   @default("")   // Família
-  line          String   @default("")   // Linha
-  active        Boolean  @default(true)
-  notes         String   @default("")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  unit          String    @default("UN")
+  productType   String    @default("finished") // finished, subassembly, raw_material, service (Fase 4, ADR-005 — Produto Acabado/Subconjunto/Matéria-prima/Serviço)
+  costPrice     Float     @default(0)
+  salePrice     Float     @default(0)
+  width         Float     @default(0) // cm
+  height        Float     @default(0) // cm
+  length        Float     @default(0) // cm
+  thickness     Float     @default(0) // mm
+  weight        Float     @default(0) // kg
+  volumeM3      Float     @default(0) // m³ (calculado)
+  ncm           String    @default("")
+  ipi           Float     @default(0) // %
+  icms          Float     @default(0) // %
+  finish        String    @default("") // Acabamento
+  family        String    @default("") // Família
+  line          String    @default("") // Linha
+  active        Boolean   @default(true)
+  lotControlled Boolean   @default(false) // rastreabilidade por lote opt-in (Fase 10, ADR-013)
+  notes         String    @default("")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  quoteItems    QuoteItem[]
-  salesOrderItems SalesOrderItem[]
-  images        ProductImage[]
-  bomItems      BomItem[]
-  bomComponents BomItem[] @relation("BomComponent")
-  productionOrders ProductionOrder[]
-  materials     ProductMaterial[] // matérias-primas consumidas (receita)
-  stockQty      Float    @default(0) // saldo de produto acabado
-  minStockQty   Float    @default(0)
-  stockMovements StockMovement[] @relation("ProductStockMovements")
+  quoteItems           QuoteItem[]
+  salesOrderItems      SalesOrderItem[]
+  images               ProductImage[]
+  bomItems             BomItem[]
+  bomComponents        BomItem[]             @relation("BomComponent")
+  productionOrders     ProductionOrder[]
+  materials            ProductMaterial[] // matérias-primas consumidas (receita)
+  stockQty             Float                 @default(0) // saldo físico de produto acabado
+  reservedQty          Float                 @default(0) // comprometido com OPs abertas, ainda não consumido (Fase 5, ADR-006)
+  onOrderQty           Float                 @default(0) // a caminho via Pedido de Compra confirmado — só contabilizado nesta fase (Fase 5, ADR-006)
+  inProductionQty      Float                 @default(0) // sendo produzido como saída de outra OP (Fase 5, ADR-006)
+  minStockQty          Float                 @default(0)
+  stockMovements       StockMovement[]       @relation("ProductStockMovements")
+  bomRevisions         BomRevision[] // revisões de engenharia que descrevem ESTE produto (Fase 4, ADR-005)
+  bomLineUsages        BomLine[]             @relation("BomLineComponent") // onde este produto é usado como componente de outro
+  materialReservations MaterialReservation[] @relation("MaterialReservationProduct")
+  mrpSuggestions       MrpSuggestion[] // sugestões de compra/produção geradas para este produto (Fase 6, ADR-007)
+  productBatches       ProductBatch[] // lotes produzidos deste produto (Fase 10, ADR-013)
 
   @@index([internalCode])
   @@index([sku])
@@ -334,49 +402,268 @@ model Product {
 // ── BOM (Lista de Materiais) ────────────────────────────
 
 model BomItem {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   productId   String
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   componentId String
-  component   Product  @relation("BomComponent", fields: [componentId], references: [id])
-  quantity    Float    @default(1)
-  unit        String   @default("UN")
-  notes       String   @default("")
+  component   Product @relation("BomComponent", fields: [componentId], references: [id])
+  quantity    Float   @default(1)
+  unit        String  @default("UN")
+  notes       String  @default("")
 
   @@unique([productId, componentId])
   @@index([productId])
   @@index([componentId])
 }
 
+// ── ENGENHARIA DO PRODUTO (Fase 4, ADR-005) ─────────────
+// Estrutura nova e aditiva: convive com ProductMaterial/BomItem acima sem substituí-los.
+// Produção continua lendo ProductMaterial exatamente como hoje — nenhuma mudança nesta fase.
+
+model BomRevision {
+  id            String    @id @default(cuid())
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  revisionCode  String // "A", "B", "01"... convenção da empresa, não fixada aqui
+  status        String    @default("draft") // draft, released, obsolete
+  effectiveFrom DateTime?
+  notes         String    @default("")
+  createdById   String
+  createdBy     User      @relation("BomRevisionCreatedBy", fields: [createdById], references: [id])
+  releasedById  String?
+  releasedBy    User?     @relation("BomRevisionReleasedBy", fields: [releasedById], references: [id])
+  releasedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  lines            BomLine[]
+  operations       ProductOperation[]
+  productionOrders ProductionOrder[] // OPs que congelaram esta revisão no momento da criação (Fase 5, ADR-006)
+
+  @@unique([productId, revisionCode])
+  @@index([productId])
+  @@index([status])
+}
+
+// Linha de uma revisão — material OU componente (subconjunto), nunca os dois. Unifica o que antes
+// seria ProductMaterial (matéria-prima) e BomItem (componente) numa única estrutura versionada.
+model BomLine {
+  id                 String      @id @default(cuid())
+  bomRevisionId      String
+  bomRevision        BomRevision @relation(fields: [bomRevisionId], references: [id], onDelete: Cascade)
+  lineType           String // "material" | "component"
+  materialId         String?
+  material           Material?   @relation(fields: [materialId], references: [id])
+  componentProductId String?
+  componentProduct   Product?    @relation("BomLineComponent", fields: [componentProductId], references: [id])
+  quantity           Float       @default(1) // por 1 unidade do produto pai
+  unit               String      @default("UN")
+  scrapPct           Float       @default(0) // perda planejada — vale pros dois tipos de linha
+  order              Int         @default(0) // sequência de exibição
+  notes              String      @default("")
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  @@index([bomRevisionId])
+  @@index([materialId])
+  @@index([componentProductId])
+}
+
+// Catálogo mestre de tipos de operação — só o "o quê" (nome/descrição), reaproveitável entre
+// revisões e produtos. Nenhum tempo aqui: tempo é sempre específico de uma revisão (ProductOperation).
+model OperationType {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String   @default("")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  productOperations ProductOperation[]
+}
+
+// A operação de fato, específica de uma revisão — quando ela roda na sequência, quanto tempo
+// padrão leva. Deliberadamente mínimo (ADR-005): sem capacidade finita, programação, apontamento
+// ou calendário nesta fase. `sequenceOrder` usa incrementos de 10 (10, 20, 30...) para permitir
+// inserir uma operação no meio no futuro sem renumerar as existentes.
+model ProductOperation {
+  id                    String        @id @default(cuid())
+  bomRevisionId         String
+  bomRevision           BomRevision   @relation(fields: [bomRevisionId], references: [id], onDelete: Cascade)
+  operationTypeId       String
+  operationType         OperationType @relation(fields: [operationTypeId], references: [id])
+  sequenceOrder         Int           @default(10)
+  description           String        @default("")
+  setupTimeMinutes      Float         @default(0) // tempo de preparação, minutos
+  runTimeMinutesPerUnit Float         @default(0) // tempo de execução por unidade, minutos
+  workCenter            String        @default("") // texto livre nesta fase — preparado para virar catálogo próprio numa expansão futura
+  notes                 String        @default("")
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([bomRevisionId])
+  @@index([operationTypeId])
+}
+
 // ── ORDENS DE PRODUÇÃO ─────────────────────────────────
 
 model ProductionOrder {
-  id           String   @id @default(cuid())
-  number       String   @unique
-  status       String   @default("planned") // planned, in_progress, paused, completed, cancelled
-  date         String
-  dueDate      String   @default("")
-  productId    String?
-  product      Product? @relation(fields: [productId], references: [id])
-  productName  String   @default("")
-  quantity     Float    @default(1)
-  unit         String   @default("UN")
-  priority     String   @default("normal") // low, normal, high, urgent
-  description  String   @default("")
-  notes        String   @default("")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  userId       String
-  user         User     @relation(fields: [userId], references: [id])
-  salesOrderId String?
-  salesOrder   SalesOrder? @relation(fields: [salesOrderId], references: [id])
+  id                String       @id @default(cuid())
+  number            String       @unique
+  status            String       @default("planned") // planned, in_progress, paused, completed, cancelled
+  date              String
+  dueDate           String       @default("")
+  productId         String?
+  product           Product?     @relation(fields: [productId], references: [id])
+  productName       String       @default("")
+  quantity          Float        @default(1)
+  quantityCompleted Float        @default(0) // Fase 9, ADR-011 — cumulativo, mirror de PurchaseOrderItem.quantityReceived
+  unit              String       @default("UN")
+  priority          String       @default("normal") // low, normal, high, urgent
+  description       String       @default("")
+  notes             String       @default("")
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  userId            String
+  user              User         @relation(fields: [userId], references: [id])
+  salesOrderId      String?
+  salesOrder        SalesOrder?  @relation(fields: [salesOrderId], references: [id])
+  bomRevisionId     String? // revisão de engenharia congelada no momento da criação (Fase 5, ADR-006) — opcional, preserva OPs sem engenharia formal
+  bomRevision       BomRevision? @relation(fields: [bomRevisionId], references: [id])
+
+  requisitions         Requisition[]
+  materialReservations MaterialReservation[]
+  mrpSuggestionSources MrpSuggestionSource[]
+  executions           ProductionOrderExecution[]
+  productBatches       ProductBatch[] // lotes de produto gerados por esta OP, um por rodada (Fase 10, ADR-013)
 
   @@index([status])
   @@index([productId])
   @@index([userId])
   @@index([salesOrderId])
+  @@index([bomRevisionId])
+  @@index([createdAt]) // Fase 11, ADR-017 — indicadores de Dashboard filtrados por período
+}
 
-  requisitions Requisition[]
+// Registro append-only de cada rodada de produção parcial (Fase 9, ADR-011) — `clientRequestId`
+// opcional permite ao chamador (futura tela/rota) marcar "esta é a mesma tentativa de antes":
+// a constraint única impede processar a mesma rodada duas vezes.
+model ProductionOrderExecution {
+  id                String          @id @default(cuid())
+  productionOrderId String
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  quantity          Float
+  clientRequestId   String?
+  createdAt         DateTime        @default(now())
+  userId            String
+  user              User            @relation(fields: [userId], references: [id])
+
+  @@unique([productionOrderId, clientRequestId])
+  @@index([productionOrderId])
+  @@index([createdAt]) // Fase 11, ADR-017 — volume de produção por período
+}
+
+// ── RESERVA DE MATERIAL (Fase 5, ADR-006) ───────────────
+// Uma linha por OP × item necessário (material OU produto-componente sem revisão própria — a
+// explosão de BOM pode resultar nos dois casos, ver bom-explosion.service.ts). `availableQty` NUNCA
+// é armazenado (em Material/Product) — é sempre stockQty - reservedQty, calculado sob demanda.
+model MaterialReservation {
+  id                String          @id @default(cuid())
+  productionOrderId String
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  itemType          String // "material" | "product"
+  materialId        String?
+  material          Material?       @relation("MaterialReservationMaterial", fields: [materialId], references: [id])
+  productId         String?
+  product           Product?        @relation("MaterialReservationProduct", fields: [productId], references: [id])
+  quantityNeeded    Float // calculado pela explosão de BOM no momento da reserva
+  quantityReserved  Float           @default(0) // efetivamente coberto pelo saldo disponível (pode ser < needed)
+  quantityShortfall Float           @default(0) // needed - reserved, nunca negativo — o que falta
+  status            String          @default("partial") // "reserved" (needed=reserved), "partial" (reserved<needed), "released" (OP cancelada), "consumed" (gasto em produção, Fase 9 — nunca por cancelamento)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([productionOrderId])
+  @@index([materialId])
+  @@index([productId])
+  @@index([status]) // Fase 11, ADR-017 — cobertura de reserva/shortfall no Dashboard PCP (Subetapa 3)
+}
+
+// ── MRP (Fase 6, ADR-007) ────────────────────────────────
+// Motor de cálculo e recomendação, não executor automático: agrega a demanda de TODAS as OPs
+// abertas de uma vez (diferente da Reserva, que atende uma OP por vez), com netting por nível
+// (motor de explosão próprio, `mrp-explosion.service.ts`, distinto do usado pela Reserva). Cada
+// execução grava seu resultado — nenhuma sugestão gera Requisição/Pedido de Compra/OP sozinha.
+
+model MrpRun {
+  id          String    @id @default(cuid())
+  number      String    @unique // via NumberingService, documentType "mrp"
+  executedAt  DateTime  @default(now())
+  horizonDate DateTime? // reservado para horizonte futuro — sem efeito no cálculo nesta fase
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+
+  // Resultado geral — denormalizado no momento da persistência, não uma consulta futura
+  openOrdersConsidered       Int @default(0)
+  totalSuggestions           Int @default(0)
+  totalPurchaseSuggestions   Int @default(0)
+  totalProductionSuggestions Int @default(0)
+
+  suggestions MrpSuggestion[]
+
+  @@index([executedAt])
+}
+
+// Uma linha por item com necessidade líquida > 0 numa execução. Vocabulário de quantidade
+// espelha MaterialReservation (needed/reserved/shortfall) de propósito — mesmo domínio, mesma
+// leitura. Snapshot histórico (productTypeSnapshot/supplierNameSnapshot) preserva a
+// interpretação da decisão mesmo que o cadastro de Produto/Fornecedor mude depois.
+model MrpSuggestion {
+  id             String    @id @default(cuid())
+  mrpRunId       String
+  mrpRun         MrpRun    @relation(fields: [mrpRunId], references: [id], onDelete: Cascade)
+  suggestionType String // "purchase" | "production"
+  itemType       String // "material" | "product"
+  materialId     String?
+  material       Material? @relation(fields: [materialId], references: [id])
+  productId      String?
+  product        Product?  @relation(fields: [productId], references: [id])
+
+  quantityNeeded    Float // demanda bruta acumulada deste item, neste nível, nesta execução
+  quantityAvailable Float // stockQty + onOrderQty(calculado ao vivo) + inProductionQty, no momento do cálculo
+  quantityReserved  Float @default(0) // informativo: já reservado (MaterialReservation) embutido na demanda bruta — 0 para subconjuntos (ADR-006, ponto 2)
+  quantityShortfall Float // = max(0, quantityNeeded - quantityAvailable) — a quantidade de fato sugerida
+
+  supplierId   String?
+  supplier     Supplier? @relation(fields: [supplierId], references: [id])
+  neededByDate DateTime? // menor dueDate entre as OPs de origem — informativo nesta fase
+  status       String    @default("pending") // "pending" | "accepted" | "dismissed" — só "pending" gravado nesta fase
+  createdAt    DateTime  @default(now())
+
+  productTypeSnapshot  String? // Product.productType no momento da sugestão (só quando itemType = "product")
+  supplierNameSnapshot String? // nome do fornecedor sugerido no momento (corporateName || tradeName)
+
+  sources          MrpSuggestionSource[]
+  requisitionItems RequisitionItem[] // Fase 7 — Requisição(ões) gerada(s) ao aprovar esta sugestão
+
+  @@index([mrpRunId])
+  @@index([materialId])
+  @@index([productId])
+  @@index([suggestionType])
+  @@index([status]) // Fase 11, ADR-017 — sugestões pendentes/aceitas/descartadas no Dashboard PCP
+}
+
+// Rastreabilidade: quais OPs abertas contribuíram para esta sugestão ("por que o MRP sugeriu isso?")
+model MrpSuggestionSource {
+  id                  String          @id @default(cuid())
+  mrpSuggestionId     String
+  mrpSuggestion       MrpSuggestion   @relation(fields: [mrpSuggestionId], references: [id], onDelete: Cascade)
+  productionOrderId   String
+  productionOrder     ProductionOrder @relation(fields: [productionOrderId], references: [id])
+  contributedQuantity Float // quanto desta OP específica compõe quantityNeeded da sugestão
+
+  @@index([mrpSuggestionId])
+  @@index([productionOrderId])
 }
 
 // ── IMAGENS DE PRODUTO ───────────────────────────────────
@@ -384,13 +671,13 @@ model ProductionOrder {
 // url guarda o caminho relativo dentro de STORAGE_PATH, ex: "products/<id>/foto.jpg"
 
 model ProductImage {
-  id         String   @id @default(cuid())
-  productId  String
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  url        String
-  isPrimary  Boolean  @default(false)
-  order      Int      @default(0)
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  isPrimary Boolean  @default(false)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
 
   @@index([productId])
 }
@@ -401,33 +688,35 @@ model ProductImage {
 // mantendo o vínculo com o orçamento de origem para rastreabilidade.
 
 model SalesOrder {
-  id         String   @id @default(cuid())
-  number     String   @unique
-  status     String   @default("open") // open, in_production, completed, cancelled
-  date       String
-  quoteId    String   @unique // 1 orçamento -> no máximo 1 pedido de venda
-  quote      Quote    @relation(fields: [quoteId], references: [id])
-  clientId   String?
-  client     Client?  @relation(fields: [clientId], references: [id])
-  clientName String   @default("")
-  clientCnpj String   @default("")
-  subtotal   Float    @default(0)
-  discountTotal Float @default(0)
-  total      Float    @default(0)
-  paymentTerms String @default("")
-  deliveryTime String @default("")
-  notes      String   @default("")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
+  id            String   @id @default(cuid())
+  number        String   @unique
+  status        String   @default("open") // open, in_production, completed, cancelled
+  date          String
+  quoteId       String   @unique // 1 orçamento -> no máximo 1 pedido de venda
+  quote         Quote    @relation(fields: [quoteId], references: [id])
+  clientId      String?
+  client        Client?  @relation(fields: [clientId], references: [id])
+  clientName    String   @default("")
+  clientCnpj    String   @default("")
+  subtotal      Float    @default(0)
+  discountTotal Float    @default(0)
+  total         Float    @default(0)
+  paymentTerms  String   @default("")
+  deliveryTime  String   @default("")
+  notes         String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
 
   items            SalesOrderItem[]
   productionOrders ProductionOrder[]
+  invoices         Invoice[] // Fase 12, ADR-016 — 1 Pedido de Venda pode gerar N faturas (faturamento parcial)
 
   @@index([quoteId])
   @@index([clientId])
   @@index([status])
+  @@index([createdAt]) // Fase 11, ADR-017 — indicadores comerciais filtrados por período (Subetapa 2)
 }
 
 model SalesOrderItem {
@@ -451,67 +740,140 @@ model SalesOrderItem {
 // ── REQUISIÇÕES DE MATÉRIA-PRIMA (compra ao fornecedor) ─
 
 model Requisition {
-  id                 String   @id @default(cuid())
-  number             String   @unique
-  status             String   @default("draft") // draft, sent, approved, ordered, partially_received, received, cancelled
-  originModule       String   @default("manual") // manual, production_order
-  productionOrderId  String?
-  productionOrder    ProductionOrder? @relation(fields: [productionOrderId], references: [id])
-  date               String
-  neededBy           String   @default("")
-  notes              String   @default("")
-  approvedBy         String?
-  approvedAt         DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  userId             String
-  user               User     @relation(fields: [userId], references: [id])
+  id                String           @id @default(cuid())
+  number            String           @unique
+  status            String           @default("draft") // draft, sent, approved, ordered, cancelled
+  tipo              String           @default("PRODUCAO") // PRODUCAO, MANUTENCAO, ALMOXARIFADO, ENGENHARIA, SERVICOS, OUTROS (Fase 7, ADR-009)
+  originModule      String           @default("manual") // manual, production_order, mrp (Fase 7 — só a criação Service-a-Service via MrpSuggestion usa "mrp", nunca a rota pública)
+  productionOrderId String?
+  productionOrder   ProductionOrder? @relation(fields: [productionOrderId], references: [id])
+  date              String
+  neededBy          String           @default("")
+  notes             String           @default("")
+  approvedBy        String?
+  approvedAt        DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  userId            String
+  user              User             @relation(fields: [userId], references: [id])
 
-  items RequisitionItem[]
+  items          RequisitionItem[]
+  purchaseOrders PurchaseOrder[]
 
   @@index([status])
   @@index([productionOrderId])
   @@index([userId])
+  @@index([tipo]) // Fase 11, ADR-017 — distribuição de requisições por tipo no Dashboard Compras
 }
 
 model RequisitionItem {
-  id             String      @id @default(cuid())
-  requisitionId  String
-  requisition    Requisition @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
-  materialId     String
-  material       Material    @relation(fields: [materialId], references: [id])
-  supplierId     String?
-  supplier       Supplier?   @relation(fields: [supplierId], references: [id])
-  quantity       Float       @default(1)
-  unit           String      @default("KG")
-  estimatedPrice Float       @default(0)
-  notes          String      @default("")
-  quotes         RequisitionItemQuote[]
+  id                    String                 @id @default(cuid())
+  requisitionId         String
+  requisition           Requisition            @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  materialId            String? // opcional desde a Fase 7 (ADR-009) — item não-estocável usa `description` em vez de matéria-prima
+  material              Material?              @relation(fields: [materialId], references: [id])
+  description           String                 @default("") // usado quando materialId é nulo, ex: "Manutenção preventiva do compressor"
+  supplierId            String?
+  supplier              Supplier?              @relation(fields: [supplierId], references: [id])
+  quantity              Float                  @default(1)
+  unit                  String                 @default("KG")
+  estimatedPrice        Float                  @default(0)
+  quantityFromStock     Float                  @default(0) // atendido pelo estoque disponível (Fase 7) — calculado na transição para "ordered"
+  quantityToPurchase    Float                  @default(0) // = quantity - quantityFromStock; só esta parte alimenta o Pedido de Compra
+  originMrpSuggestionId String? // rastreabilidade quando o item nasce de uma MrpSuggestion aprovada (Fase 7)
+  originMrpSuggestion   MrpSuggestion?         @relation(fields: [originMrpSuggestionId], references: [id])
+  notes                 String                 @default("")
+  quotes                RequisitionItemQuote[]
+  purchaseOrderItems    PurchaseOrderItem[]
 
   @@index([requisitionId])
   @@index([materialId])
+  @@index([originMrpSuggestionId])
   @@index([supplierId])
 }
 
 // ── COTAÇÃO ──────────────────────────────────────────────
 // Cada fornecedor cotado para um item de requisição. Ao "selecionar" uma
-// cotação, ela grava o preço/fornecedor de volta no RequisitionItem, que
-// passa a representar o Pedido de Compra (status "ordered" da Requisition).
+// cotação, ela grava o preço/fornecedor de volta no RequisitionItem. Ao
+// avançar a Requisition para "ordered", um PurchaseOrder formal é gerado
+// por fornecedor vencedor (ver model PurchaseOrder).
 
 model RequisitionItemQuote {
-  id                 String           @id @default(cuid())
-  requisitionItemId  String
-  requisitionItem    RequisitionItem  @relation(fields: [requisitionItemId], references: [id], onDelete: Cascade)
-  supplierId         String
-  supplier           Supplier         @relation(fields: [supplierId], references: [id])
-  price              Float
-  leadTimeDays       Int              @default(0)
-  notes              String           @default("")
-  isSelected         Boolean          @default(false)
-  createdAt          DateTime         @default(now())
+  id                String          @id @default(cuid())
+  requisitionItemId String
+  requisitionItem   RequisitionItem @relation(fields: [requisitionItemId], references: [id], onDelete: Cascade)
+  supplierId        String
+  supplier          Supplier        @relation(fields: [supplierId], references: [id])
+  price             Float
+  leadTimeDays      Int             @default(0)
+  notes             String          @default("")
+  isSelected        Boolean         @default(false)
+  createdAt         DateTime        @default(now())
 
   @@index([requisitionItemId])
   @@index([supplierId])
+}
+
+// ── PEDIDO DE COMPRA (documento formal ao fornecedor) ───
+// Gerado automaticamente ao avançar uma Requisition para "ordered", agrupando
+// os itens da requisição pelo fornecedor vencedor (RequisitionItemQuote.isSelected).
+// O recebimento físico de mercadoria acontece aqui, não mais na Requisition.
+
+model PurchaseOrder {
+  id            String      @id @default(cuid())
+  number        String      @unique
+  status        String      @default("draft") // draft, pending_approval, approved, sent, confirmed, partially_received, received, cancelled (Fase 8, ADR-010)
+  supplierId    String
+  supplier      Supplier    @relation(fields: [supplierId], references: [id])
+  requisitionId String
+  requisition   Requisition @relation(fields: [requisitionId], references: [id])
+  date          String
+  expectedDate  String      @default("")
+  paymentTerms  String      @default("")
+  notes         String      @default("")
+  subtotal      Float       @default(0)
+  total         Float       @default(0)
+  approvedBy    String? // Fase 8, ADR-010 — autorização interna, nunca o envio ao fornecedor (ver sentAt)
+  approvedAt    DateTime?
+  sentAt        DateTime?
+  confirmedAt   DateTime?
+  receivedAt    DateTime?
+  cancelledAt   DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+
+  items           PurchaseOrderItem[]
+  materialBatches MaterialBatch[] // lotes criados a partir de recebimentos deste pedido (Fase 10, ADR-013)
+  accountPayable  AccountPayable? // Fase 12, ADR-016 — 1 título a pagar por pedido, valor cresce a cada recebimento parcial
+
+  @@index([status])
+  @@index([supplierId])
+  @@index([requisitionId])
+  @@index([userId])
+  @@index([createdAt]) // Fase 11, ADR-017 — tempo de ciclo/valor de PO por período no Dashboard Compras
+}
+
+model PurchaseOrderItem {
+  id                String           @id @default(cuid())
+  purchaseOrderId   String
+  purchaseOrder     PurchaseOrder    @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  requisitionItemId String?
+  requisitionItem   RequisitionItem? @relation(fields: [requisitionItemId], references: [id])
+  materialId        String
+  material          Material         @relation(fields: [materialId], references: [id])
+  quantity          Float            @default(1)
+  quantityReceived  Float            @default(0)
+  unit              String           @default("KG")
+  unitPrice         Float            @default(0)
+  total             Float            @default(0)
+  notes             String           @default("")
+  materialBatches   MaterialBatch[] // lotes criados a partir de recebimentos deste item (Fase 10, ADR-013)
+
+  @@index([purchaseOrderId])
+  @@index([materialId])
+  @@index([requisitionItemId])
 }
 
 // ── ESTOQUE (histórico de movimentações) ────────────────
@@ -519,73 +881,77 @@ model RequisitionItemQuote {
 // (seja de Material ou de Product) deve gerar um registro aqui.
 
 model StockMovement {
-  id              String   @id @default(cuid())
-  itemType        String   // "material" ou "product"
+  id              String         @id @default(cuid())
+  itemType        String // "material" ou "product"
   materialId      String?
-  material        Material? @relation("MaterialStockMovements", fields: [materialId], references: [id])
+  material        Material?      @relation("MaterialStockMovements", fields: [materialId], references: [id])
   productId       String?
-  product         Product?  @relation("ProductStockMovements", fields: [productId], references: [id])
-  type            String   // IN (entrada), OUT (saida), ADJUST (ajuste de inventario), RESERVE, RELEASE
-  quantity        Float    // sempre positivo; o "type" define o sinal do efeito no saldo
-  balanceAfter    Float    @default(0) // saldo resultante após o movimento, para auditoria rápida
-  reason          String   @default("") // ex: "Requisicao REQ-000012", "OP OP-000045 concluida", "Ajuste de inventario"
-  referenceType   String   @default("") // "requisition", "production_order", "manual"
-  referenceId     String   @default("")
-  notes           String   @default("")
-  createdAt       DateTime @default(now())
+  product         Product?       @relation("ProductStockMovements", fields: [productId], references: [id])
+  type            String // IN (entrada), OUT (saida), ADJUST (ajuste de inventario), RESERVE, RELEASE
+  quantity        Float // sempre positivo; o "type" define o sinal do efeito no saldo
+  balanceAfter    Float          @default(0) // saldo resultante após o movimento, para auditoria rápida
+  reason          String         @default("") // ex: "Requisicao REQ-000012", "OP OP-000045 concluida", "Ajuste de inventario"
+  referenceType   String         @default("") // "requisition", "production_order", "purchase_order", "manual"
+  referenceId     String         @default("")
+  notes           String         @default("")
+  createdAt       DateTime       @default(now())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User           @relation(fields: [userId], references: [id])
+  materialBatchId String? // lote diretamente originado/afetado por este movimento (Fase 10, ADR-013) — nullable, só preenchido quando o material é lotControlled
+  materialBatch   MaterialBatch? @relation(fields: [materialBatchId], references: [id])
 
   @@index([materialId])
   @@index([productId])
   @@index([itemType])
   @@index([createdAt])
+  @@index([materialBatchId])
+  @@index([type]) // Fase 11, ADR-017 — volume de movimentação por tipo (IN/OUT/ADJUST/RESERVE/RELEASE)
 }
 
 // ── ORÇAMENTOS ───────────────────────────────────────────
 
 model Quote {
-  id              String      @id @default(cuid())
-  number          String
-  version         Int         @default(1)
-  status          String      @default("draft") // draft, sent, approved, rejected, cancelled, expired
-  date            String
-  validUntil      String      @default("")
-  clientId        String?
-  client          Client?     @relation(fields: [clientId], references: [id])
-  clientName      String      @default("")
-  clientContact   String      @default("")
-  clientAddress   String      @default("")
-  clientNeighborhood String   @default("")
-  clientCep       String      @default("")
-  clientCnpj      String      @default("")
-  clientEmail     String      @default("")
-  clientPhone     String      @default("")
-  subtotal        Float       @default(0)
-  discountType    String      @default("value") // value, percent
-  discountValue   Float       @default(0)
-  discountTotal   Float       @default(0)
-  freightMode     String      @default("combined") // included, excluded, combined, quote
-  freightText     String      @default("A COMBINAR")
-  freightValue    Float       @default(0)
-  total           Float       @default(0)
-  warranty        String      @default("")
-  validity        String      @default("")
-  deliveryTime    String      @default("")
-  paymentTerms    String      @default("")
-  generalConditions String    @default("")
-  notes           String      @default("")
-  photoNote       String      @default("")
-  internalNotes   String      @default("")
-  approvedBy      String?
-  approvedAt      DateTime?
-  sentAt          DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  userId          String
-  user            User        @relation(fields: [userId], references: [id])
+  id                 String    @id @default(cuid())
+  number             String
+  version            Int       @default(1)
+  status             String    @default("draft") // draft, sent, approved, rejected, cancelled, expired
+  date               String
+  validUntil         String    @default("")
+  clientId           String?
+  client             Client?   @relation(fields: [clientId], references: [id])
+  clientName         String    @default("")
+  clientContact      String    @default("")
+  clientAddress      String    @default("")
+  clientNeighborhood String    @default("")
+  clientCep          String    @default("")
+  clientCnpj         String    @default("")
+  clientEmail        String    @default("")
+  clientPhone        String    @default("")
+  subtotal           Float     @default(0)
+  discountType       String    @default("value") // value, percent
+  discountValue      Float     @default(0)
+  discountTotal      Float     @default(0)
+  freightMode        String    @default("combined") // included, excluded, combined, quote
+  freightText        String    @default("A COMBINAR")
+  freightValue       Float     @default(0)
+  total              Float     @default(0)
+  warranty           String    @default("")
+  validity           String    @default("")
+  deliveryTime       String    @default("")
+  paymentTerms       String    @default("")
+  generalConditions  String    @default("")
+  notes              String    @default("")
+  photoNote          String    @default("")
+  internalNotes      String    @default("")
+  approvedBy         String?
+  approvedAt         DateTime?
+  sentAt             DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  userId             String
+  user               User      @relation(fields: [userId], references: [id])
 
-  items QuoteItem[]
+  items      QuoteItem[]
   salesOrder SalesOrder?
 
   @@unique([number, version])
@@ -593,26 +959,27 @@ model Quote {
   @@index([clientId])
   @@index([userId])
   @@index([date])
+  @@index([createdAt]) // Fase 11, ADR-017 — indicadores comerciais filtrados por período (Subetapa 2)
 }
 
 model QuoteItem {
-  id          String  @id @default(cuid())
+  id          String   @id @default(cuid())
   quoteId     String
-  quote       Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   productId   String?
   product     Product? @relation(fields: [productId], references: [id])
-  code        String  @default("")
-  description String  @default("")
-  quantity    Float   @default(1)
-  unit        String  @default("UN")
-  unitPrice   Float   @default(0)
-  total       Float   @default(0)
-  weight      Float   @default(0)
-  width       Float   @default(0)
-  height      Float   @default(0)
-  length      Float   @default(0)
-  order       Int     @default(0)
-  notes       String  @default("")
+  code        String   @default("")
+  description String   @default("")
+  quantity    Float    @default(1)
+  unit        String   @default("UN")
+  unitPrice   Float    @default(0)
+  total       Float    @default(0)
+  weight      Float    @default(0)
+  width       Float    @default(0)
+  height      Float    @default(0)
+  length      Float    @default(0)
+  order       Int      @default(0)
+  notes       String   @default("")
   createdAt   DateTime @default(now())
 
   @@index([quoteId])
@@ -622,15 +989,199 @@ model QuoteItem {
 // ── ANEXOS ───────────────────────────────────────────────
 
 model Attachment {
-  id        String   @id @default(cuid())
-  module    String   // orcamentos, produtos, clientes
-  entityId  String
-  fileName  String
-  filePath  String
-  fileSize  Int      @default(0)
-  mimeType  String   @default("")
+  id         String   @id @default(cuid())
+  module     String // orcamentos, produtos, clientes
+  entityId   String
+  fileName   String
+  filePath   String
+  fileSize   Int      @default(0)
+  mimeType   String   @default("")
   uploadedBy String?
-  createdAt DateTime @default(now())
+  createdAt  DateTime @default(now())
 
   @@index([module, entityId])
+}
+
+// ── RASTREABILIDADE POR LOTE (Fase 10, ADR-013) ─────────
+// Opt-in via Material.lotControlled/Product.lotControlled — itens sem o flag continuam operando
+// exatamente como hoje, sem nenhum MaterialBatch/ProductBatch envolvido. Schema puro nesta
+// subetapa: nenhuma lógica de criação/consumo ainda (Subetapas 2/3).
+
+// Lote de matéria-prima, criado no recebimento de um Pedido de Compra — um por evento de
+// recebimento (uma chamada de receive() pode gerar múltiplos lotes ao longo do tempo para o
+// mesmo PurchaseOrderItem, já que um item pode ser recebido em entregas parciais distintas).
+// FIFO opera sobre `quantityAvailable`, ordenado por `receivedAt` (índice composto abaixo).
+model MaterialBatch {
+  id                  String             @id @default(cuid())
+  materialId          String
+  material            Material           @relation(fields: [materialId], references: [id])
+  batchNumber         String             @default("") // do fornecedor, OU gerado via NumberingService quando o fornecedor não informa
+  supplierId          String?
+  supplier            Supplier?          @relation(fields: [supplierId], references: [id])
+  purchaseOrderId     String?
+  purchaseOrder       PurchaseOrder?     @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrderItemId String?
+  purchaseOrderItem   PurchaseOrderItem? @relation(fields: [purchaseOrderItemId], references: [id])
+  quantityReceived    Float              @default(0) // histórico, imutável após criado
+  quantityAvailable   Float              @default(0) // decrementado a cada consumo — FIFO opera sobre este campo
+  unitCost            Float              @default(0) // snapshot de PurchaseOrderItem.unitPrice no recebimento — preparação para custeio por lote (Financeiro, Fase 12), nunca recalculado se o preço do item mudar depois
+  receivedAt          DateTime           @default(now())
+  expiresAt           DateTime? // opcional — reservado para uma futura estratégia FEFO, não usado nesta fase
+  notes               String             @default("")
+  createdAt           DateTime           @default(now())
+
+  consumptions   BatchConsumption[] @relation("MaterialBatchConsumptions")
+  stockMovements StockMovement[] // movimentos que originaram/afetaram este lote (Fase 10, ADR-013)
+
+  @@unique([materialId, batchNumber])
+  @@index([supplierId])
+  @@index([purchaseOrderId])
+  @@index([materialId, receivedAt]) // ordem FIFO por material
+  @@index([receivedAt]) // Fase 11, ADR-017 — volume recebido por período, todos os materiais
+  @@index([expiresAt]) // Fase 11, ADR-017 — lotes próximos do vencimento
+}
+
+// Lote de produto acabado — um por rodada de produce() (ADR-011), ligado à ProductionOrder (não
+// diretamente à ProductionOrderExecution, para não acoplar rastreabilidade de lote à mecânica de
+// idempotência de retry, preocupação ortogonal).
+model ProductBatch {
+  id                String          @id @default(cuid())
+  productId         String
+  product           Product         @relation(fields: [productId], references: [id])
+  productionOrderId String
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id])
+  batchNumber       String          @default("") // gerado internamente: <número da OP>-<sequência da rodada>
+  quantityProduced  Float           @default(0)
+  producedAt        DateTime        @default(now())
+  notes             String          @default("")
+  createdAt         DateTime        @default(now())
+  // Custo real de material (Fase 12, ADR-016, Subetapa 1/2) — Σ(unitCost × quantityConsumed) de toda
+  // a árvore de BatchConsumption deste lote (via batchTraceabilityService.traceBackward()),
+  // calculado e persistido no momento da produção pela CostingService; imutável depois, mesmo
+  // princípio de MaterialBatch.unitCost. `null` enquanto não calculado (produto não lotControlled,
+  // ou calculado antes desta Subetapa existir).
+  materialCost      Float?
+
+  // O que este lote consumiu para existir — matéria-prima direta E/OU lote de subconjunto (ver
+  // BatchConsumption.itemType). Reaproveita a mesma árvore que a Reconciliação (ADR-012) percorre.
+  consumedFrom          BatchConsumption[] @relation("ProductBatchConsumedFrom")
+  // Onde este lote (quando ele mesmo é um subconjunto) foi consumido por uma OP de nível superior.
+  consumedAsComponentIn BatchConsumption[] @relation("ProductBatchConsumedAsComponent")
+
+  @@index([productId])
+  @@index([productionOrderId])
+  @@index([producedAt]) // Fase 11, ADR-017 — volume produzido por período, todos os produtos
+}
+
+// Liga um ProductBatch (o que está sendo produzido) ao(s) lote(s) que ele consumiu — de matéria-
+// prima (MaterialBatch) OU de outro ProductBatch, quando o item consumido é um subconjunto com
+// lote próprio (mesma distinção de itemType já usada em MaterialReservation/StockMovement).
+// Multinível por construção: encadear consumedAsComponentIn de um ProductBatch de subconjunto
+// propaga a rastreabilidade para baixo sem uma segunda travessia de árvore.
+model BatchConsumption {
+  id                     String         @id @default(cuid())
+  productBatchId         String
+  productBatch           ProductBatch   @relation("ProductBatchConsumedFrom", fields: [productBatchId], references: [id])
+  itemType               String // "material" | "product"
+  materialBatchId        String?
+  materialBatch          MaterialBatch? @relation("MaterialBatchConsumptions", fields: [materialBatchId], references: [id])
+  consumedProductBatchId String?
+  consumedProductBatch   ProductBatch?  @relation("ProductBatchConsumedAsComponent", fields: [consumedProductBatchId], references: [id])
+  quantityConsumed       Float          @default(0)
+  createdAt              DateTime       @default(now())
+
+  @@index([productBatchId])
+  @@index([materialBatchId])
+  @@index([consumedProductBatchId])
+}
+
+// ── FINANCEIRO (Fase 12, ADR-016) ───────────────────────
+// Módulo transversal e reativo: nunca inicia um processo de negócio sozinho, só reage a eventos de
+// outros módulos (Domain Events, ADR-003) e expõe consultas. Contas a Receber nasce de um Invoice
+// (Faturamento, entidade própria — decisão pendente #1 do ADR-016 resolvida em 2026-07-14, suporta
+// faturamento parcial: 1 SalesOrder pode gerar N Invoices). Contas a Pagar nasce no recebimento
+// físico de um PurchaseOrder (decisão #2) — 1 título por pedido, valor recalculado a cada recebimento
+// parcial (`upsertPayableFromPurchaseOrder`, idempotente, nunca duplicado: `purchaseOrderId @unique`).
+
+model Invoice {
+  id           String   @id @default(cuid())
+  number       String   @unique // via NumberingService "nota_fiscal"
+  salesOrderId String
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id])
+  total        Float
+  issuedAt     DateTime
+  notes        String   @default("")
+  createdAt    DateTime @default(now())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+
+  accountReceivable AccountReceivable?
+
+  @@index([salesOrderId])
+}
+
+model AccountReceivable {
+  id        String   @id @default(cuid())
+  number    String   @unique // via NumberingService "titulo_receber"
+  invoiceId String   @unique // 1 Invoice -> no máximo 1 título a receber
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id])
+  amount    Float
+  dueDate   DateTime
+  status    String   @default("open") // open, partially_paid, paid, cancelled
+  notes     String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+
+  receipts Receipt[]
+
+  @@index([status])
+}
+
+model Receipt {
+  id                  String            @id @default(cuid())
+  accountReceivableId String
+  accountReceivable   AccountReceivable @relation(fields: [accountReceivableId], references: [id], onDelete: Cascade)
+  amount              Float
+  paidAt              DateTime
+  notes               String            @default("")
+  createdAt           DateTime          @default(now())
+  userId              String
+  user                User              @relation(fields: [userId], references: [id])
+
+  @@index([accountReceivableId])
+}
+
+model AccountPayable {
+  id              String        @id @default(cuid())
+  number          String        @unique // via NumberingService "titulo_pagar"
+  purchaseOrderId String        @unique // 1 PurchaseOrder -> no máximo 1 título a pagar (valor cresce a cada recebimento parcial)
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  amount          Float
+  dueDate         DateTime
+  status          String        @default("open") // open, partially_paid, paid, cancelled
+  notes           String        @default("")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+
+  payments Payment[]
+
+  @@index([status])
+}
+
+model Payment {
+  id               String         @id @default(cuid())
+  accountPayableId String
+  accountPayable   AccountPayable @relation(fields: [accountPayableId], references: [id], onDelete: Cascade)
+  amount           Float
+  paidAt           DateTime
+  notes            String         @default("")
+  createdAt        DateTime       @default(now())
+  userId           String
+  user             User           @relation(fields: [userId], references: [id])
+
+  @@index([accountPayableId])
 }

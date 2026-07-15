@@ -56,6 +56,40 @@ export function maskCep(value: string): string {
     .replace(/(\d{5})(\d)/, '$1-$2')
 }
 
+/** Valida o dígito verificador de um CPF (algoritmo padrão da Receita Federal). */
+export function isValidCpf(value: string): boolean {
+  const digits = onlyDigits(value)
+  if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false
+  const calc = (len: number) => {
+    let sum = 0
+    for (let i = 0; i < len; i++) sum += parseInt(digits[i], 10) * (len + 1 - i)
+    const rest = (sum * 10) % 11
+    return rest === 10 ? 0 : rest
+  }
+  return calc(9) === parseInt(digits[9], 10) && calc(10) === parseInt(digits[10], 10)
+}
+
+/** Valida o dígito verificador de um CNPJ (algoritmo padrão da Receita Federal). */
+export function isValidCnpj(value: string): boolean {
+  const digits = onlyDigits(value)
+  if (digits.length !== 14 || /^(\d)\1{13}$/.test(digits)) return false
+  const calc = (len: number) => {
+    const weights = len === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    let sum = 0
+    for (let i = 0; i < len; i++) sum += parseInt(digits[i], 10) * weights[i]
+    const rest = sum % 11
+    return rest < 2 ? 0 : 11 - rest
+  }
+  return calc(12) === parseInt(digits[12], 10) && calc(13) === parseInt(digits[13], 10)
+}
+
+/** Valida CPF ou CNPJ automaticamente, conforme a quantidade de dígitos (mesma convenção de maskCpfCnpj). */
+export function isValidCpfCnpj(value: string): boolean {
+  const digits = onlyDigits(value)
+  if (digits.length === 0) return true // campo vazio não é "inválido", é "não preenchido"
+  return digits.length > 11 ? isValidCnpj(value) : isValidCpf(value)
+}
+
 export interface ViaCepAddress {
   logradouro: string
   bairro: string
@@ -94,6 +128,8 @@ export interface CnpjData {
   ddd_telefone_1: string
   email: string
   descricao_situacao_cadastral: string
+  cnae_fiscal: number
+  cnae_fiscal_descricao: string
 }
 
 /**

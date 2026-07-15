@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { requireAuth, requireRole, unauthorized, forbidden, ok, badRequest } from '@/lib/api-utils'
+import { requireAuth, requireRole, ok, badRequest, forbidden, handleRouteError, ForbiddenError } from '@/lib/api-utils'
 import { settingService } from '@/app/services/setting.service'
 
 export async function GET(_req: NextRequest) {
@@ -8,15 +8,13 @@ export async function GET(_req: NextRequest) {
     const grouped = await settingService.getAllGrouped()
     return ok(grouped)
   } catch (error) {
-    if (error instanceof Error && error.name === 'UnauthorizedError') return unauthorized()
-    console.error('GET /api/settings error:', error)
-    return badRequest('Erro ao buscar configurações')
+    return handleRouteError(error, 'Erro ao buscar configurações')
   }
 }
 
 export async function PUT(req: NextRequest) {
   try {
-    const user = await requireRole('admin')
+    await requireRole('admin')
     const body = await req.json()
 
     if (!Array.isArray(body) || body.length === 0) {
@@ -27,9 +25,8 @@ export async function PUT(req: NextRequest) {
 
     return ok({ success: true, updated: body.length })
   } catch (error) {
-    if (error instanceof Error && error.name === 'UnauthorizedError') return unauthorized()
-    if (error instanceof Error && error.name === 'ForbiddenError') return forbidden()
-    console.error('PUT /api/settings error:', error)
-    return badRequest('Erro ao atualizar configurações')
+    // Preserva a mensagem genérica original (não a mensagem específica de requireRole).
+    if (error instanceof ForbiddenError) return forbidden()
+    return handleRouteError(error, 'Erro ao atualizar configurações')
   }
 }

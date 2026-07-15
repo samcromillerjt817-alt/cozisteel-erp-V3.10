@@ -1,16 +1,20 @@
 {
-  "name": "nextjs_tailwind_shadcn_ts",
-  "version": "0.2.0",
+  "name": "cozisteel-erp",
+  "version": "4.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
+    "postbuild": "rm -rf .next/standalone/.next/static .next/standalone/public && mkdir -p .next/standalone/.next && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
     "start": "node .next/standalone/server.js",
     "lint": "eslint .",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset"
+    "db:reset": "prisma migrate reset",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:db:push": "env $(cat .env.test | xargs) prisma db push"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -89,10 +93,12 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "bun-types": "^1.3.4",
+    "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "^16.1.1",
     "tailwindcss": "^4",
     "tw-animate-css": "^1.3.5",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

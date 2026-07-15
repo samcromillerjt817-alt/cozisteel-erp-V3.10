@@ -25,11 +25,18 @@ body {
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
+  /* Paleta categórica oficial do ERP (Fase 11.5, Subetapa 11.5.1) — promovida da Dashboard (Fase 11,
+     validada pela skill dataviz) para uso em qualquer gráfico do sistema, não só o Dashboard. Substitui
+     os 5 slots `--chart-1..5` padrão do scaffold shadcn, que nunca chegaram a ser consumidos por
+     nenhuma classe Tailwind (`bg-chart-*`/`text-chart-*`) em nenhum lugar do código. */
+  --color-chart-cat-1: var(--chart-cat-1);
+  --color-chart-cat-2: var(--chart-cat-2);
+  --color-chart-cat-3: var(--chart-cat-3);
+  --color-chart-cat-4: var(--chart-cat-4);
+  --color-chart-cat-5: var(--chart-cat-5);
+  --color-chart-cat-6: var(--chart-cat-6);
+  --color-chart-cat-7: var(--chart-cat-7);
+  --color-chart-cat-8: var(--chart-cat-8);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -72,11 +79,17 @@ body {
   --border: #e2e8f0;
   --input: #e2e8f0;
   --ring: #b21118;
-  --chart-1: #b21118;
-  --chart-2: #f59e0b;
-  --chart-3: #10b981;
-  --chart-4: #3b82f6;
-  --chart-5: #8b5cf6;
+  /* Espelha DASHBOARD_CHART_PALETTE (src/lib/erp-chart-palette.ts) — mesmos 8 hex, validados pela
+     skill dataviz. Mantidos em sincronia manualmente (o array TS é o valor real consumido pelo
+     Recharts; estas variáveis são a documentação/preparação para tema escuro, Fase 11.5 Decisão 1). */
+  --chart-cat-1: #2a78d6;
+  --chart-cat-2: #1baf7a;
+  --chart-cat-3: #eda100;
+  --chart-cat-4: #008300;
+  --chart-cat-5: #4a3aa7;
+  --chart-cat-6: #e34948;
+  --chart-cat-7: #e87ba4;
+  --chart-cat-8: #eb6834;
   --sidebar: #fafafa;
   --sidebar-foreground: #334155;
   --sidebar-primary: #b21118;
@@ -87,6 +100,23 @@ body {
   --sidebar-ring: #b21118;
 }
 
+/* Tema escuro (Fase 11.5, Decisão 1): reservado, NÃO implementado nesta fase — todo token acima já
+   nasce como CSS custom property justamente para que popular este bloco no futuro não exija tocar
+   nenhum componente (eles já leem os tokens, nunca um valor fixo). Ver ADR-018 §3. */
+.dark {
+}
+
+/*
+ * Escala tipográfica formal (Fase 11.5, Subetapa 11.5.1) — mapeamento semântico → classes Tailwind já
+ * existentes (nenhuma classe nova, só a convenção documentada, para acabar com a escolha ad-hoc de
+ * tamanho por tela):
+ *   Título de página     → text-2xl font-bold
+ *   Subtítulo de seção    → text-lg font-semibold
+ *   Rótulo de destaque    → text-sm font-semibold uppercase tracking-wide text-muted-foreground
+ *   Corpo                 → text-sm
+ *   Legenda/auxiliar      → text-xs text-muted-foreground
+ * Headings (h1-h6) continuam na fonte de display (Space Grotesk) definida abaixo.
+ */
 @layer base {
   * {
     @apply border-border outline-ring/50;

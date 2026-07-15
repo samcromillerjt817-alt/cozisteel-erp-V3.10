@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { hasPermission, type Module, type Action } from '@/app/middleware/rbac'
+import { AppError, handleError } from '@/app/exceptions'
 
 export interface SessionUser {
   id: string
@@ -98,4 +99,22 @@ export function parsePagination(searchParams: URLSearchParams) {
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
   const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20', 10) || 20))
   return { page, limit }
+}
+
+/**
+ * Handler único de erro pra rotas que delegam a um Service. Services nunca constroem NextResponse —
+ * só lançam UnauthorizedError/ForbiddenError (auth, vindo de requireAuth/requireModulePermission) ou
+ * as subclasses de AppError (NotFoundException/BadRequestException/ForbiddenException/ConflictException,
+ * de @/app/exceptions, para regra de negócio). `fallbackMessage` preserva a mensagem genérica exata que
+ * cada rota já tinha pro caso de erro verdadeiramente inesperado (não perde especificidade por rota).
+ */
+export function handleRouteError(error: unknown, fallbackMessage: string): NextResponse {
+  if (error instanceof UnauthorizedError) return unauthorized()
+  if (error instanceof ForbiddenError) return forbidden(error.message)
+  if (error instanceof AppError) {
+    const { message, status } = handleError(error)
+    return NextResponse.json({ error: message }, { status })
+  }
+  console.error(fallbackMessage, error)
+  return badRequest(fallbackMessage)
 }

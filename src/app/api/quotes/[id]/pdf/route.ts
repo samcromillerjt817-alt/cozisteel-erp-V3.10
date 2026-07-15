@@ -4,18 +4,20 @@ import { pdfService } from '@/app/services/pdf.service'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
-export async function GET(_req: NextRequest, ctx: RouteContext) {
+export async function GET(req: NextRequest, ctx: RouteContext) {
   try {
     await requireAuth()
     const { id } = await ctx.params
+    const { searchParams } = new URL(req.url)
+    const variant = searchParams.get('variant') === 'tecnico' ? 'tecnico' : 'comercial'
 
-    const pdfBuffer = await pdfService.generateQuotePdf(id)
+    const pdfBuffer = await pdfService.generateQuotePdf(id, variant)
 
     return new Response(new Uint8Array(pdfBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="orcamento-${id}.pdf"`,
+        'Content-Disposition': `inline; filename="orcamento-${variant}-${id}.pdf"`,
       },
     })
   } catch (error) {
