@@ -2,7 +2,7 @@
 
 > Sistema de gestão empresarial para empresas do ramo de móveis planejados, marcenarias, serralherias e fabricantes sob medida.
 
-![Version](https://img.shields.io/badge/version-v3.1.0-blue)
+![Version](https://img.shields.io/badge/version-v4.0.0-blue)
 ![Status](https://img.shields.io/badge/status-Em%20Produção-success)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -30,8 +30,9 @@ O menu é organizado por área de negócio:
 ## Suprimentos
 - **Matérias-Primas** — cadastro dedicado (código, categoria, unidade, densidade, custo, estoque atual/mínimo), com visão de fornecedores vinculados e produtos que a consomem
 - **Fornecedores** — cadastro completo com preenchimento automático por CNPJ, dados fiscais, histórico de compras
-- **Requisições** — fluxo completo `Requisição → Cotação de Fornecedores → Pedido de Compra → Recebimento → Estoque`; a tela de cotação compara preços/prazos de múltiplos fornecedores por item e seleciona o vencedor automaticamente
-- **Estoque** — saldo consolidado (matéria-prima + produto acabado), histórico de movimentações com motivo e origem (OP, requisição ou ajuste manual), ajuste manual de inventário
+- **Requisições** — cotação de fornecedores por item, com seleção da cotação vencedora; ao aprovar e avançar para "Pedido feito", gera automaticamente um **Pedido de Compra** formal por fornecedor vencedor
+- **Compras** — Pedidos de Compra gerados a partir da Requisição (numerados, com PDF ao fornecedor), com fluxo próprio `Rascunho → Enviado → Confirmado` e recebimento de mercadoria parcial ou total por item, dando entrada automática no estoque de matéria-prima
+- **Estoque** — saldo consolidado (matéria-prima + produto acabado), histórico de movimentações com motivo e origem (OP, Pedido de Compra ou ajuste manual), ajuste manual de inventário
 
 ## Gestão
 - **Relatórios** — Vendas, Produção, Compras e Estoque, com filtro de período/status, exportação em Excel/CSV e PDF
@@ -39,6 +40,55 @@ O menu é organizado por área de negócio:
 ## Administração
 - **Usuários** — autenticação, 9 perfis de acesso (Administrador, Gerente, Usuário, Visualizador, Comercial, Produção, Compras, Estoque, Financeiro), permissão aplicada tanto no menu quanto nas rotas de API (403 para quem não tem permissão)
 - **Configurações** — dados da empresa (usados em todos os PDFs e relatórios gerados), numeração de documentos, atualizações do sistema
+
+---
+
+# 🔗 Como os Módulos se Conectam (fluxo de ponta a ponta)
+
+O núcleo do sistema é um ciclo automatizado que liga Comercial → Produção → Suprimentos → Estoque.
+Isso não é só documentação de intenção — cada seta abaixo é uma transição de status que dispara
+código real (não é passo manual em vários módulos diferentes):
+
+```
+ORÇAMENTO
+  │
+  ├─ aprovado ──────► gera 1 Ordem de Produção por item vinculado a produto
+  │                    (generateProductionOrdersFromQuote, quotes/[id]/status)
+  │
+  └─ "converter em pedido" (ação manual) ──► PEDIDO DE VENDA
+                        registro comercial da venda; NÃO mexe em estoque —
+                        quem baixa estoque é a Ordem de Produção, não o Pedido de Venda
+
+ORDEM DE PRODUÇÃO
+  │
+  ├─ pode ser sugerida a partir de uma Requisição em aberto
+  │   (calcula o que falta de matéria-prima pela receita/BOM do produto)
+  │
+  └─ concluída ──────► baixa matéria-prima (conforme a receita do produto)
+                        + entrada do produto acabado no estoque
+                        (production-orders/[id])
+
+REQUISIÇÃO DE MATÉRIA-PRIMA
+  │
+  ├─ cotação de fornecedores por item → seleciona o vencedor
+  │
+  └─ "Pedido feito" (bloqueado se algum item não tiver vencedor) ──►
+       gera 1 PEDIDO DE COMPRA por fornecedor vencedor, agrupando os itens
+       (generatePurchaseOrdersFromRequisition, requisitions/[id]/status)
+
+PEDIDO DE COMPRA
+  │
+  ├─ Rascunho → Enviado → Confirmado
+  │
+  └─ Recebimento (parcial ou total, por item) ──► entrada no estoque de
+       matéria-prima + histórico de movimentação, e o próprio status do
+       pedido é recalculado automaticamente (parcial/recebido)
+```
+
+**Pontos que valem atenção ao mexer nesse fluxo:**
+- O Pedido de Venda é só o registro comercial — ele referencia as Ordens de Produção correspondentes só para exibição, não para disparar nada.
+- Avançar uma Requisição para "Pedido feito" é bloqueado até todo item ter uma cotação vencedora selecionada — isso evita perder material da compra silenciosamente.
+- Todo estoque de matéria-prima tem duas portas de entrada automáticas (conclusão de OP e recebimento de Pedido de Compra) e uma manual (ajuste de inventário); todas passam por `StockMovement` com motivo e origem, nunca só um número mudando sem rastro.
 
 ---
 
@@ -78,6 +128,19 @@ npx prisma generate
 npx prisma db push
 npm run dev
 ```
+
+**Ambiente Windows/WSL (acesso via caminho UNC, ex. `\\wsl.localhost\Ubuntu\...`)**: comandos `npx`/
+`npm` (`prisma db push`, `tsc`, `lint`, `build`, `test`) falham quando executados diretamente a partir
+de um shell Windows apontando para esse caminho — `npx.cmd`/`npm.cmd` disparam `cmd.exe`, que não
+suporta caminho UNC como diretório de trabalho ("Não há suporte para caminhos UNC"). Execute sempre
+através do WSL de verdade:
+
+```bash
+wsl.exe -e bash -lc "cd /home/julio/cozisteel-erp-V3.10 && <comando>"
+```
+
+Comandos puramente de shell (`git`, `ls`, leitura/edição de arquivo) funcionam normalmente a partir do
+caminho UNC — a limitação é só dos wrappers `.cmd` do Node no Windows.
 
 ## Operação do dia a dia
 

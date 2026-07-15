@@ -8,8 +8,8 @@ export class AppError extends Error {
 }
 
 export class NotFoundException extends AppError {
-  constructor(resource = 'Recurso') {
-    super(`${resource} não encontrado`, 404)
+  constructor(message = 'Recurso não encontrado') {
+    super(message, 404)
     this.name = 'NotFoundException'
   }
 }

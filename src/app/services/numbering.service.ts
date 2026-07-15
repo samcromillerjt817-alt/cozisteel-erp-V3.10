@@ -10,7 +10,14 @@ class NumberingService {
       const created = await db.numberSequence.create({
         data: { documentType, nextNumber: 1 },
       })
-      return this.formatNumber(created)
+      const number = this.formatNumber(created)
+      // Sem este incremento, a segunda chamada para o mesmo documentType recém-criado lia
+      // nextNumber ainda em 1 (nunca avançado aqui) e devolvia o mesmo número já emitido.
+      await db.numberSequence.update({
+        where: { documentType },
+        data: { nextNumber: created.nextNumber + created.increment },
+      })
+      return number
     }
 
     // Handle annual/monthly reset

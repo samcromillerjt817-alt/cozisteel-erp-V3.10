@@ -1,5 +1,5 @@
 export type Role = 'admin' | 'manager' | 'user' | 'viewer' | 'comercial' | 'producao' | 'compras' | 'estoque' | 'financeiro'
-export type Module = 'usuarios' | 'orcamentos' | 'produtos' | 'clientes' | 'categorias' | 'materiais' | 'sistema' | 'configuracoes' | 'sequencias' | 'auditoria' | 'dashboard' | 'fornecedores' | 'requisicoes' | 'producao' | 'estoque' | 'relatorios' | 'compras'
+export type Module = 'usuarios' | 'orcamentos' | 'produtos' | 'clientes' | 'categorias' | 'materiais' | 'sistema' | 'configuracoes' | 'sequencias' | 'auditoria' | 'dashboard' | 'fornecedores' | 'requisicoes' | 'producao' | 'estoque' | 'relatorios' | 'compras' | 'financeiro'
 export type Action = 'create' | 'read' | 'update' | 'delete' | 'manage' | 'export'
 import { ForbiddenException } from '@/app/exceptions'
 
@@ -22,6 +22,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     estoque: ['create', 'read', 'update', 'delete', 'manage', 'export'],
     relatorios: ['create', 'read', 'update', 'delete', 'manage', 'export'],
     compras: ['create', 'read', 'update', 'delete', 'manage', 'export'],
+    financeiro: ['create', 'read', 'update', 'delete', 'manage', 'export'],
   },
   manager: {
     usuarios: ['read'],
@@ -41,6 +42,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     estoque: ['create', 'read', 'update', 'delete', 'export'],
     relatorios: ['create', 'read', 'update', 'export'],
     compras: ['create', 'read', 'update', 'delete', 'export'],
+    financeiro: ['create', 'read', 'update', 'delete', 'export'],
   },
   user: {
     usuarios: ['read'],
@@ -60,6 +62,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     estoque: ['read'],
     relatorios: ['read'],
     compras: ['read'],
+    financeiro: ['read'],
   },
   viewer: {
     usuarios: [],
@@ -79,6 +82,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     estoque: ['read'],
     relatorios: ['read'],
     compras: ['read'],
+    financeiro: ['read'],
   },
   comercial: {
     usuarios: [],
@@ -98,6 +102,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     estoque: ['read'],
     relatorios: ['read', 'export'],
     compras: [],
+    financeiro: ['read'],
   },
   producao: {
     usuarios: [],
@@ -117,6 +122,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     estoque: ['read'],
     relatorios: ['read'],
     compras: ['read'],
+    financeiro: ['read'],
   },
   compras: {
     usuarios: [],
@@ -136,6 +142,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     estoque: ['read'],
     relatorios: ['read', 'export'],
     compras: ['create', 'read', 'update', 'delete', 'manage', 'export'],
+    financeiro: ['read'],
   },
   estoque: {
     usuarios: [],
@@ -155,6 +162,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     estoque: ['create', 'read', 'update', 'manage', 'export'],
     relatorios: ['read', 'export'],
     compras: ['read', 'update'],
+    financeiro: ['read'],
   },
   financeiro: {
     usuarios: [],
@@ -174,7 +182,18 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     estoque: ['read'],
     relatorios: ['create', 'read', 'update', 'delete', 'manage', 'export'],
     compras: ['read', 'export'],
+    financeiro: ['create', 'read', 'update', 'delete', 'manage', 'export'],
   },
+}
+
+/**
+ * Leitura somente-consulta da matriz `PERMISSIONS` (Hardening pós-11.5, Prioridade 3) — nunca usada
+ * para decidir autorização (isso continua sendo só `hasPermission`/`requirePermission`), só para
+ * exibir ao administrador o que um Papel pode fazer antes de atribuí-lo a alguém. Devolve `{}` para um
+ * Papel desconhecido em vez de lançar, já que quem chama é só uma prévia de UI.
+ */
+export function getRolePermissions(role: string): Record<Module, Action[]> {
+  return PERMISSIONS[role as Role] ?? ({} as Record<Module, Action[]>)
 }
 
 export function hasPermission(role: string, module: Module, action: Action): boolean {

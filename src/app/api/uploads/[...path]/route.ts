@@ -1,35 +1,24 @@
 import { NextRequest } from 'next/server'
-import { getStorageDir } from '@/lib/storage'
-import fs from 'fs/promises'
-import path from 'path'
+import { requireAuth, unauthorized } from '@/lib/api-utils'
+import { storageService } from '@/app/services/storage.service'
 
 type RouteContext = { params: Promise<{ path: string[] }> }
-
-const MIME_TYPES: Record<string, string> = {
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-  '.webp': 'image/webp', '.gif': 'image/gif',
-}
 
 /**
  * GET /api/uploads/products/<productId>/<filename>
  * Serve arquivos gravados em STORAGE_PATH. Não usamos /public para isso porque
  * o processo de build/deploy apaga e recria .next/standalone/public a cada
  * atualização — arquivos enviados pelo usuário ficariam perdidos.
+ *
+ * Correção de segurança (Fase 1, ADR-001 log 2026-07-09): antes não exigia autenticação nenhuma,
+ * servindo qualquer arquivo do storage publicamente. Agora exige login (mesmo padrão de toda leitura
+ * autenticada do sistema).
  */
 export async function GET(_req: NextRequest, ctx: RouteContext) {
   try {
+    await requireAuth()
     const { path: segments } = await ctx.params
-    const storageDir = getStorageDir()
-    const filePath = path.join(storageDir, ...segments)
-
-    // Proteção básica contra path traversal (../)
-    if (!filePath.startsWith(storageDir)) {
-      return new Response('Not found', { status: 404 })
-    }
-
-    const buffer = await fs.readFile(filePath)
-    const ext = path.extname(filePath).toLowerCase()
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream'
+    const { buffer, contentType } = await storageService.resolveFile(segments)
 
     return new Response(new Uint8Array(buffer), {
       status: 200,
@@ -38,7 +27,8 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         'Cache-Control': 'public, max-age=31536000, immutable',
       },
     })
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') return unauthorized()
     return new Response('Not found', { status: 404 })
   }
 }

@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 
 export interface CreateAuditLogInput {
@@ -9,6 +10,10 @@ export interface CreateAuditLogInput {
   details?: string
   ip?: string
   userAgent?: string
+  /** Só os campos efetivamente alterados — nunca um snapshot completo do registro (Fase 5.9). */
+  beforeValue?: Record<string, unknown>
+  /** Mesmas chaves de beforeValue, com o valor novo. */
+  afterValue?: Record<string, unknown>
 }
 
 class AuditService {
@@ -23,6 +28,8 @@ class AuditService {
         details: input.details || '',
         ip: input.ip || '',
         userAgent: input.userAgent || '',
+        beforeValue: input.beforeValue as Prisma.InputJsonValue ?? Prisma.JsonNull,
+        afterValue: input.afterValue as Prisma.InputJsonValue ?? Prisma.JsonNull,
       },
     })
   }

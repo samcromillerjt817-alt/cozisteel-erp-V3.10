@@ -93,11 +93,11 @@ async function seedSystemInfo(): Promise<void> {
   await db.systemInfo.create({
     data: {
       id: 'main',
-      version: '3.0.0',
+      version: '4.0.0',
       maintenanceMode: false,
     },
   })
-  console.log('✅ SystemInfo created (v3.0.0)')
+  console.log('✅ SystemInfo created (v4.0.0)')
 }
 
 async function seedAdminUser(): Promise<void> {
