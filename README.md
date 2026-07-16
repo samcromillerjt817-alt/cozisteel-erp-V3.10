@@ -10,7 +10,7 @@
 
 # 📖 Sobre o Projeto
 
-O **Cozisteel ERP** centraliza os processos da empresa numa única plataforma, eliminando controles em planilhas: comercial, produção, compras, estoque, relatórios e gestão de usuários.
+O **Cozisteel ERP** centraliza os processos da empresa numa única plataforma, eliminando controles em planilhas: comercial, produção, suprimentos, estoque, financeiro, relatórios e gestão de usuários — com um Dashboard por perfil de acesso reunindo os indicadores de cada área.
 
 ---
 
@@ -18,28 +18,48 @@ O **Cozisteel ERP** centraliza os processos da empresa numa única plataforma, e
 
 O menu é organizado por área de negócio:
 
+## Dashboard
+- **Dashboard** — um perfil por área (Diretoria, Comercial, PCP, Compras, Produção, Estoque, Administrativo, Financeiro), cada um só vê os widgets relevantes ao seu trabalho; KPIs, gráficos (Recharts) e central de alertas com severidade calculada no backend, nunca um contador genérico no frontend. Diretoria tem uma síntese própria por módulo em vez da simples união dos widgets dos outros perfis
+
 ## Comercial
-- **Orçamentos** — criação rápida, cálculo automático (subtotal/desconto/frete), preenchimento automático de dados do cliente por **CNPJ** e **CEP**, PDF profissional, controle de status
-- **Pedidos de Venda** — gerados a partir de um orçamento aprovado (fluxo `Orçamento → Pedido de Venda → OP`), mantendo o vínculo com o orçamento de origem
+- **Orçamentos** — criação rápida, cálculo automático (subtotal/desconto/frete), preenchimento automático de dados do cliente por **CNPJ** e **CEP**, controle de status, PDF em duas variantes: **Comercial** (enxuto, para cliente novo) e **Técnico** (com foto de cada produto na tabela de itens)
+- **Pedidos de Venda** — gerados a partir de um orçamento aprovado (fluxo `Orçamento → Pedido de Venda → OP`), mantendo o vínculo com o orçamento de origem; o faturamento de um Pedido de Venda gera automaticamente um título a receber no Financeiro
 - **Clientes** — cadastro completo (CPF/CNPJ com preenchimento automático via BrasilAPI, endereço com preenchimento automático via ViaCEP, contatos, histórico)
 
 ## Produção
 - **Produção** — Ordens de Produção, geradas manualmente ou a partir de um Pedido de Venda; ao concluir, dá baixa automática na matéria-prima (conforme a receita do produto) e entrada no estoque do produto acabado
-- **Produtos** — cadastro completo, categoria, unidade, código interno, valores de custo/venda, múltiplas imagens por produto (uma marcada como principal)
+- **Produtos** — cadastro completo, categoria, unidade, código interno, valores de custo/venda, múltiplas imagens por produto (uma marcada como principal, usada no PDF técnico do Orçamento)
 
 ## Suprimentos
 - **Matérias-Primas** — cadastro dedicado (código, categoria, unidade, densidade, custo, estoque atual/mínimo), com visão de fornecedores vinculados e produtos que a consomem
 - **Fornecedores** — cadastro completo com preenchimento automático por CNPJ, dados fiscais, histórico de compras
 - **Requisições** — cotação de fornecedores por item, com seleção da cotação vencedora; ao aprovar e avançar para "Pedido feito", gera automaticamente um **Pedido de Compra** formal por fornecedor vencedor
-- **Compras** — Pedidos de Compra gerados a partir da Requisição (numerados, com PDF ao fornecedor), com fluxo próprio `Rascunho → Enviado → Confirmado` e recebimento de mercadoria parcial ou total por item, dando entrada automática no estoque de matéria-prima
+- **Compras** — Pedidos de Compra gerados a partir da Requisição (numerados, com PDF ao fornecedor), com fluxo próprio `Rascunho → Enviado → Confirmado` e recebimento de mercadoria parcial ou total por item, dando entrada automática no estoque de matéria-prima; o recebimento gera automaticamente um título a pagar no Financeiro
 - **Estoque** — saldo consolidado (matéria-prima + produto acabado), histórico de movimentações com motivo e origem (OP, Pedido de Compra ou ajuste manual), ajuste manual de inventário
 
 ## Gestão
+- **Financeiro** — Contas a Pagar e a Receber, com títulos gerados automaticamente pelo recebimento de Pedidos de Compra e pelo faturamento de Pedidos de Venda (nunca lançados à mão desde a origem); relatórios de saldo por conta, fluxo de caixa projetado, valorização de estoque, margem bruta estimada e histórico de custo por material
 - **Relatórios** — Vendas, Produção, Compras e Estoque, com filtro de período/status, exportação em Excel/CSV e PDF
 
 ## Administração
 - **Usuários** — autenticação, 9 perfis de acesso (Administrador, Gerente, Usuário, Visualizador, Comercial, Produção, Compras, Estoque, Financeiro), permissão aplicada tanto no menu quanto nas rotas de API (403 para quem não tem permissão)
 - **Configurações** — dados da empresa (usados em todos os PDFs e relatórios gerados), numeração de documentos, atualizações do sistema
+
+---
+
+# 🧬 Infraestrutura de domínio (sem tela própria ainda)
+
+Três motores já implementados e testados na camada de serviço/backend, mas ainda sem uma tela dedicada
+no menu (uso interno de outros fluxos, ou aguardando decisão de exposição futura):
+
+- **MRP** (`mrp-calculation`/`mrp-execution`/`mrp-suggestion`) — calcula o que falta de matéria-prima
+  cruzando demanda (Pedidos de Venda/Ordens de Produção) com estoque disponível e sugere reposição;
+  deliberadamente **nunca** cria Pedido de Compra ou Ordem de Produção sozinho, só sugere
+- **Reserva de Material** — reserva de estoque multinível ligada à explosão de BOM do produto, com
+  reconciliação automática quando uma Ordem de Produção é parcialmente concluída ou cancelada
+- **Rastreabilidade por Lote** — Compras cria/incrementa lote de matéria-prima no recebimento, Produção
+  gera lote de produto acabado e consome por FIFO; consulta forward/backward com profundidade
+  arbitrária, ainda sem rota de API própria (avaliação de exposição pendente)
 
 ---
 
@@ -81,20 +101,32 @@ PEDIDO DE COMPRA
   ├─ Rascunho → Enviado → Confirmado
   │
   └─ Recebimento (parcial ou total, por item) ──► entrada no estoque de
-       matéria-prima + histórico de movimentação, e o próprio status do
-       pedido é recalculado automaticamente (parcial/recebido)
+       matéria-prima + histórico de movimentação, status recalculado
+       automaticamente (parcial/recebido), e um TÍTULO A PAGAR é criado
+       no Financeiro
+
+PEDIDO DE VENDA
+  │
+  └─ faturado ──────► um TÍTULO A RECEBER é criado no Financeiro
 ```
 
 **Pontos que valem atenção ao mexer nesse fluxo:**
 - O Pedido de Venda é só o registro comercial — ele referencia as Ordens de Produção correspondentes só para exibição, não para disparar nada.
 - Avançar uma Requisição para "Pedido feito" é bloqueado até todo item ter uma cotação vencedora selecionada — isso evita perder material da compra silenciosamente.
 - Todo estoque de matéria-prima tem duas portas de entrada automáticas (conclusão de OP e recebimento de Pedido de Compra) e uma manual (ajuste de inventário); todas passam por `StockMovement` com motivo e origem, nunca só um número mudando sem rastro.
+- Contas a Pagar/Receber nunca são criadas manualmente do zero — sempre nascem de um Pedido de Compra recebido ou um Pedido de Venda faturado, preservando o vínculo com a origem.
 
 ---
 
 # 📄 Geração de PDF
 
-Todos os documentos (proposta comercial, romaneio de transporte, requisição de compra, ordem de produção, relatórios) compartilham a mesma identidade visual: logo da empresa, cor institucional `#B21119`, cabeçalho e rodapé padronizados. Os dados da empresa exibidos vêm sempre de **Configurações → Empresa** — nunca fixos no código.
+Todos os documentos (Orçamento, romaneio de transporte, requisição de compra, ordem de produção, pedido
+de compra/venda, relatórios) compartilham a mesma identidade visual: logo da empresa, fonte própria
+(Geist Regular), cor institucional `#B21119` usada como acento (título, selos, total em destaque) — não
+como cor estrutural dominante — sobre uma base grafite/branco. Cabeçalho e rodapé padronizados. Os dados
+da empresa exibidos vêm sempre de **Configurações → Empresa** — nunca fixos no código. O Orçamento tem
+duas variantes: **Comercial** (padrão, sem foto) e **Técnico** (com a foto principal de cada produto na
+tabela de itens).
 
 ---
 
@@ -102,7 +134,9 @@ Todos os documentos (proposta comercial, romaneio de transporte, requisição de
 
 - Next.js + React + TypeScript
 - Prisma ORM + SQLite
-- TailwindCSS
+- TailwindCSS + shadcn/ui
+- NextAuth (autenticação) + Zod (validação de entrada)
+- jsPDF + jspdf-autotable (geração de PDF) + Recharts (gráficos do Dashboard)
 - PM2 (produção)
 
 ---
@@ -169,7 +203,8 @@ Faz backup automático (código + banco) antes de aplicar, builda, e **reverte s
 
 # 📌 Roadmap
 
-- [ ] Financeiro completo (contas a pagar/receber, fluxo de caixa)
+- [ ] Financeiro: custo de mão de obra/overhead (única subetapa restante da Fase 12)
+- [ ] Expor MRP e Rastreabilidade por Lote numa tela própria (motor já implementado e testado, ver seção "Infraestrutura de domínio" acima)
 - [ ] Emissão de NF-e
 - [ ] CRM
 - [ ] Permissão por rota nas áreas ainda cobertas só por login simples (categorias, sequências numéricas, configurações, auditoria)
