@@ -28,7 +28,7 @@ import {
   Edit, Copy, Trash2, X, Save, ChevronDown, ChevronRight, Menu,
   UserCog, Building2, Hash, FileOutput, ShieldCheck, Eye, Layers, ShoppingCart,
   SlidersHorizontal, Ban, RefreshCw, Warehouse, ClipboardList, ShoppingBag, Factory,
-  PanelLeftClose, PanelLeftOpen, Wallet
+  PanelLeftClose, PanelLeftOpen, Wallet, Calculator
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -336,7 +336,7 @@ export default function ERPPage() {
     dashboard: 'Dashboard', orcamentos: 'Orcamentos', pedidos: 'Pedidos de Venda', clientes: 'Clientes',
     produtos: 'Produtos', materiais: 'Materias-Primas', producao: 'Producao', usuarios: 'Usuarios', configuracoes: 'Configuracoes',
     fornecedores: 'Fornecedores', requisicoes: 'Requisicoes', compras: 'Compras', estoque: 'Estoque', relatorios: 'Relatorios', financeiro: 'Financeiro',
-    empresa: 'Empresa', numeracao: 'Numeracao', pdf: 'PDF', sistema: 'Sistema', atualizacoes: 'Atualizacoes',
+    empresa: 'Empresa', numeracao: 'Numeracao', pdf: 'PDF', custeio: 'Custeio', sistema: 'Sistema', atualizacoes: 'Atualizacoes',
   }
 
   const navGroups: { label: string | null; items: { key: ModuleKey; icon: React.ReactNode; label: string }[] }[] = [
@@ -391,6 +391,7 @@ export default function ERPPage() {
     { key: 'empresa', icon: <Building2 className="w-4 h-4" />, label: 'Empresa' },
     { key: 'numeracao', icon: <Hash className="w-4 h-4" />, label: 'Numeracao' },
     { key: 'pdf', icon: <FileOutput className="w-4 h-4" />, label: 'PDF' },
+    { key: 'custeio', icon: <Calculator className="w-4 h-4" />, label: 'Custeio' },
     { key: 'sistema', icon: <ShieldCheck className="w-4 h-4" />, label: 'Sistema' },
     { key: 'atualizacoes', icon: <RefreshCw className="w-4 h-4" />, label: 'Atualizações' },
   ]

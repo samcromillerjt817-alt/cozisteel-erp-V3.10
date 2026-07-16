@@ -3,10 +3,11 @@
 import { EmpresaTab } from './empresa-tab'
 import { NumeracaoTab } from './numeracao-tab'
 import { PdfTab } from './pdf-tab'
+import { CusteioTab } from './custeio-tab'
 import { SistemaTab } from './sistema-tab'
 import { AtualizacoesTab } from './atualizacoes-tab'
 
-export type ConfigSubModule = 'empresa' | 'numeracao' | 'pdf' | 'sistema' | 'atualizacoes'
+export type ConfigSubModule = 'empresa' | 'numeracao' | 'pdf' | 'custeio' | 'sistema' | 'atualizacoes'
 
 interface ConfiguracoesPageProps {
   /** Qual sub-aba mostrar — a navegação em si (os links) continua na barra lateral em `page.tsx`,
@@ -28,6 +29,8 @@ export function ConfiguracoesPage({ configSub, isAdmin }: ConfiguracoesPageProps
       return <NumeracaoTab />
     case 'pdf':
       return <PdfTab />
+    case 'custeio':
+      return <CusteioTab />
     case 'sistema':
       return <SistemaTab />
     case 'atualizacoes':

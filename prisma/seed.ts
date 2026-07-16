@@ -78,6 +78,12 @@ const DEFAULT_SETTINGS = [
   { key: 'security.sessionTimeout',    value: '480', group: 'security', type: 'number', label: 'Timeout de Sessão (min)', description: 'Tempo de inatividade para expirar sessão' },
   { key: 'security.maxLoginAttempts',  value: '5',   group: 'security', type: 'number', label: 'Tentativas de Login',     description: 'Máximo de tentativas antes de bloquear' },
   { key: 'security.passwordMinLength', value: '8',   group: 'security', type: 'number', label: 'Comprimento Mín. Senha',  description: 'Tamanho mínimo da senha' },
+
+  // ── Custeio (Fase 12, Subetapa 8, ADR-020) ─────
+  // Valores neutros (0) até o usuário configurar — laborCost/overheadCost calculam 0 enquanto isso,
+  // nunca bloqueiam a produção nem quebram o cálculo por falta de configuração.
+  { key: 'custeio.laborRatePerHour', value: '0', group: 'custeio', type: 'number', label: 'Taxa de Mão de Obra (R$/hora)', description: 'Taxa única aplicada ao tempo padrão de operação da BOM' },
+  { key: 'custeio.overheadPercent',  value: '0', group: 'custeio', type: 'number', label: 'Overhead (%)',                 description: 'Percentual sobre o custo de material, rateio único global' },
 ]
 
 // ── Seed Functions ──────────────────────────────────────

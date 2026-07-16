@@ -15,6 +15,28 @@ class ProductBatchRepository extends BaseRepository<typeof db.productBatch> {
   updateMaterialCost(id: string, materialCost: number) {
     return this.delegate.update({ where: { id }, data: { materialCost } })
   }
+
+  /** Fase 12, ADR-020, Subetapa 8 — custo padrão de mão de obra/overhead, mesmo padrão de
+   * `updateMaterialCost`: escrita isolada, chamada só pela `CostingService`. */
+  updateLaborAndOverheadCost(id: string, laborCost: number | null, overheadCost: number | null) {
+    return this.delegate.update({ where: { id }, data: { laborCost, overheadCost } })
+  }
+
+  /** Necessário pro cálculo de mão de obra: precisa da `ProductionOrder.bomRevisionId` (revisão
+   * congelada na origem) para somar o tempo padrão das `ProductOperation` daquela revisão. */
+  findByIdWithBomRevision(id: string) {
+    return this.delegate.findUnique({
+      where: { id },
+      include: {
+        productionOrder: {
+          select: {
+            bomRevisionId: true,
+            bomRevision: { select: { operations: { select: { setupTimeMinutes: true, runTimeMinutesPerUnit: true } } } },
+          },
+        },
+      },
+    })
+  }
 }
 
 export const productBatchRepository = new ProductBatchRepository()

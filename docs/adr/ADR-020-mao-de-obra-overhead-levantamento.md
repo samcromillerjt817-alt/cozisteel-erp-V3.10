@@ -1,16 +1,15 @@
-# ADR-020 — Mão de Obra e Overhead (Fase 12, Subetapa 8): Levantamento
+# ADR-020 — Mão de Obra e Overhead (Fase 12, Subetapa 8): Levantamento e Implementação
 
-- **Status**: **Levantamento aprovado — 4 decisões resolvidas pelo usuário em 2026-07-15** (Parte 5).
-  Implementação ainda não iniciada.
+- **Status**: **Implementada e em produção — 2026-07-15.** Levantamento aprovado, 4 decisões
+  resolvidas pelo usuário (Parte 5), schema/Service/UI implementados no mesmo dia, `prisma db push`
+  aplicado ao banco compartilhado com autorização explícita e separada (2 colunas novas, aditivo),
+  `pm2 restart` confirmado. **Fase 12 (Financeiro) está completa — todas as 8 subetapas em produção.**
 - **Data**: 2026-07-15
 - **Depende de**: [ADR-016 — Financeiro Integrado](./ADR-016-financeiro-integrado-levantamento.md) (esta
   é a Subetapa 8, registrada lá como "futura, fora do escopo desta rodada", §2.3 e Parte 9, item 8);
   [ADR-005 — Engenharia do Produto (BOM)](./ADR-005-engenharia-produto-bom.md) (`ProductOperation`,
   fonte dos dados de tempo); [ADR-008 — Infraestrutura Financeira](./ADR-008-infraestrutura-financeira.md)
   (`CostCenter`, ainda não implementado — ver Parte 3)
-- **Escopo explicitamente fora desta rodada**: qualquer schema, migração, Service ou UI. Este documento
-  só levanta o que existe, avalia opções e lista decisões pendentes — implementação começa numa rodada
-  futura, depois de aprovação.
 
 ---
 
@@ -172,6 +171,41 @@ apontamento manual, `CostCenter`) entrando nesta rodada.
 
 Mudança de schema (Subetapa 1 deste plano) exige autorização explícita e separada do usuário antes de
 rodar contra o banco compartilhado — mesma regra permanente do projeto.
+
+---
+
+## PARTE 7 — Resultado da implementação (2026-07-15)
+
+Todas as 5 subetapas da Parte 6 implementadas no mesmo dia do levantamento, autorização de db push
+pedida e concedida separadamente (confirmando explicitamente "2 colunas novas, aditivo, sem alterar
+dado existente" antes de rodar).
+
+- **Schema**: `ProductBatch.laborCost`/`overheadCost` (`Float?`, mesma imutabilidade de `materialCost`);
+  `custeio.laborRatePerHour`/`custeio.overheadPercent` adicionados a `DEFAULT_SETTINGS` (`prisma/seed.ts`)
+  com valor `'0'` — **não rodado contra produção nesta rodada** (autorização cobriu só o `db push`, não
+  o script de seed completo, que tem efeitos mais amplos que só essas 2 chaves); sem efeito prático,
+  já que a aba Custeio grava via `upsert` na primeira vez que alguém salva, mesmo padrão de `company.*`.
+- **`CostingService.calculateAndPersistLaborAndOverheadCost()`**: nova, chamada pelos mesmos 2
+  handlers de evento que já chamam `calculateAndPersistMaterialCost` (`register-domain-event-handlers.ts`),
+  sempre depois (overhead lê o `materialCost` já persistido). `null`/`null` quando a OP não tem
+  `bomRevisionId`; `0`/`0` (não `null`) quando as taxas não estão configuradas — dado existe, só a
+  taxa é neutra.
+- **`ProductBatchRepository.findByIdWithBomRevision()`**: nova consulta — descoberto durante a
+  implementação que a relação de `ProductOperation` em `BomRevision` se chama `operations`, não
+  `productOperations` (nome usado só no back-relation de `OperationType`, achado só ao rodar `tsc`).
+- **Valorização/margem**: `StockValuationService.getFinishedGoodsValuation()` e
+  `FinancialReportService.getGrossMarginEstimate()` passaram a somar `materialCost + laborCost +
+  overheadCost` (antes só material) — mudança de escopo justificada pelo próprio ADR-016 (§2.4: "a
+  valorização de produto acabado depende... mais mão de obra/overhead ainda não modelados", ou seja,
+  isso sempre foi o desfecho pretendido, não um extra). Testes existentes confirmados não quebrados
+  (taxas 0 por padrão no banco de teste = mesmo resultado numérico de antes).
+- **UI**: nova aba "Custeio" em Configurações (`custeio-tab.tsx`), 2 campos (`CurrencyInput` pra
+  R$/hora, `PercentInput` pro percentual), mesmo padrão de `EmpresaTab`/`useSettings()`.
+- **Testes**: `tests/labor-overhead-costing.test.ts` (5 casos novos — cálculo de mão de obra, overhead,
+  OP sem `bomRevisionId`, taxas não configuradas, idempotência). 302/302 testes totais (297 + 5 novos),
+  tsc/lint(31, líquido zero)/build limpos. `pm2 restart` teve que ser seguido de `pm2 resurrect` — o
+  daemon do PM2 havia resetado entre sessões (mesmo incidente operacional já visto antes neste
+  projeto), recuperado sem perda de dados a partir do dump salvo, `pm2 save` refeito depois.
 
 ---
 

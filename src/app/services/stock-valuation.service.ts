@@ -12,10 +12,12 @@ export interface FinishedGoodsValuationLine {
   productId: string
   productName: string
   stockQty: number
-  /** Custo de MATERIAL do `ProductBatch` mais recente já produzido para este produto — `null`
-   * quando o produto nunca passou pelo fluxo de produção `lotControlled` (nenhum `ProductBatch`
-   * existe para ele ainda), caso em que `value` também é `null` em vez de 0 (ausência de dado
-   * conhecido, não "vale zero"). */
+  /** Custo de PRODUÇÃO (material + mão de obra padrão + overhead, ADR-020) do `ProductBatch` mais
+   * recente já produzido para este produto — `null` quando o produto nunca passou pelo fluxo de
+   * produção `lotControlled` (nenhum `ProductBatch` existe para ele ainda), caso em que `value`
+   * também é `null` em vez de 0 (ausência de dado conhecido, não "vale zero"). Mão de
+   * obra/overhead entram como 0 (não somam ao `null`) quando o lote não tem `bomRevisionId` — só o
+   * custo de material fica indisponível quando de fato não há nenhum dado. */
   unitCost: number | null
   value: number | null
 }
@@ -50,11 +52,11 @@ export interface StockValuationTotals {
  * `MaterialBatch`, `ProductBatch` não tem um campo `quantityAvailable` (nada no schema hoje
  * decrementa um lote de produto quando ele é vendido) — não existe como saber "quanto resta EM
  * ESTOQUE de um lote de produção específico". A valorização de produto acabado aqui é uma
- * **aproximação**: `Product.stockQty` (saldo agregado, já existente) × custo de material do
- * `ProductBatch` mais recente já produzido daquele produto — não uma soma por lote como a de
- * matéria-prima. Modelar precisão por lote exigiria adicionar `quantityAvailable` a `ProductBatch`
- * e decrementá-lo também na venda (`SalesOrderItem` não referencia `ProductBatch` hoje) — mudança de
- * schema nova, fora do escopo desta subetapa. Produtos que nunca passaram pelo fluxo de produção
+ * **aproximação**: `Product.stockQty` (saldo agregado, já existente) × custo de PRODUÇÃO (material +
+ * mão de obra padrão + overhead, ADR-020) do `ProductBatch` mais recente já produzido daquele
+ * produto — não uma soma por lote como a de matéria-prima. Modelar precisão por lote exigiria
+ * adicionar `quantityAvailable` a `ProductBatch` e decrementá-lo também na venda (`SalesOrderItem`
+ * não referencia `ProductBatch` hoje) — mudança de schema nova, fora do escopo desta subetapa. Produtos que nunca passaram pelo fluxo de produção
  * `lotControlled` (sem nenhum `ProductBatch`) aparecem com `unitCost`/`value` `null`, não 0.
  */
 class StockValuationService {
@@ -84,7 +86,10 @@ class StockValuationService {
     const products = await stockValuationRepository.findProductsWithStock()
     const productIds = products.map((p) => p.id)
     const latestCosts = productIds.length > 0 ? await stockValuationRepository.findLatestMaterialCostByProduct(productIds) : []
-    const costByProduct = new Map(latestCosts.map((c) => [c.productId, c.materialCost as number]))
+    // ADR-020: custo de produção = material + mão de obra padrão + overhead. laborCost/overheadCost
+    // somam 0 quando null (lote sem bomRevisionId) — só a ausência de materialCost (filtrada acima
+    // pelo repositório) representa "sem dado nenhum".
+    const costByProduct = new Map(latestCosts.map((c) => [c.productId, (c.materialCost as number) + (c.laborCost ?? 0) + (c.overheadCost ?? 0)]))
 
     const lines: FinishedGoodsValuationLine[] = products.map((product) => {
       const unitCost = costByProduct.get(product.id) ?? null
