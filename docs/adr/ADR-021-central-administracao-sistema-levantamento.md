@@ -6,7 +6,11 @@
   encontrado na auditoria (Parte 2.2): a tela de Diagnóstico detectou corretamente o `status.json`
   preso desde 2026-07-09 (~12.150 min), e a receita de reconciliação encontrou 2 backups órfãos reais
   em disco. Nenhuma correção foi aplicada de fato ainda sem confirmação explícita do usuário — só a
-  ferramenta foi verificada funcionando.
+  ferramenta foi verificada funcionando. **Adendo mesmo dia**: usuário pediu sugestões de mais
+  melhorias e escolheu a primeira — visualizador de log de execução do patch (lacuna encontrada na
+  própria auditoria: o log persistente da Subetapa 1 foi criado, mas nunca ficou com uma tela para
+  ler seu conteúdo). Nova seção "Logs de Execução" na aba Atualizações, `SystemService.listPatchLogs()`/
+  `readPatchLog()`, 2 rotas novas, 6 testes novos (334/334 totais).
 - **Data**: 2026-07-16
 - **Depende de**: nenhuma fase numerada do roadmap original (spec de 16 seções) — iniciativa nova,
   proposta diretamente pelo usuário após o roadmap original ser concluído (ver

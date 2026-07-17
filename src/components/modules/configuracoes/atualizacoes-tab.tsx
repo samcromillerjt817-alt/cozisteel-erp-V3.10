@@ -4,11 +4,24 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { PageHeader } from '@/components/platform/page-header'
 import { DataTable, type DataTableColumn } from '@/components/platform/data-table'
 import { StatusBadge } from '@/components/domain/status-badge'
 import { useConfirm } from '@/components/domain/confirm-dialog'
-import type { PatchLogEntry } from './types'
+import type { PatchLogEntry, PatchLogFile } from './types'
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB']
+  let value = bytes
+  let unitIndex = -1
+  do {
+    value /= 1024
+    unitIndex++
+  } while (value >= 1024 && unitIndex < units.length - 1)
+  return `${value.toFixed(1)} ${units[unitIndex]}`
+}
 
 interface AtualizacoesTabProps {
   isAdmin: boolean
@@ -32,6 +45,46 @@ export function AtualizacoesTab({ isAdmin }: AtualizacoesTabProps) {
   const [uploading, setUploading] = useState(false)
   const [polling, setPolling] = useState(false)
   const [status, setStatus] = useState<{ state: string; message: string } | null>(null)
+
+  const [logFiles, setLogFiles] = useState<PatchLogFile[]>([])
+  const [logsLoading, setLogsLoading] = useState(false)
+  const [viewingLog, setViewingLog] = useState<string | null>(null)
+  const [logContent, setLogContent] = useState('')
+  const [logContentLoading, setLogContentLoading] = useState(false)
+
+  const loadLogFiles = useCallback(async () => {
+    setLogsLoading(true)
+    try {
+      const r = await fetch('/api/system/patches/logs')
+      if (r.ok) setLogFiles(await r.json())
+    } catch {
+      // aba de logs é só leitura complementar — falha aqui não deve travar o resto da tela
+    } finally {
+      setLogsLoading(false)
+    }
+  }, [])
+
+  async function viewLog(filename: string) {
+    setViewingLog(filename)
+    setLogContentLoading(true)
+    try {
+      const r = await fetch(`/api/system/patches/logs/${filename}`)
+      const json = await r.json()
+      if (r.ok) setLogContent(json.content + (json.truncated ? '\n\n[log truncado — mostrando só o final]' : ''))
+      else {
+        setLogContent('')
+        toast.error(json.error || 'Erro ao ler log')
+      }
+    } catch {
+      toast.error('Erro ao ler log')
+    } finally {
+      setLogContentLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadLogFiles()
+  }, [loadLogFiles])
 
   const loadHistory = useCallback(async () => {
     setLoading(true)
@@ -162,6 +215,50 @@ export function AtualizacoesTab({ isAdmin }: AtualizacoesTabProps) {
           />
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Logs de Execução</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-3">
+            Saída completa de cada tentativa de atualização (ADR-021) — útil quando o histórico acima
+            não é suficiente para entender o que aconteceu.
+          </p>
+          {logsLoading ? (
+            <p className="text-sm text-muted-foreground">Carregando...</p>
+          ) : logFiles.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum log de execução encontrado ainda.</p>
+          ) : (
+            <div className="space-y-2">
+              {logFiles.map((f) => (
+                <div key={f.filename} className="flex items-center justify-between gap-2 rounded border p-3 text-sm">
+                  <div>
+                    <p className="font-mono">{f.filename}</p>
+                    <p className="text-muted-foreground">{new Date(f.modifiedAt).toLocaleString('pt-BR')} — {formatBytes(f.sizeBytes)}</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => viewLog(f.filename)}>Ver</Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={viewingLog !== null} onOpenChange={(open) => { if (!open) setViewingLog(null) }}>
+        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="font-mono text-sm">{viewingLog}</DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1">
+            {logContentLoading ? (
+              <p className="text-sm text-muted-foreground">Carregando...</p>
+            ) : (
+              <pre className="text-xs whitespace-pre-wrap font-mono bg-muted/50 rounded p-3">{logContent}</pre>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

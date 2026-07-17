@@ -21,6 +21,12 @@ export interface AuditEntry {
   createdAt: string
 }
 
+export interface PatchLogFile {
+  filename: string
+  sizeBytes: number
+  modifiedAt: string
+}
+
 export interface PatchLogEntry {
   id: string
   createdAt: string
