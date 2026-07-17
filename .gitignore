@@ -29,7 +29,11 @@ build/
 # ========================================
 # Logs
 # ========================================
-logs/
+# Ancorado na raiz do projeto (/logs/, nao logs/) - sem a barra inicial, o padrao batia com
+# QUALQUER pasta chamada "logs" em qualquer nivel, inclusive src/app/api/system/patches/logs/
+# (rotas de codigo-fonte de verdade) - bug real encontrado ao commitar o visualizador de logs
+# de patch do ADR-021, que silenciosamente nunca entrava no git.
+/logs/
 *.log
 npm-debug.log*
 yarn-debug.log*

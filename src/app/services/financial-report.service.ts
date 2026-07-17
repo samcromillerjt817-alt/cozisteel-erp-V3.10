@@ -127,7 +127,8 @@ class FinancialReportService {
     const items = await financialReportRepository.findSalesOrderItemsInPeriod(from, to)
     const productIds = Array.from(new Set(items.map((i) => i.productId).filter((id): id is string => id !== null)))
     const latestCosts = productIds.length > 0 ? await stockValuationRepository.findLatestMaterialCostByProduct(productIds) : []
-    const costByProduct = new Map(latestCosts.map((c) => [c.productId, c.materialCost as number]))
+    // ADR-020: mesmo critério de custo de produção usado em StockValuationService.getFinishedGoodsValuation().
+    const costByProduct = new Map(latestCosts.map((c) => [c.productId, (c.materialCost as number) + (c.laborCost ?? 0) + (c.overheadCost ?? 0)]))
 
     let revenue = 0
     let estimatedCost = 0

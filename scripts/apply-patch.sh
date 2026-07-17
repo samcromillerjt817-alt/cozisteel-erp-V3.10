@@ -68,16 +68,25 @@ fi
 
 STORAGE_DIR="${STORAGE_PATH:-./storage}"
 PATCH_BACKUP_DIR="$STORAGE_DIR/patches/backups"
+PATCH_LOG_DIR="$STORAGE_DIR/patches/logs"
 STATUS_FILE="$STORAGE_DIR/patches/status.json"
 mkdir -p "$PATCH_BACKUP_DIR"
+mkdir -p "$PATCH_LOG_DIR"
 mkdir -p "$(dirname "$STATUS_FILE")"
 
 TS=$(date +%Y%m%d-%H%M%S)
 
+# ADR-021 (achado 2.2.3): antes disto, a saida inteira do script ia pro vazio quando
+# disparado via upload (spawn com stdio:'ignore') - sem nenhum rastro do que aconteceu se
+# algo falhasse fora dos checkpoints de write_status. "tee" mantem a saida visivel no
+# terminal (uso manual) e grava tambem em arquivo (uso via upload/detached).
+LOG_FILE="$PATCH_LOG_DIR/patch-$TS.log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
 write_status() {
   # $1=state  $2=message
   cat > "$STATUS_FILE" <<EOF
-{"state":"$1","message":"$2","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+{"state":"$1","message":"$2","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","pid":$$,"logFile":"$(basename "$LOG_FILE")"}
 EOF
 }
 
@@ -87,25 +96,48 @@ echo "════════════════════════�
 
 # ── 1. Lê o manifesto do patch ──
 write_status "reading_manifest" "Lendo manifesto do patch..."
-if ! unzip -p "$PATCH_ZIP" patch.json > /tmp/patch-manifest-$TS.json 2>/dev/null; then
+MANIFEST_FILE="/tmp/patch-manifest-$TS.json"
+if ! unzip -p "$PATCH_ZIP" patch.json > "$MANIFEST_FILE" 2>/dev/null; then
   echo "ERRO: o arquivo não contém patch.json na raiz. Todo pacote de patch precisa desse manifesto."
   write_status "failed" "Patch inválido: patch.json não encontrado"
   exit 1
 fi
 
-TO_VERSION=$(grep -oP '"version"\s*:\s*"\K[^"]+' /tmp/patch-manifest-$TS.json || echo "")
-TITLE=$(grep -oP '"title"\s*:\s*"\K[^"]+' /tmp/patch-manifest-$TS.json || echo "")
-DESCRIPTION=$(grep -oP '"description"\s*:\s*"\K[^"]+' /tmp/patch-manifest-$TS.json || echo "")
-NEEDS_NPM=$(grep -oP '"requiresNpmInstall"\s*:\s*\K(true|false)' /tmp/patch-manifest-$TS.json || echo "false")
-NEEDS_PRISMA=$(grep -oP '"requiresPrismaMigrate"\s*:\s*\K(true|false)' /tmp/patch-manifest-$TS.json || echo "false")
-
-if [ -z "$TO_VERSION" ]; then
-  echo "ERRO: patch.json não tem o campo \"version\"."
-  write_status "failed" "Patch inválido: version ausente no manifesto"
+# ADR-021 (achado 2.2.4): antes disto, os campos eram extraídos por regex (grep -oP) contra
+# o texto bruto do JSON — funcionava só pro caso simples, quebrava silenciosamente (valor
+# vazio/errado, sem erro) diante de qualquer variação razoável (aspas escapadas, campos
+# aninhados). Node com JSON.parse de verdade valida e falha alto em vez de seguir com dado
+# errado.
+if ! MANIFEST_PARSED=$(node -e "
+const fs = require('fs')
+try {
+  const m = JSON.parse(fs.readFileSync('$MANIFEST_FILE', 'utf8'))
+  if (!m.version) { console.error('campo \\\"version\\\" ausente no manifesto'); process.exit(1) }
+  console.log(m.version)
+  console.log((m.title || '').replace(/\n/g, ' '))
+  console.log((m.description || '').replace(/\n/g, ' '))
+  console.log(m.requiresNpmInstall === true ? 'true' : 'false')
+  console.log(m.requiresPrismaMigrate === true ? 'true' : 'false')
+} catch (e) {
+  console.error('patch.json inválido: ' + e.message)
+  process.exit(1)
+}
+" 2>&1); then
+  echo "ERRO: manifesto do patch inválido: $MANIFEST_PARSED"
+  write_status "failed" "Patch inválido: manifesto malformado ou sem o campo \"version\""
   exit 1
 fi
 
-CURRENT_VERSION=$(grep -oP '"version"\s*:\s*"\K[^"]+' version.json 2>/dev/null || echo "desconhecida")
+TO_VERSION=$(sed -n '1p' <<< "$MANIFEST_PARSED")
+TITLE=$(sed -n '2p' <<< "$MANIFEST_PARSED")
+DESCRIPTION=$(sed -n '3p' <<< "$MANIFEST_PARSED")
+NEEDS_NPM=$(sed -n '4p' <<< "$MANIFEST_PARSED")
+NEEDS_PRISMA=$(sed -n '5p' <<< "$MANIFEST_PARSED")
+
+CURRENT_VERSION=$(node -e "
+try { console.log(JSON.parse(require('fs').readFileSync('version.json','utf8')).version || 'desconhecida') }
+catch { console.log('desconhecida') }
+" 2>/dev/null || echo "desconhecida")
 
 echo "Versão atual:  $CURRENT_VERSION"
 echo "Nova versão:   $TO_VERSION"
@@ -144,12 +176,21 @@ rollback() {
   mkdir -p .next/standalone/.next
   cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
   cp -r public .next/standalone/ 2>/dev/null || true
-  pm2 restart "$PM2_APP_NAME" 2>/dev/null || true
-  node scripts/record-patch.mjs --to="$CURRENT_VERSION" --from="$CURRENT_VERSION" \
+  pm2 restart "$PM2_APP_NAME" || echo "⚠ AVISO: 'pm2 restart' falhou durante o rollback — confira 'pm2 list' manualmente."
+  # ADR-021 (achado 2.2.2): antes disto, "2>/dev/null || true" engolia erro E stderr desta
+  # chamada — foi exatamente assim que um rollback real (2026-07-09) aconteceu sem deixar
+  # NENHUM registro em PatchLog. Agora, se falhar, o erro aparece no log (ja capturado pelo
+  # "tee" acima) e o proprio status.json avisa explicitamente que o registro pode estar
+  # incompleto, em vez de reportar sucesso silencioso na gravacao.
+  if ! node scripts/record-patch.mjs --to="$CURRENT_VERSION" --from="$CURRENT_VERSION" \
     --title="Rollback automático de $TO_VERSION" --via="$APPLIED_VIA" --status=rolled_back \
     --error="Falha ao aplicar $TO_VERSION — revertido automaticamente" \
-    ${USER_ID:+--user="$USER_ID"} 2>/dev/null || true
-  write_status "failed" "Patch falhou e foi revertido automaticamente. Versão atual: $CURRENT_VERSION"
+    ${USER_ID:+--user="$USER_ID"}; then
+    echo "⚠ AVISO: não foi possível registrar o rollback em PatchLog — ver $LOG_FILE para detalhes."
+    write_status "failed" "Patch falhou e foi revertido automaticamente. Versão atual: $CURRENT_VERSION. ATENÇÃO: o registro deste rollback no histórico falhou — ver log $(basename "$LOG_FILE")."
+  else
+    write_status "failed" "Patch falhou e foi revertido automaticamente. Versão atual: $CURRENT_VERSION"
+  fi
   echo "✓ Sistema revertido para $CURRENT_VERSION. Nenhuma alteração foi mantida."
 }
 
@@ -231,11 +272,14 @@ fs.writeFileSync('version.json', JSON.stringify(v, null, 2));
 "
 
 # ── 9. Registra no banco ──
-node scripts/record-patch.mjs --to="$TO_VERSION" --from="$CURRENT_VERSION" \
+if node scripts/record-patch.mjs --to="$TO_VERSION" --from="$CURRENT_VERSION" \
   --title="$TITLE" --description="$DESCRIPTION" --via="$APPLIED_VIA" --status=success \
-  ${USER_ID:+--user="$USER_ID"} || echo "(aviso: não foi possível registrar no histórico do banco, mas o patch foi aplicado)"
-
-write_status "done" "Atualizado para a versão $TO_VERSION com sucesso!"
+  ${USER_ID:+--user="$USER_ID"}; then
+  write_status "done" "Atualizado para a versão $TO_VERSION com sucesso!"
+else
+  echo "⚠ AVISO: patch aplicado com sucesso, mas não foi possível registrar no histórico (PatchLog) — ver $LOG_FILE."
+  write_status "done" "Atualizado para a versão $TO_VERSION com sucesso! ATENÇÃO: o registro no histórico falhou — ver log $(basename "$LOG_FILE")."
+fi
 
 echo ""
 echo "═══════════════════════════════════════════════════════"

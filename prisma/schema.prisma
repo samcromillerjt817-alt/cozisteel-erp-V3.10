@@ -1061,6 +1061,14 @@ model ProductBatch {
   // princípio de MaterialBatch.unitCost. `null` enquanto não calculado (produto não lotControlled,
   // ou calculado antes desta Subetapa existir).
   materialCost      Float?
+  // Custo padrão de mão de obra e rateio de overhead (Fase 12, ADR-020, Subetapa 8) — mesma
+  // imutabilidade de `materialCost`, calculados e persistidos uma única vez pela CostingService no
+  // momento da produção. `laborCost` = tempo padrão da BomRevision (ProductOperation.setupTimeMinutes
+  // + runTimeMinutesPerUnit × quantityProduced) × `custeio.laborRatePerHour`; `overheadCost` =
+  // materialCost × `custeio.overheadPercent`. Ambos `null` quando a OP não tem `bomRevisionId`
+  // (produção sem engenharia formal) — sem estrutura, não há tempo padrão pra calcular.
+  laborCost         Float?
+  overheadCost      Float?
 
   // O que este lote consumiu para existir — matéria-prima direta E/OU lote de subconjunto (ver
   // BatchConsumption.itemType). Reaproveita a mesma árvore que a Reconciliação (ADR-012) percorre.

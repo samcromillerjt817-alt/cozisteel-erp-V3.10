@@ -1,17 +1,17 @@
 import { productBatchRepository } from '@/app/repositories/product-batch.repository'
 import { batchTraceabilityService } from '@/app/services/batch-traceability.service'
+import { settingService } from '@/app/services/setting.service'
 
 /**
- * Fase 12 (ADR-016, Subetapa 1/2) — custeio real por lote (decisão pendente #3 resolvida: modelo
- * (c), não (a) padrão nem (b) médio ponderado). Reaproveita a árvore de rastreabilidade já
- * construída pela Fase 10 (`batchTraceabilityService.traceBackward()`), sem recalcular nada que já
- * existe: `materialOrigins` já vem achatado por toda a árvore de consumo (direto + através de
- * subconjuntos com lote próprio), então somar `unitCost × quantityConsumed` sobre esse array único
- * já é o custo real de material de TODA a origem, não só do primeiro nível.
+ * Fase 12 (ADR-016, Subetapa 1/2 + ADR-020, Subetapa 8) — custeio real por lote (decisão pendente #3
+ * resolvida: modelo (c), não (a) padrão nem (b) médio ponderado). Reaproveita a árvore de
+ * rastreabilidade já construída pela Fase 10 (`batchTraceabilityService.traceBackward()`), sem
+ * recalcular nada que já existe: `materialOrigins` já vem achatado por toda a árvore de consumo
+ * (direto + através de subconjuntos com lote próprio), então somar `unitCost × quantityConsumed`
+ * sobre esse array único já é o custo real de material de TODA a origem, não só do primeiro nível.
  *
- * Escopo desta subetapa (decisão pendente #4 resolvida): só custo de MATERIAL. Mão de obra/overhead
- * ficam fora — nenhuma tentativa de estimar/ratear aqui, seria especulação sem dado bruto (ver ADR-016
- * Parte 2.3).
+ * Mão de obra/overhead (ADR-020) são custo PADRÃO, não real — tempo padrão da BomRevision congelada
+ * × taxa configurável, nunca apontamento manual (decisão resolvida, ver ADR-020 Parte 5).
  */
 class CostingService {
   /** Calcula e persiste `ProductBatch.materialCost` — chamado pelo handler dos eventos de produção
@@ -23,6 +23,36 @@ class CostingService {
     const materialCost = materialOrigins.reduce((sum, o) => sum + o.materialBatch.unitCost * o.edge.quantityConsumed, 0)
     await productBatchRepository.updateMaterialCost(productBatchId, materialCost)
     return materialCost
+  }
+
+  /** Calcula e persiste `ProductBatch.laborCost`/`overheadCost` (ADR-020) — chamado pelo mesmo
+   * handler de eventos, sempre DEPOIS de `calculateAndPersistMaterialCost` (overhead precisa do
+   * `materialCost` já persistido). `null`/`null` quando a OP não tem `bomRevisionId` (produção sem
+   * engenharia formal) — sem estrutura, não há tempo padrão de operação pra somar. Idempotente pelo
+   * mesmo motivo do custo de material: `ProductOperation`/taxas configuradas não mudam retroativamente
+   * o que já foi persistido, só uma nova chamada explícita recalcula. */
+  async calculateAndPersistLaborAndOverheadCost(productBatchId: string): Promise<{ laborCost: number | null; overheadCost: number | null }> {
+    const batch = await productBatchRepository.findByIdWithBomRevision(productBatchId)
+    if (!batch) throw new Error('Lote de produção não encontrado')
+
+    const bomRevision = batch.productionOrder.bomRevision
+    if (!batch.productionOrder.bomRevisionId || !bomRevision) {
+      await productBatchRepository.updateLaborAndOverheadCost(productBatchId, null, null)
+      return { laborCost: null, overheadCost: null }
+    }
+
+    const standardMinutes = bomRevision.operations.reduce(
+      (sum, op) => sum + op.setupTimeMinutes + op.runTimeMinutesPerUnit * batch.quantityProduced,
+      0
+    )
+    const laborRatePerHour = await settingService.getNumber('custeio.laborRatePerHour', 0)
+    const laborCost = (standardMinutes / 60) * laborRatePerHour
+
+    const overheadPercent = await settingService.getNumber('custeio.overheadPercent', 0)
+    const overheadCost = (batch.materialCost ?? 0) * (overheadPercent / 100)
+
+    await productBatchRepository.updateLaborAndOverheadCost(productBatchId, laborCost, overheadCost)
+    return { laborCost, overheadCost }
   }
 }
 

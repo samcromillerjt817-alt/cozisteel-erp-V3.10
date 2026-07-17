@@ -44,13 +44,20 @@ export function registerDomainEventHandlers(): void {
   // precisou mudar para saber que o Financeiro existe — só os payloads ganharam `productBatchId`
   // (já disponível no runtime, só nunca antes exposto no contrato).
 
-  domainEvents.on(DOMAIN_EVENTS.ORDEM_PRODUCAO_FINALIZADA, (payload: OrdemProducaoFinalizadaPayload) =>
-    payload.productBatchId ? costingService.calculateAndPersistMaterialCost(payload.productBatchId) : undefined
-  )
+  // ADR-020 (Subetapa 8) — mão de obra/overhead sempre calculados DEPOIS do material (overhead
+  // depende do materialCost já persistido), mesmos 2 eventos, mesmo padrão "sem productBatchId, sem
+  // custeio" já estabelecido pela Subetapa 1/2.
+  domainEvents.on(DOMAIN_EVENTS.ORDEM_PRODUCAO_FINALIZADA, async (payload: OrdemProducaoFinalizadaPayload) => {
+    if (!payload.productBatchId) return
+    await costingService.calculateAndPersistMaterialCost(payload.productBatchId)
+    await costingService.calculateAndPersistLaborAndOverheadCost(payload.productBatchId)
+  })
 
-  domainEvents.on(DOMAIN_EVENTS.PRODUCAO_PARCIAL_REALIZADA, (payload: ProducaoParcialRealizadaPayload) =>
-    payload.productBatchId ? costingService.calculateAndPersistMaterialCost(payload.productBatchId) : undefined
-  )
+  domainEvents.on(DOMAIN_EVENTS.PRODUCAO_PARCIAL_REALIZADA, async (payload: ProducaoParcialRealizadaPayload) => {
+    if (!payload.productBatchId) return
+    await costingService.calculateAndPersistMaterialCost(payload.productBatchId)
+    await costingService.calculateAndPersistLaborAndOverheadCost(payload.productBatchId)
+  })
 
   domainEvents.on(DOMAIN_EVENTS.PEDIDO_COMPRA_RECEBIDO, (payload: PedidoCompraRecebidoPayload) =>
     financialAccountService.upsertPayableFromPurchaseOrder(payload.purchaseOrderId, payload.userId)

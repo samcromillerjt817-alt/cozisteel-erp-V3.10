@@ -31,13 +31,14 @@ class StockValuationRepository {
 
   /** 1 linha por `productId` — o `ProductBatch` mais recente com `materialCost` já calculado
    * (`distinct` + `orderBy` = "o primeiro de cada grupo", nenhuma agregação manual em JS
-   * necessária para esta parte). */
+   * necessária para esta parte). `laborCost`/`overheadCost` (ADR-020) vêm junto — podem ser `null`
+   * mesmo com `materialCost` presente (OP sem `bomRevisionId`), consumidor decide como tratar. */
   findLatestMaterialCostByProduct(productIds: string[]) {
     return db.productBatch.findMany({
       where: { productId: { in: productIds }, materialCost: { not: null } },
       orderBy: { producedAt: 'desc' },
       distinct: ['productId'],
-      select: { productId: true, materialCost: true, producedAt: true },
+      select: { productId: true, materialCost: true, laborCost: true, overheadCost: true, producedAt: true },
     })
   }
 }

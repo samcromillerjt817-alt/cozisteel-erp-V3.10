@@ -3,10 +3,14 @@
 import { EmpresaTab } from './empresa-tab'
 import { NumeracaoTab } from './numeracao-tab'
 import { PdfTab } from './pdf-tab'
+import { CusteioTab } from './custeio-tab'
 import { SistemaTab } from './sistema-tab'
 import { AtualizacoesTab } from './atualizacoes-tab'
+import { DiagnosticoTab } from './diagnostico-tab'
+import { ConsoleTab } from './console-tab'
+import { CorrecoesTab } from './correcoes-tab'
 
-export type ConfigSubModule = 'empresa' | 'numeracao' | 'pdf' | 'sistema' | 'atualizacoes'
+export type ConfigSubModule = 'empresa' | 'numeracao' | 'pdf' | 'custeio' | 'sistema' | 'atualizacoes' | 'diagnostico' | 'console' | 'correcoes'
 
 interface ConfiguracoesPageProps {
   /** Qual sub-aba mostrar — a navegação em si (os links) continua na barra lateral em `page.tsx`,
@@ -28,9 +32,21 @@ export function ConfiguracoesPage({ configSub, isAdmin }: ConfiguracoesPageProps
       return <NumeracaoTab />
     case 'pdf':
       return <PdfTab />
+    case 'custeio':
+      return <CusteioTab />
     case 'sistema':
       return <SistemaTab />
     case 'atualizacoes':
       return <AtualizacoesTab isAdmin={isAdmin} />
+    case 'diagnostico':
+      return <DiagnosticoTab />
+    case 'console':
+      return isAdmin ? <ConsoleTab /> : <RestritoAdmin />
+    case 'correcoes':
+      return isAdmin ? <CorrecoesTab /> : <RestritoAdmin />
   }
+}
+
+function RestritoAdmin() {
+  return <p className="text-sm text-muted-foreground p-6">Acesso restrito a administradores.</p>
 }
