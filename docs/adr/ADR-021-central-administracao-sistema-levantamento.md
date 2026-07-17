@@ -10,7 +10,10 @@
   melhorias e escolheu a primeira — visualizador de log de execução do patch (lacuna encontrada na
   própria auditoria: o log persistente da Subetapa 1 foi criado, mas nunca ficou com uma tela para
   ler seu conteúdo). Nova seção "Logs de Execução" na aba Atualizações, `SystemService.listPatchLogs()`/
-  `readPatchLog()`, 2 rotas novas, 6 testes novos (334/334 totais).
+  `readPatchLog()`, 2 rotas novas, 6 testes novos (334/334 totais). **Adendo 2026-07-17**: usuário
+  relatou um incidente real vivido antes ("quando eu colocava um patch, o sistema travava... só
+  quebrava de vez mesmo") — investigação achou e corrigiu 2 bugs reais em `rollback()`, comprovados por
+  simulação isolada, não só leitura de código. Ver Parte 8.
 - **Data**: 2026-07-16
 - **Depende de**: nenhuma fase numerada do roadmap original (spec de 16 seções) — iniciativa nova,
   proposta diretamente pelo usuário após o roadmap original ser concluído (ver
@@ -219,3 +222,82 @@ de uma semana sem nenhuma forma de detecção. Isso é evidência concreta, não
 "Administração" hoje não sustenta operação/manutenção/diagnóstico/recuperação de verdade — exatamente o
 que o usuário apontou. As 6 decisões da Parte 4 precisam de validação antes de qualquer código,
 especialmente a Decisão #1 (postura de risco da intervenção em banco), que molda todo o resto.
+
+---
+
+## PARTE 8 — Adendo 2026-07-17: causa raiz do "patch quebrava de vez" + backup manual
+
+### 8.1 Relato do usuário
+
+"Uma coisa que acontecia, quando eu colocava um patch, o sistema travava, e tentava reverter para o
+estado anterior, porém ele só quebrava de vez mesmo, queria ter certeza de que isso não está
+acontecendo." — relato de um incidente real vivido antes deste ADR existir (não necessariamente o mesmo
+incidente de 2026-07-09 já documentado na Parte 2.2, que teve rollback bem-sucedido mas sem registro —
+este relato descreve o rollback em si falhando e deixando o sistema fora do ar).
+
+### 8.2 Causa raiz #1 (a mais grave): rebuild do rollback falhando forçava reinício mesmo assim
+
+Em `rollback()`, o código anterior fazia essencialmente `npm run build || true` — ignorava o resultado
+do rebuild do próprio rollback e seguia direto para `pm2 restart "$PM2_APP_NAME"` incondicionalmente.
+No momento em que `rollback()` roda, o processo do PM2 **ainda está rodando o código anterior ao patch,
+intacto e funcionando** (nenhum restart aconteceu ainda nesse ponto do fluxo). Se o rebuild do rollback
+falhasse por qualquer motivo, forçar o restart ali trocava "site no ar com código antigo" por "site fora
+do ar com build quebrado" — exatamente o "quebrava de vez" relatado. A causa mais provável do próprio
+rebuild do rollback falhar: o backup (`tar czf`) nunca incluiu `node_modules`, só `package.json` — se o
+patch que falhou já tinha rodado `npm install`, o `node_modules` mutado fica incompatível com o
+`package.json` restaurado, e nada resincroniza isso no fluxo antigo.
+
+**Fix**: `rollback()` agora (a) reroda `npm install` quando `NEEDS_NPM=true`, antes do rebuild; (b)
+checa explicitamente o exit code de `npm run build` — se falhar, escreve `status.json` com estado
+`failed` explicando que o sistema **não foi reiniciado** e que intervenção manual é necessária, registra
+um `PatchLog` com esse detalhe, e retorna **sem nunca chamar `pm2 restart`** nesse ramo. Só chama
+`pm2 restart` no ramo em que o rebuild do rollback teve sucesso de verdade.
+
+### 8.3 Causa raiz #2 (descoberta ao testar o fix acima): trap ERR duplicava o rollback inteiro
+
+Ao simular o cenário "rebuild do rollback também falha" (ver 8.4), `rollback()` executava sua lógica
+**duas vezes inteiras** — incluindo uma chamada duplicada a `record-patch.mjs`, que teria criado duas
+linhas de `PatchLog` para o mesmo incidente. Causa: bash decide se a trap `ERR` deve disparar com base
+em se ela estava armada **no início** do comando, não no fim. `trap 'rollback; exit 1' ERR` estava
+armada quando a chamada explícita `rollback` (nos 3 pontos de chamada manual) começou a executar; mesmo
+`rollback()` desarmando a trap como sua primeira linha (`trap - ERR`), ela ainda dispara de novo quando
+a própria chamada `rollback` retorna código 1 (o novo `return 1` do fix da 8.2) — porque antes do fix,
+`rollback()` nunca retornava um código diferente de zero, então esse comportamento nunca tinha sido
+exercitado. Reproduzido isoladamente com um script mínimo antes de aplicar a correção, para confirmar
+que era mesmo esse o mecanismo e não outra coisa.
+
+**Fix**: `trap - ERR` adicionado antes de cada uma das 3 chamadas explícitas de `rollback` (falha de
+`npm install`, falha de `prisma db push`, falha do build principal), e a própria definição da trap
+passou a se autodesarmar primeiro (`trap 'trap - ERR; rollback; exit 1' ERR`) — dupla proteção contra
+o mesmo padrão de re-entrada.
+
+### 8.4 Verificação: simulação isolada real, não só leitura de código
+
+Como `apply-patch.sh` não é coberto pela suíte `vitest` (é infraestrutura de shell, não TypeScript), a
+verificação foi um sandbox descartável em `/tmp`, fora do repositório: projeto-fake mínimo
+(`package.json` com script de build controlável por um arquivo-flag, `ecosystem.config.cjs`,
+`scripts/record-patch.mjs` sobrescrito por um stub que só loga seus argumentos) + um `pm2` fake no
+`PATH` (grava cada chamada num arquivo-marcador, nunca um PM2 de verdade) + um `patch.zip` de teste real
+(gerado via `python3 -m zipfile`, já que o binário `zip` não está instalado neste WSL — só `unzip`).
+Dois cenários testados de ponta a ponta rodando o `apply-patch.sh` real:
+
+1. **Build do patch falha E o rebuild do rollback também falha** (patch e projeto original com o mesmo
+   script de build quebrado): confirmado que `pm2` **nunca** é chamado (arquivo-marcador não é criado),
+   `record-patch.mjs` é chamado **exatamente uma vez** (após o fix da 8.3 — antes dela, era chamado duas
+   vezes), e `status.json` termina com a mensagem correta de "sistema não foi reiniciado, intervenção
+   manual necessária".
+2. **Build do patch falha, mas o rebuild do rollback funciona** (patch com `package.json`/script de
+   build quebrados sobrepostos ao original, que tem um script de build são): confirmado que `pm2
+   restart` **é** chamado exatamente uma vez, `record-patch.mjs` é chamado exatamente uma vez com
+   `status=rolled_back`, e o `package.json` termina corretamente restaurado à versão original.
+
+Ambos os cenários passaram após as correções das seções 8.2 e 8.3. Sandbox removido ao final (não faz
+parte do repositório).
+
+### 8.5 Backup manual sob demanda
+
+Pedido na mesma mensagem do usuário: um botão para disparar um backup (código + banco, mesmo mecanismo
+já usado dentro de `apply-patch.sh`) a qualquer momento, sem precisar aplicar um patch — simplifica
+tirar uma salvaguarda antes de qualquer operação arriscada feita pela Central de Administração
+(ex.: antes de rodar uma receita de correção). Implementação nas próximas seções/commits deste mesmo
+adendo.
