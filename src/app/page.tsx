@@ -28,7 +28,7 @@ import {
   Edit, Copy, Trash2, X, Save, ChevronDown, ChevronRight, Menu,
   UserCog, Building2, Hash, FileOutput, ShieldCheck, Eye, Layers, ShoppingCart,
   SlidersHorizontal, Ban, RefreshCw, Warehouse, ClipboardList, ShoppingBag, Factory,
-  PanelLeftClose, PanelLeftOpen, Wallet, Calculator
+  PanelLeftClose, PanelLeftOpen, Wallet, Calculator, Activity, Terminal, Wrench
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -337,6 +337,7 @@ export default function ERPPage() {
     produtos: 'Produtos', materiais: 'Materias-Primas', producao: 'Producao', usuarios: 'Usuarios', configuracoes: 'Configuracoes',
     fornecedores: 'Fornecedores', requisicoes: 'Requisicoes', compras: 'Compras', estoque: 'Estoque', relatorios: 'Relatorios', financeiro: 'Financeiro',
     empresa: 'Empresa', numeracao: 'Numeracao', pdf: 'PDF', custeio: 'Custeio', sistema: 'Sistema', atualizacoes: 'Atualizacoes',
+    diagnostico: 'Diagnostico', console: 'Console SQL', correcoes: 'Correcoes',
   }
 
   const navGroups: { label: string | null; items: { key: ModuleKey; icon: React.ReactNode; label: string }[] }[] = [
@@ -394,6 +395,9 @@ export default function ERPPage() {
     { key: 'custeio', icon: <Calculator className="w-4 h-4" />, label: 'Custeio' },
     { key: 'sistema', icon: <ShieldCheck className="w-4 h-4" />, label: 'Sistema' },
     { key: 'atualizacoes', icon: <RefreshCw className="w-4 h-4" />, label: 'Atualizações' },
+    { key: 'diagnostico', icon: <Activity className="w-4 h-4" />, label: 'Diagnóstico' },
+    { key: 'console', icon: <Terminal className="w-4 h-4" />, label: 'Console SQL' },
+    { key: 'correcoes', icon: <Wrench className="w-4 h-4" />, label: 'Correções' },
   ]
 
   const handleNavClick = (key: ModuleKey) => {
