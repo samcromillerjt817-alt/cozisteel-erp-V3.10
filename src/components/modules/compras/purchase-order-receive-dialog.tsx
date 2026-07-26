@@ -2,6 +2,7 @@
 
 import { FormDialog } from '@/components/domain/form-dialog'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { QuantityInput } from '@/components/form/quantity-input'
 import type { PurchaseOrderRecord } from './types'
 
@@ -11,13 +12,23 @@ interface PurchaseOrderReceiveDialogProps {
   purchaseOrder: PurchaseOrderRecord | null
   quantities: Record<string, number>
   onQuantityChange: (itemId: string, value: number) => void
+  /** ADR-022 (Fase UX-3, achado #06) — o backend já aceitava `batchNumber`/`expiresAt` por item
+   * desde o ADR-013 (Fase 10); sem esses campos na tela, o lote sempre nascia com número gerado
+   * internamente, nunca o do fornecedor — só aparecem para materiais lote-controlados. */
+  batchNumbers: Record<string, string>
+  onBatchNumberChange: (itemId: string, value: string) => void
+  expiresAtValues: Record<string, string>
+  onExpiresAtChange: (itemId: string, value: string) => void
   onConfirm: () => void
   saving: boolean
 }
 
 /** Extraído do bloco inline de `page.tsx` (Subetapa 11.5.8) — mesmo comportamento, agora reutilizável
  * como o disparo tanto da ação rápida na linha da tabela quanto de dentro do `DetailDrawer`. */
-export function PurchaseOrderReceiveDialog({ open, onOpenChange, purchaseOrder, quantities, onQuantityChange, onConfirm, saving }: PurchaseOrderReceiveDialogProps) {
+export function PurchaseOrderReceiveDialog({
+  open, onOpenChange, purchaseOrder, quantities, onQuantityChange,
+  batchNumbers, onBatchNumberChange, expiresAtValues, onExpiresAtChange, onConfirm, saving,
+}: PurchaseOrderReceiveDialogProps) {
   return (
     <FormDialog
       open={open}
@@ -33,21 +44,43 @@ export function PurchaseOrderReceiveDialog({ open, onOpenChange, purchaseOrder, 
           {purchaseOrder.items.map((item) => {
             const outstanding = Math.max(0, item.quantity - item.quantityReceived)
             return (
-              <div key={item.id} className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-end border rounded p-2">
-                <div className="sm:col-span-2">
-                  <Label className="text-xs">Matéria-prima</Label>
-                  <p className="text-sm font-medium">{item.material?.name}</p>
+              <div key={item.id} className="border rounded p-2 space-y-2">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-end">
+                  <div className="sm:col-span-2">
+                    <Label className="text-xs">Matéria-prima</Label>
+                    <p className="text-sm font-medium">{item.material?.name}</p>
+                  </div>
+                  <div><Label className="text-xs">Qtd Pedida</Label><p className="text-sm">{item.quantity} {item.unit}</p></div>
+                  <div><Label className="text-xs">Já Recebida</Label><p className="text-sm">{item.quantityReceived} {item.unit}</p></div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Qtd a Receber</Label>
+                    <QuantityInput
+                      max={outstanding}
+                      value={quantities[item.id] ?? outstanding}
+                      onChange={(v) => onQuantityChange(item.id, v)}
+                    />
+                  </div>
                 </div>
-                <div><Label className="text-xs">Qtd Pedida</Label><p className="text-sm">{item.quantity} {item.unit}</p></div>
-                <div><Label className="text-xs">Já Recebida</Label><p className="text-sm">{item.quantityReceived} {item.unit}</p></div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Qtd a Receber</Label>
-                  <QuantityInput
-                    max={outstanding}
-                    value={quantities[item.id] ?? outstanding}
-                    onChange={(v) => onQuantityChange(item.id, v)}
-                  />
-                </div>
+                {item.material?.lotControlled && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Lote do fornecedor (opcional)</Label>
+                      <Input
+                        placeholder="Deixe em branco para gerar automaticamente"
+                        value={batchNumbers[item.id] || ''}
+                        onChange={(e) => onBatchNumberChange(item.id, e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Validade (opcional)</Label>
+                      <Input
+                        type="date"
+                        value={expiresAtValues[item.id] || ''}
+                        onChange={(e) => onExpiresAtChange(item.id, e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })}

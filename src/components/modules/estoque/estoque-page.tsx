@@ -17,6 +17,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { QuantityInput } from '@/components/form/quantity-input'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { BatchTraceabilityTab } from './batch-traceability-tab'
 import { STOCK_MOVEMENT_TYPE_LABELS, type StockSummaryItem, type StockMovementRow, type StockAdjustForm } from './types'
 
 const MOVEMENT_PAGE_SIZE = 20
@@ -33,7 +34,7 @@ const MOVEMENT_PAGE_SIZE = 20
  * de contrato do backend fica fora do escopo de uma migração puramente estrutural de UI).
  */
 export function EstoquePage() {
-  const [view, setView] = useState<'saldo' | 'movimentacoes'>('saldo')
+  const [view, setView] = useState<'saldo' | 'movimentacoes' | 'rastreabilidade'>('saldo')
 
   const [summary, setSummary] = useState<StockSummaryItem[]>([])
   const [summaryLoading, setSummaryLoading] = useState(false)
@@ -159,10 +160,11 @@ export function EstoquePage() {
         title="Estoque"
         description="Saldo disponível de matéria-prima e produto acabado, e histórico de movimentações."
         actions={
-          <Tabs value={view} onValueChange={(v) => setView(v as 'saldo' | 'movimentacoes')}>
+          <Tabs value={view} onValueChange={(v) => setView(v as 'saldo' | 'movimentacoes' | 'rastreabilidade')}>
             <TabsList>
               <TabsTrigger value="saldo">Saldo Atual</TabsTrigger>
               <TabsTrigger value="movimentacoes">Movimentações</TabsTrigger>
+              <TabsTrigger value="rastreabilidade">Rastreabilidade</TabsTrigger>
             </TabsList>
           </Tabs>
         }
@@ -219,6 +221,8 @@ export function EstoquePage() {
           />
         </>
       )}
+
+      {view === 'rastreabilidade' && <BatchTraceabilityTab />}
 
       <FormDialog
         open={adjustDialogOpen}

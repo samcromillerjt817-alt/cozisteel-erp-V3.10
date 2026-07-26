@@ -25,6 +25,27 @@ class BatchTraceabilityRepository {
     return db.productBatch.findUnique({ where: { id }, include: PRODUCT_BATCH_INCLUDE })
   }
 
+  /** ADR-022 (Fase UX-3, achado #06) — primeiro ponto de entrada da UI de rastreabilidade: usuário
+   * não sabe o id interno de um lote, só o número. `batchNumber` não é único no schema (nem por
+   * material/produto), então a busca pode devolver mais de um resultado — a tela deixa o usuário
+   * escolher qual rastrear. */
+  searchByBatchNumber(query: string) {
+    return Promise.all([
+      db.materialBatch.findMany({
+        where: { batchNumber: { contains: query } },
+        include: MATERIAL_BATCH_INCLUDE,
+        orderBy: { receivedAt: 'desc' },
+        take: 20,
+      }),
+      db.productBatch.findMany({
+        where: { batchNumber: { contains: query } },
+        include: PRODUCT_BATCH_INCLUDE,
+        orderBy: { producedAt: 'desc' },
+        take: 20,
+      }),
+    ])
+  }
+
   /** Forward, nível 1: quem consumiu diretamente estes `MaterialBatch`. */
   findConsumptionsOfMaterialBatches(materialBatchIds: string[]) {
     if (materialBatchIds.length === 0) return Promise.resolve([])

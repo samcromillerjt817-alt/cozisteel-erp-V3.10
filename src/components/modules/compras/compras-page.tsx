@@ -55,6 +55,8 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail, onNavigat
   const [receiveOpen, setReceiveOpen] = useState(false)
   const [receiveTarget, setReceiveTarget] = useState<PurchaseOrderRecord | null>(null)
   const [receiveQuantities, setReceiveQuantities] = useState<Record<string, number>>({})
+  const [receiveBatchNumbers, setReceiveBatchNumbers] = useState<Record<string, string>>({})
+  const [receiveExpiresAt, setReceiveExpiresAt] = useState<Record<string, string>>({})
   const [receiveSaving, setReceiveSaving] = useState(false)
 
   const load = useCallback(async () => {
@@ -144,6 +146,8 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail, onNavigat
     if (!full) return
     setReceiveTarget(full)
     setReceiveQuantities(Object.fromEntries(full.items.map((i) => [i.id, Math.max(0, i.quantity - i.quantityReceived)])))
+    setReceiveBatchNumbers({})
+    setReceiveExpiresAt({})
     setReceiveOpen(true)
   }
 
@@ -151,7 +155,12 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail, onNavigat
     if (!receiveTarget) return
     const items = Object.entries(receiveQuantities)
       .filter(([, q]) => Number(q) > 0)
-      .map(([purchaseOrderItemId, quantityReceived]) => ({ purchaseOrderItemId, quantityReceived: Number(quantityReceived) }))
+      .map(([purchaseOrderItemId, quantityReceived]) => ({
+        purchaseOrderItemId,
+        quantityReceived: Number(quantityReceived),
+        ...(receiveBatchNumbers[purchaseOrderItemId] ? { batchNumber: receiveBatchNumbers[purchaseOrderItemId] } : {}),
+        ...(receiveExpiresAt[purchaseOrderItemId] ? { expiresAt: receiveExpiresAt[purchaseOrderItemId] } : {}),
+      }))
     if (items.length === 0) {
       toast.error('Informe ao menos uma quantidade recebida')
       return
@@ -275,7 +284,7 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail, onNavigat
             )}
 
             {canReceive && (
-              <Button className="w-full" onClick={() => { setReceiveTarget(detail); setReceiveQuantities(Object.fromEntries(detail.items.map((i) => [i.id, Math.max(0, i.quantity - i.quantityReceived)]))); setReceiveOpen(true) }}>
+              <Button className="w-full" onClick={() => { setReceiveTarget(detail); setReceiveQuantities(Object.fromEntries(detail.items.map((i) => [i.id, Math.max(0, i.quantity - i.quantityReceived)]))); setReceiveBatchNumbers({}); setReceiveExpiresAt({}); setReceiveOpen(true) }}>
                 <Package className="w-4 h-4" /> Receber mercadoria
               </Button>
             )}
@@ -312,6 +321,10 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail, onNavigat
         purchaseOrder={receiveTarget}
         quantities={receiveQuantities}
         onQuantityChange={(itemId, value) => setReceiveQuantities((prev) => ({ ...prev, [itemId]: value }))}
+        batchNumbers={receiveBatchNumbers}
+        onBatchNumberChange={(itemId, value) => setReceiveBatchNumbers((prev) => ({ ...prev, [itemId]: value }))}
+        expiresAtValues={receiveExpiresAt}
+        onExpiresAtChange={(itemId, value) => setReceiveExpiresAt((prev) => ({ ...prev, [itemId]: value }))}
         onConfirm={confirmReceive}
         saving={receiveSaving}
       />

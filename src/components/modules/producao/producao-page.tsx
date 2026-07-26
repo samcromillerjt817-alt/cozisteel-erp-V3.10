@@ -17,6 +17,7 @@ import { QuantityInput } from '@/components/form/quantity-input'
 import { useConfirm } from '@/components/domain/confirm-dialog'
 import { StatusTimeline } from '@/components/domain/status-timeline'
 import { ProducaoFormFields } from './producao-form-fields'
+import { ReservationList } from './reservation-list'
 import {
   PRODUCTION_ORDER_STATUS_LABELS, PRODUCTION_ORDER_TRANSITIONS, EMPTY_PRODUCTION_ORDER_FORM, productionOrderToFormData,
   type ProductionOrderListRow, type ProductionOrderRecord, type ProductionOrderFormData,
@@ -373,6 +374,11 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
                 </div>
               </div>
             )}
+
+            <div className="space-y-2">
+              <Label className="text-xs">Reserva de Material</Label>
+              <ReservationList productionOrderId={detail.id} />
+            </div>
 
             <div className="space-y-2">
               <Label className="text-xs">Histórico de Status</Label>

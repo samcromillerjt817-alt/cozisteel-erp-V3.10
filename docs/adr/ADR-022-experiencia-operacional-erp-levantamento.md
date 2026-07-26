@@ -1,9 +1,8 @@
 # ADR-022 — Evolução da Experiência Operacional do ERP: Levantamento
 
-**Status**: levantamento aprovado 2026-07-25. Fase UX-1 (Integridade e controle operacional) e
-Fase UX-2 (Visibilidade do que já existe) implementadas — ver Partes 6 e 7. Fases UX-3 a UX-7
-ainda não iniciadas (UX-3 depende da decisão pendente #5).
-**Data**: 2026-07-25
+**Status**: levantamento aprovado 2026-07-25. Fases UX-1, UX-2 e UX-3 implementadas — ver Partes 6,
+7 e 8. Fases UX-4 a UX-7 ainda não iniciadas.
+**Data**: 2026-07-25 (Fases UX-1/UX-2), 2026-07-26 (Fase UX-3)
 **Escopo**: revisão completa da dinâmica de trabalho de quem opera o ERP no dia a dia — não é um
 redesenho visual isolado, é uma auditoria de rotinas operacionais, tratamento de erros, recursos
 autoexplicativos, consistência visual e performance/produtividade, em todos os módulos.
@@ -352,9 +351,10 @@ Nenhuma fase começa sem aprovação explícita da anterior.
    própria, ou fica fora deste levantamento?
 4. **Alçada de aprovação** (Requisições, Compras): quer segunda pessoa obrigatória, limite de valor, ou
    só reforçar a confirmação visual sem mudar a regra de quem pode aprovar?
-5. **Escopo inicial de MRP/Reserva/Lote (Fase UX-3)**: começar só com telas de consulta (menor risco,
-   sem novas regras de negócio) e decidir ações (aprovar sugestão, disparar cálculo) depois de validar a
-   consulta, ou já desenhar o fluxo completo de uma vez?
+5. ~~**Escopo inicial de MRP/Reserva/Lote (Fase UX-3)**~~ — **Respondida em 2026-07-26**: começar só
+   com telas de consulta (menor risco), nenhuma ação nova (aprovar sugestão, disparar cálculo de MRP).
+   Implementado para Reserva de Material e Rastreabilidade por Lote — ver Parte 8. Exposição de MRP
+   em si (sugestões + gatilho de execução) fica para uma fase futura, fora do escopo desta rodada.
 
 ---
 
@@ -434,6 +434,39 @@ fetch-em-efeito já tolerado neste projeto em toda fase anterior, não um proble
 independentes da aba Relatórios, 1 no `StatusTimeline`, 1 no consumo de deep-link novo em
 Requisições/Orçamentos), 343/343 testes (3 novos: `tests/status-history-visibility.test.ts`), build
 limpo.
+
+## PARTE 8 — Fase UX-3 implementada (2026-07-26)
+
+Decisão pendente #5 respondida: só consulta, nenhuma ação nova. MRP em si (sugestões + gatilho de
+execução) fica fora desta rodada — os outros 3 itens da fase não dependiam dessa decisão.
+
+1. **Consulta de Reserva de Material** — `MaterialReservationService.listReservations()` existia
+   desde o ADR-006 (Fase 5) sem rota. Nova `GET /api/production-orders/[id]/reservations`
+   (`producao:read`) + `material-reservation.repository.ts.findManyByOrder()` ganhou `include` de
+   nome de material/produto (nenhum consumidor usava esse método antes, sem risco de quebrar
+   formato em uso) + componente `ReservationList` no `DetailDrawer` de Produção, mostrando
+   reservado/necessário/falta por item.
+2. **Consulta de Rastreabilidade por Lote** — `BatchTraceabilityService.traceForward()`/
+   `traceBackward()` existiam desde o ADR-013 (Fase 10) sem rota nem tela. Como `batchNumber` não é
+   único no schema, a entrada da UI é uma busca por número (`batchTraceabilityService.search()`,
+   novo) que lista candidatos antes de rastrear — 3 rotas novas (`GET /api/batches/search`,
+   `GET /api/batches/material/[id]/forward`, `GET /api/batches/product/[id]/backward`, todas
+   `estoque:read`) + nova aba "Rastreabilidade" em Estoque (`batch-traceability-tab.tsx`).
+3. **Captura de lote/validade do fornecedor no recebimento** — o backend já aceitava
+   `batchNumber`/`expiresAt` por item desde o ADR-013; sem esses campos na tela, o lote sempre nascia
+   com número gerado internamente. `purchase-order-receive-dialog.tsx` ganhou os 2 campos (só para
+   materiais `lotControlled`), opcionais — em branco, mantém o comportamento de gerar automaticamente.
+4. **PDF de OP reflete a BOM formal** — `generateProductionOrderPdf()` sempre lia `ProductMaterial`
+   (receita simples); agora prioriza `BomLine` da `BomRevision` congelada na OP quando existe, mesma
+   prioridade que `ProductionOrderService.resolveConsumptionLines()` já usa para o consumo real —
+   fecha a divergência entre o papel impresso e o que é efetivamente baixado do estoque. Escopo
+   deliberadamente restrito a linhas tipo "material" (não subconjuntos/componentes), mesmo alcance
+   que a tabela já cobria antes.
+
+**Verificação**: tsc limpo, lint 40 (+1 sobre a baseline de 39 — mesmo padrão sistêmico de
+fetch-em-efeito, `ReservationList`), 345/345 testes (2 novos em
+`tests/pdf-production-order-bom.test.ts`, comprova que a OP com `BomRevision` usa `BomLine` e a OP
+sem ela continua usando `ProductMaterial`), build limpo.
 
 ## Conclusão
 

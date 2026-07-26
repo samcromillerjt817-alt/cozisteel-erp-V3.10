@@ -75,13 +75,13 @@ describe('Histórico de status e dados de aprovação (ADR-022, Fase UX-2)', () 
     )) as { id: string }
     createdRequisitionIds.push(requisition.id)
 
-    const before = await requisitionService.getById(requisition.id) as { approvedByName: string | null; approvedAt: string | null }
+    const before = await requisitionService.getById(requisition.id) as unknown as { approvedByName: string | null; approvedAt: string | null }
     expect(before.approvedByName).toBeNull()
 
     await requisitionService.changeStatus(requisition.id, 'sent', user.id)
     await requisitionService.changeStatus(requisition.id, 'approved', user.id)
 
-    const after = await requisitionService.getById(requisition.id) as { approvedByName: string | null; approvedAt: Date | null }
+    const after = await requisitionService.getById(requisition.id) as unknown as { approvedByName: string | null; approvedAt: Date | null }
     expect(after.approvedByName).toBe(user.name)
     expect(after.approvedAt).not.toBeNull()
   })
@@ -103,7 +103,7 @@ describe('Histórico de status e dados de aprovação (ADR-022, Fase UX-2)', () 
     )) as { id: string; items: { id: string }[] }
     createdRequisitionIds.push(requisition.id)
 
-    const full = await requisitionService.getById(requisition.id) as { items: { id: string }[] }
+    const full = await requisitionService.getById(requisition.id) as unknown as { items: { id: string }[] }
     const itemId = full.items[0].id
     const quote = (await requisitionService.createItemQuote(requisition.id, itemId, { supplierId: supplier.id, price: 10, leadTimeDays: 5 }, user.id)) as { id: string }
     await requisitionService.selectItemQuote(itemId, quote.id, user.id)
@@ -114,13 +114,13 @@ describe('Histórico de status e dados de aprovação (ADR-022, Fase UX-2)', () 
     createdPurchaseOrderIds.push(...generatedPurchaseOrders.map((po) => po.id))
 
     const poId = generatedPurchaseOrders[0].id
-    const before = await purchaseOrderService.getById(poId) as { approvedByName: string | null }
+    const before = await purchaseOrderService.getById(poId) as unknown as { approvedByName: string | null }
     expect(before.approvedByName).toBeNull()
 
     await purchaseOrderService.changeStatus(poId, 'pending_approval', user.id)
     await purchaseOrderService.changeStatus(poId, 'approved', user.id)
 
-    const after = await purchaseOrderService.getById(poId) as { approvedByName: string | null; approvedAt: Date | null }
+    const after = await purchaseOrderService.getById(poId) as unknown as { approvedByName: string | null; approvedAt: Date | null }
     expect(after.approvedByName).toBe(user.name)
     expect(after.approvedAt).not.toBeNull()
   })
