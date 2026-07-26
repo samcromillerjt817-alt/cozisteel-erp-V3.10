@@ -192,6 +192,10 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
   }
 
   async function changeStatus(id: string, status: string) {
+    if (status === 'completed' && !(await confirmAction({
+      title: 'Concluir Ordem de Produção',
+      description: 'Concluir esta OP dá baixa na matéria-prima restante e gera entrada do produto acabado no estoque. Esta ação não pode ser desfeita pelo sistema. Confirma?',
+    }))) return
     setStatusChanging(true)
     try {
       const r = await fetch(`/api/production-orders/${id}`, {
@@ -220,6 +224,10 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
       toast.error('Informe uma quantidade maior que zero')
       return
     }
+    if (!(await confirmAction({
+      title: 'Registrar produção',
+      description: `Confirma produzir ${produceQty} ${detail.unit}? Isso dá baixa na matéria-prima e gera um novo lote de produto acabado — não pode ser desfeito pelo sistema.`,
+    }))) return
     setProducing(true)
     try {
       const r = await fetch(`/api/production-orders/${detail.id}/produce`, {

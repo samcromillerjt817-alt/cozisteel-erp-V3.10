@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Edit, Copy, FileOutput, Image as ImageIcon, Truck, ShoppingCart, Trash2, X } from 'lucide-react'
+import { Plus, Edit, Copy, FileOutput, Image as ImageIcon, Truck, ShoppingCart, Trash2, X, AlertTriangle } from 'lucide-react'
 import { PageHeader } from '@/components/platform/page-header'
 import { FilterBar } from '@/components/platform/filter-bar'
 import { DataTable, type DataTableColumn } from '@/components/platform/data-table'
@@ -81,6 +81,11 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  /** ADR-022, Fase UX-1 — orçamento já convertido em Pedido de Venda continua editável de propósito
+   * (excluir a capacidade seria remover funcionalidade sem necessidade comprovada), mas sem nenhum
+   * aviso o usuário não sabia que o Pedido de Venda já gerado NÃO reflete mudanças feitas aqui depois
+   * da conversão — risco de divergência silenciosa de preço/itens entre os dois documentos. */
+  const [editingSalesOrder, setEditingSalesOrder] = useState<{ id: string; number: string } | null>(null)
   const [form, setForm] = useState<QuoteFormData>(emptyQuoteForm())
   const [saving, setSaving] = useState(false)
 
@@ -130,6 +135,7 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
 
   function openNew() {
     setEditingId(null)
+    setEditingSalesOrder(null)
     setForm(emptyQuoteForm())
     setDialogOpen(true)
   }
@@ -151,12 +157,13 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
     }))
   }
 
-  async function openEdit(id: string) {
+  async function openEdit(id: string, salesOrder: { id: string; number: string } | null = null) {
     try {
       const r = await fetch(`/api/quotes/${id}`)
       if (!r.ok) { toast.error('Erro ao carregar orçamento'); return }
       const q = await r.json()
       setEditingId(id)
+      setEditingSalesOrder(salesOrder)
       setForm({
         clientId: q.clientId || '', clientName: q.clientName || '', clientCnpj: q.clientCnpj || '',
         clientContact: q.clientContact || '', clientPhone: q.clientPhone || '', clientEmail: q.clientEmail || '',
@@ -207,6 +214,10 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
   }
 
   async function changeStatus(id: string, status: string) {
+    if (status === 'approved' && !(await confirmAction({
+      title: 'Aprovar orçamento',
+      description: 'Aprovar este orçamento gera automaticamente Ordem(ns) de Produção. Esta ação não pode ser desfeita pelo sistema. Confirma?',
+    }))) return
     await runStatusChange(id, async () => {
       try {
         const r = await fetch(`/api/quotes/${id}/status`, {
@@ -378,7 +389,7 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
             label: 'Converter em Pedido de Venda', icon: <ShoppingCart />, onClick: (q) => convertToOrder(q.id),
             disabled: (q) => q.status !== 'approved' || !!q.salesOrder || pendingStatusIds.has(q.id),
           },
-          { label: 'Editar', icon: <Edit />, onClick: (q) => openEdit(q.id) },
+          { label: 'Editar', icon: <Edit />, onClick: (q) => openEdit(q.id, q.salesOrder) },
           { label: 'Duplicar', icon: <Copy />, onClick: (q) => duplicateQuote(q.id) },
           { label: 'PDF Comercial', icon: <FileOutput />, onClick: (q) => window.open(`/api/quotes/${q.id}/pdf?variant=comercial`, '_blank') },
           { label: 'PDF Técnico (com foto)', icon: <ImageIcon />, onClick: (q) => window.open(`/api/quotes/${q.id}/pdf?variant=tecnico`, '_blank') },
@@ -398,6 +409,15 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
         saving={saving}
       >
         <div className="space-y-6">
+          {editingSalesOrder && (
+            <div className="flex items-start gap-2.5 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <p>
+                Este orçamento já foi convertido no Pedido de Venda <strong>{editingSalesOrder.number}</strong>.
+                Alterações feitas aqui não são refletidas automaticamente no pedido já gerado.
+              </p>
+            </div>
+          )}
           <div>
             <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">Dados do Cliente</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

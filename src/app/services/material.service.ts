@@ -75,7 +75,11 @@ class MaterialService {
       await this.assertUniqueName(newName)
     }
 
-    const { _count, suppliers, productMaterials, products, category, createdAt, id: _id, ...updateData } = body
+    // ADR-022 (Fase UX-1) — "Estoque atual" nunca deve mudar por aqui: é a mesma operação sensível
+    // que a tela de Ajuste de Estoque já cobre com motivo obrigatório + StockMovement de verdade.
+    // Aceitar `stockQty` neste update() era uma segunda porta de entrada pro mesmo saldo, sem motivo
+    // e sem nenhuma trilha de auditoria de estoque (achado #06 do levantamento).
+    const { _count, suppliers, productMaterials, products, category, createdAt, id: _id, stockQty: _stockQty, ...updateData } = body
     const updated = await materialRepository.update(id, updateData)
 
     await auditService.log({

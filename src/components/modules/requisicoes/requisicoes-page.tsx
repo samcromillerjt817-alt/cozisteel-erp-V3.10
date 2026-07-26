@@ -221,6 +221,10 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
   }
 
   async function changeStatus(id: string, status: string) {
+    if (status === 'approved' && !(await confirmAction({
+      title: 'Aprovar requisição',
+      description: 'Você está aprovando esta requisição sozinho — o sistema não exige um segundo aprovador. Confirme só se tiver revisado os itens e cotações.',
+    }))) return
     setStatusChanging(true)
     try {
       const r = await fetch(`/api/requisitions/${id}/status`, {

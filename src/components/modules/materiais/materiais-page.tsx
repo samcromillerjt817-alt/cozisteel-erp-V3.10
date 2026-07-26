@@ -207,7 +207,7 @@ export function MateriaisPage({ categories, onCatalogChanged }: MateriaisPagePro
         onSave={save}
         saving={saving}
       >
-        <MaterialFormFields form={form} onChange={setForm} categories={categories} />
+        <MaterialFormFields form={form} onChange={setForm} categories={categories} isEditing={!!editingId} />
         {editingId && <MaterialLinksReadonly suppliers={detailSuppliers} products={detailProducts} />}
       </FormDialog>
     </div>

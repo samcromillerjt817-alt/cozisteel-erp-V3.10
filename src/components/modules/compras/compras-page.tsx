@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { formatCurrency } from '@/lib/format'
 import { PurchaseOrderReceiveDialog } from './purchase-order-receive-dialog'
+import { useConfirm } from '@/components/domain/confirm-dialog'
 import {
   PURCHASE_ORDER_STATUS_LABELS, PURCHASE_ORDER_TRANSITIONS,
   type PurchaseOrderListRow, type PurchaseOrderRecord,
@@ -35,6 +36,7 @@ interface ComprasPageProps {
  * frontend é mudar o status (respeitando a máquina de estados) e registrar recebimento.
  */
 export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: ComprasPageProps) {
+  const confirmAction = useConfirm()
   const [rows, setRows] = useState<PurchaseOrderListRow[]>([])
   const [loading, setLoading] = useState(false)
   const [statusFilter, setStatusFilter] = useState('all')
@@ -109,6 +111,10 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
   }
 
   async function changeStatus(id: string, status: string) {
+    if (status === 'approved' && !(await confirmAction({
+      title: 'Aprovar Pedido de Compra',
+      description: 'Você está aprovando este pedido sozinho — o sistema não exige um segundo aprovador. Confirme só se tiver revisado fornecedor, itens e valores.',
+    }))) return
     setStatusChanging(true)
     try {
       const r = await fetch(`/api/purchase-orders/${id}/status`, {
@@ -146,6 +152,10 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
       toast.error('Informe ao menos uma quantidade recebida')
       return
     }
+    if (!(await confirmAction({
+      title: 'Confirmar recebimento',
+      description: 'Confirmar dá entrada imediata das quantidades informadas no estoque. Não é possível estornar um recebimento por esta tela depois de confirmado. Confirma?',
+    }))) return
     setReceiveSaving(true)
     try {
       const r = await fetch(`/api/purchase-orders/${receiveTarget.id}/receive`, {
