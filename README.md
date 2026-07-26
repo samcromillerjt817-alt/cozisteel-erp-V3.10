@@ -43,7 +43,8 @@ O menu é organizado por área de negócio:
 
 ## Administração
 - **Usuários** — autenticação, 9 perfis de acesso (Administrador, Gerente, Usuário, Visualizador, Comercial, Produção, Compras, Estoque, Financeiro), permissão aplicada tanto no menu quanto nas rotas de API (403 para quem não tem permissão)
-- **Configurações** — dados da empresa (usados em todos os PDFs e relatórios gerados), numeração de documentos, atualizações do sistema
+- **Configurações** — dados da empresa (usados em todos os PDFs e relatórios gerados), numeração de documentos, atualizações do sistema (upload de patch, backup manual sob demanda, histórico e logs de execução)
+- **Central de Administração** (admin) — Diagnóstico (tamanho do banco, espaço em disco, status do PM2, detecção de atualização travada), Console SQL somente leitura (`SELECT`/`WITH`, sem instruções em cadeia) e Correções: receitas curadas e auditadas (destravar status de atualização preso, reconciliar histórico de atualização a partir de um backup órfão, recalcular custo de lote de produção)
 
 ---
 
@@ -203,7 +204,6 @@ Faz backup automático (código + banco) antes de aplicar, builda, e **reverte s
 
 # 📌 Roadmap
 
-- [ ] Financeiro: custo de mão de obra/overhead (única subetapa restante da Fase 12)
 - [ ] Expor MRP e Rastreabilidade por Lote numa tela própria (motor já implementado e testado, ver seção "Infraestrutura de domínio" acima)
 - [ ] Emissão de NF-e
 - [ ] CRM
