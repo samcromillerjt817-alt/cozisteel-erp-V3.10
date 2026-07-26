@@ -9,7 +9,7 @@ import { PageHeader } from '@/components/platform/page-header'
 import { DataTable, type DataTableColumn } from '@/components/platform/data-table'
 import { StatusBadge } from '@/components/domain/status-badge'
 import { useConfirm } from '@/components/domain/confirm-dialog'
-import type { PatchLogEntry, PatchLogFile } from './types'
+import type { PatchLogEntry, PatchLogFile, ManualBackupFile } from './types'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -51,6 +51,44 @@ export function AtualizacoesTab({ isAdmin }: AtualizacoesTabProps) {
   const [viewingLog, setViewingLog] = useState<string | null>(null)
   const [logContent, setLogContent] = useState('')
   const [logContentLoading, setLogContentLoading] = useState(false)
+
+  const [manualBackups, setManualBackups] = useState<ManualBackupFile[]>([])
+  const [backupsLoading, setBackupsLoading] = useState(false)
+  const [creatingBackup, setCreatingBackup] = useState(false)
+
+  const loadManualBackups = useCallback(async () => {
+    setBackupsLoading(true)
+    try {
+      const r = await fetch('/api/system/patches/backups')
+      if (r.ok) setManualBackups(await r.json())
+    } catch {
+      // lista complementar — falha aqui não deve travar o resto da tela
+    } finally {
+      setBackupsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadManualBackups()
+  }, [loadManualBackups])
+
+  async function createManualBackup() {
+    setCreatingBackup(true)
+    try {
+      const r = await fetch('/api/system/patches/backups', { method: 'POST' })
+      const json = await r.json()
+      if (r.ok) {
+        toast.success('Backup manual criado com sucesso')
+        loadManualBackups()
+      } else {
+        toast.error(json.error || 'Erro ao criar backup manual')
+      }
+    } catch {
+      toast.error('Erro ao criar backup manual')
+    } finally {
+      setCreatingBackup(false)
+    }
+  }
 
   const loadLogFiles = useCallback(async () => {
     setLogsLoading(true)
@@ -197,6 +235,41 @@ export function AtualizacoesTab({ isAdmin }: AtualizacoesTabProps) {
               <div className="flex items-center gap-3 bg-muted/50 rounded p-3">
                 <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
                 <span className="text-sm">{status.message}</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {isAdmin && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Backup Manual</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Cria um backup do código e do banco de dados agora, sem aplicar nenhuma atualização —
+              útil como salvaguarda antes de uma operação arriscada (ex.: rodar uma correção na Central
+              de Administração).
+            </p>
+            <Button variant="outline" disabled={creatingBackup} onClick={createManualBackup}>
+              {creatingBackup ? 'Criando backup...' : 'Criar backup agora'}
+            </Button>
+            {backupsLoading ? (
+              <p className="text-sm text-muted-foreground">Carregando...</p>
+            ) : manualBackups.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum backup manual criado ainda.</p>
+            ) : (
+              <div className="space-y-2">
+                {manualBackups.map((b) => (
+                  <div key={b.filename} className="flex items-center justify-between gap-2 rounded border p-3 text-sm">
+                    <div>
+                      <p className="font-mono">{b.filename}</p>
+                      <p className="text-muted-foreground">
+                        {new Date(b.modifiedAt).toLocaleString('pt-BR')} — {formatBytes(b.sizeBytes)}
+                        {b.dbSizeBytes !== null && <> (código) + {formatBytes(b.dbSizeBytes)} (banco)</>}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>

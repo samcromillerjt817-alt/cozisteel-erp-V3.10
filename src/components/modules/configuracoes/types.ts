@@ -27,6 +27,13 @@ export interface PatchLogFile {
   modifiedAt: string
 }
 
+export interface ManualBackupFile {
+  filename: string
+  sizeBytes: number
+  dbSizeBytes: number | null
+  modifiedAt: string
+}
+
 export interface PatchLogEntry {
   id: string
   createdAt: string
@@ -39,7 +46,7 @@ export interface PatchLogEntry {
 }
 
 export const AUDIT_MODULES = ['compras', 'estoque', 'fornecedores', 'materiais', 'orcamentos', 'producao', 'produtos', 'requisicoes', 'sequencias', 'sistema'] as const
-export const AUDIT_ACTIONS = ['CREATE', 'UPDATE', 'DELETE', 'PATCH', 'CORRECAO', 'CONSULTA'] as const
+export const AUDIT_ACTIONS = ['CREATE', 'UPDATE', 'DELETE', 'PATCH', 'CORRECAO', 'CONSULTA', 'BACKUP'] as const
 
 // ── Administração do Sistema (ADR-021) ──────────────────────────────────
 

@@ -1,10 +1,24 @@
 import path from 'path'
 import fs from 'fs/promises'
+import fsSync from 'fs'
 import { spawn, execSync } from 'child_process'
-import { getStorageDir, ensureStorageSubdir } from '@/lib/storage'
+import { ensureStorageSubdir } from '@/lib/storage'
+import { auditService } from '@/app/services/audit.service'
 import { BadRequestException } from '@/app/exceptions'
 
 const MAX_PATCH_SIZE_BYTES = 200 * 1024 * 1024 // 200MB
+
+// Mesma lista de inclusão/exclusão do backup automático em scripts/apply-patch.sh — mantém os dois
+// mecanismos consistentes (mesmo conteúdo, só muda o prefixo do arquivo e o gatilho).
+const BACKUP_TAR_ARGS = `--exclude='node_modules' --exclude='.next' --exclude='storage' --exclude='.git' prisma src public package.json package-lock.json next.config.ts version.json ecosystem.config.cjs`
+
+// Inclui milissegundos (diferente do "pre-patch-*" de scripts/apply-patch.sh, que só precisa de
+// segundos porque um patch real leva minutos): o botão de backup manual pode ser clicado mais de uma
+// vez na mesma UI dentro do mesmo segundo, e cada clique precisa virar um arquivo distinto.
+function formatBackupTimestamp(d: Date): string {
+  const pad = (n: number, len = 2) => String(n).padStart(len, '0')
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-${pad(d.getMilliseconds(), 3)}`
+}
 
 /**
  * Isolado de SystemService de propósito (ADR-001, achado do levantamento da Fase 1): esta é a única
@@ -58,6 +72,42 @@ class PatchService {
       manifest,
       message: 'Patch recebido e está sendo aplicado. O sistema pode reiniciar em instantes — acompanhe o progresso nesta tela.',
     }
+  }
+
+  /**
+   * Backup sob demanda (código + banco), fora de qualquer aplicação de patch (ADR-021, Parte 8.5 —
+   * pedido do usuário para poder tirar uma salvaguarda antes de qualquer operação arriscada feita pela
+   * Central de Administração, ex.: rodar uma receita de correção). Prefixo "manual-backup-" (nunca
+   * "pre-patch-") de propósito: a receita "reconcile-patch-log" só varre "pre-patch-*.tar.gz" à procura
+   * de PatchLog ausente — um backup manual nunca tem PatchLog correspondente por natureza, e não deve
+   * virar falso-positivo de "backup órfão" nessa receita.
+   */
+  async createManualBackup(userId: string) {
+    const backupDir = ensureStorageSubdir('patches', 'backups')
+    const ts = formatBackupTimestamp(new Date())
+    const backupTar = `manual-backup-${ts}.tar.gz`
+    const backupTarPath = path.join(backupDir, backupTar)
+
+    execSync(`tar czf "${backupTarPath}" ${BACKUP_TAR_ARGS}`, { cwd: process.cwd() })
+
+    let backupDb: string | null = null
+    const dbFile = (process.env.DATABASE_URL || '').replace(/^file:/, '')
+    if (dbFile && fsSync.existsSync(dbFile)) {
+      backupDb = `manual-backup-${ts}.db`
+      await fs.copyFile(dbFile, path.join(backupDir, backupDb))
+    }
+
+    const { size: sizeBytes } = await fs.stat(backupTarPath)
+
+    await auditService.log({
+      userId,
+      action: 'BACKUP',
+      module: 'sistema',
+      entityName: backupTar,
+      details: `Backup manual criado sob demanda (código${backupDb ? ' + banco' : ''})`,
+    })
+
+    return { backupTar, backupDb, sizeBytes, createdAt: new Date().toISOString() }
   }
 }
 

@@ -200,7 +200,12 @@ banco compartilhado — mesma regra permanente do projeto.
   `POST /api/admin/recipes/[id]/preview`, `POST /api/admin/recipes/[id]/apply` (`sistema:manage`) + aba
   "Correções". **Verificado ao vivo**: a receita de reconciliação encontrou 2 backups órfãos reais em
   disco (`pre-patch-20260708-193328.tar.gz` e `pre-patch-20260709-013134.tar.gz`, ambos versão 3.0.0 no
-  backup) — nenhum aplicado ainda, aguardando decisão do usuário.
+  backup). **Reconciliados em 2026-07-25** (decisão do usuário, após reconstituir a linha do tempo:
+  havia 4 backups no dia 08/07 pra só 1 sucesso registrado em `PatchLog` — indício de 3 tentativas
+  revertidas antes da que deu certo, das quais só 2 caem fora da janela de ±30min do sucesso real e por
+  isso são detectadas pela heurística; a 3ª, `pre-patch-20260708-202143.tar.gz`, corresponde ao próprio
+  sucesso e por isso nunca aparece como órfã). Cada uma virou um `PatchLog` (`status: rolled_back`,
+  `fromVersion`/`toVersion: "3.0.0"`) + `AuditLog` correspondente.
 - **Permissão**: nenhum módulo RBAC novo — tudo sob `sistema` (`read` para diagnóstico, `manage` para
   console/receitas), decisão #3 da Parte 4. Abas de escrita (`Console SQL`/`Correções`) ficam ocultas
   para quem não é admin (`isAdmin` prop, mesmo padrão já usado por `AtualizacoesTab`).
@@ -299,5 +304,29 @@ parte do repositório).
 Pedido na mesma mensagem do usuário: um botão para disparar um backup (código + banco, mesmo mecanismo
 já usado dentro de `apply-patch.sh`) a qualquer momento, sem precisar aplicar um patch — simplifica
 tirar uma salvaguarda antes de qualquer operação arriscada feita pela Central de Administração
-(ex.: antes de rodar uma receita de correção). Implementação nas próximas seções/commits deste mesmo
-adendo.
+(ex.: antes de rodar uma receita de correção).
+
+**Implementado**: `PatchService.createManualBackup()` reaplica exatamente a mesma lista de
+inclusão/exclusão do `tar` que `apply-patch.sh` usa no seu backup automático (`prisma src public
+package.json package-lock.json next.config.ts version.json ecosystem.config.cjs`, excluindo
+`node_modules`/`.next`/`storage`/`.git`), mais uma cópia do arquivo de banco (`DATABASE_URL`) quando
+existe. Prefixo deliberadamente diferente do automático — `manual-backup-` em vez de `pre-patch-` — para
+não colidir com a heurística de "backup órfão" da receita `reconcile-patch-log` (Parte 4/Seção acima):
+essa receita varre só `pre-patch-*.tar.gz` à procura de `PatchLog` ausente, e um backup manual nunca tem
+(nem deveria ter) um `PatchLog` correspondente. Nome de arquivo inclui milissegundos
+(`manual-backup-AAAAMMDD-HHMMSS-mmm`), diferença proposital do automático: um patch real leva minutos,
+mas o botão na UI pode ser clicado mais de uma vez dentro do mesmo segundo — sem os milissegundos, o
+segundo clique sobrescreveria o arquivo do primeiro em silêncio.
+
+Toda chamada grava um `AuditLog` (`module: 'sistema'`, `action: 'BACKUP'` — novo valor adicionado a
+`AUDIT_ACTIONS`). Rotas: `GET/POST /api/system/patches/backups` (`sistema:read` para listar,
+`sistema:manage` para criar, mesma separação já usada por Console SQL/Correções). UI: novo card "Backup
+Manual" na aba Atualizações (só admin), com botão "Criar backup agora" e lista dos backups já criados
+(reaproveitando o mesmo estilo visual da lista de "Logs de Execução" já existente na mesma aba).
+
+Testes: `tests/manual-backup.test.ts` (5 casos) — cria um backup real (tar.gz do projeto de verdade,
+não um fake, já que o objetivo é validar o mesmo comando `tar` usado em produção), confirma a cópia do
+banco quando `DATABASE_URL` aponta pra um arquivo existente, e confirma que um `pre-patch-*.tar.gz`
+(backup automático de um patch real) nunca aparece na listagem de backups manuais. 339/339 testes
+totais, tsc limpo, lint 34 (+1 sobre a baseline de 33 — mesmo padrão sistêmico de fetch-em-efeito já
+tolerado nesta mesma aba, não um problema novo), build limpo.
