@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { QuantityInput } from '@/components/form/quantity-input'
 import { UnitSelect } from '@/components/form/unit-select'
+import { SearchableSelect } from '@/components/domain/searchable-select'
 import { PRIORITY_LABELS, type ProductionOrderFormData } from './types'
 
 interface ProductOption { id: string; name: string }
@@ -14,7 +15,6 @@ interface SalesOrderOption { id: string; number: string; clientName: string; ite
 interface ProducaoFormFieldsProps {
   form: ProductionOrderFormData
   onChange: (form: ProductionOrderFormData) => void
-  products: ProductOption[]
   salesOrders: SalesOrderOption[]
   isEditing: boolean
   selectedSalesOrderId: string
@@ -25,7 +25,7 @@ interface ProducaoFormFieldsProps {
 /** Campos do formulário de criar/editar Ordem de Produção — específico do domínio. Status não é mais
  * um campo aqui (Subetapa 11.5.8): a transição de status e o registro de produção parcial vivem no
  * `DetailDrawer`, mesma decisão de unificação já aplicada em Compras/Requisições. */
-export function ProducaoFormFields({ form, onChange, products, salesOrders, isEditing, selectedSalesOrderId, onSelectedSalesOrderChange, onPickSalesOrderItem }: ProducaoFormFieldsProps) {
+export function ProducaoFormFields({ form, onChange, salesOrders, isEditing, selectedSalesOrderId, onSelectedSalesOrderChange, onPickSalesOrderItem }: ProducaoFormFieldsProps) {
   return (
     <div className="space-y-4">
       {!isEditing && (
@@ -53,10 +53,14 @@ export function ProducaoFormFields({ form, onChange, products, salesOrders, isEd
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div className="space-y-1.5">
           <Label>Produto</Label>
-          <Select value={form.productId} onValueChange={(v) => onChange({ ...form, productId: v, productName: products.find((p) => p.id === v)?.name || '' })}>
-            <SelectTrigger className="w-full"><SelectValue placeholder="Selecione" /></SelectTrigger>
-            <SelectContent>{products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-          </Select>
+          <SearchableSelect<ProductOption>
+            value={form.productId}
+            label={form.productName}
+            placeholder="Buscar produto..."
+            searchUrl={(q) => `/api/products?search=${encodeURIComponent(q)}&limit=20`}
+            parseResults={(json) => ((json as { data: ProductOption[] }).data || []).map((p) => ({ id: p.id, label: p.name, data: p }))}
+            onSelect={(hit) => onChange({ ...form, productId: hit.id, productName: hit.label })}
+          />
         </div>
         <div className="space-y-1.5"><Label>Quantidade</Label><QuantityInput min={0.01} value={form.quantity} onChange={(v) => onChange({ ...form, quantity: v })} /></div>
         <div className="space-y-1.5"><Label>Unidade</Label><UnitSelect value={form.unit} onChange={(v) => onChange({ ...form, unit: v })} /></div>

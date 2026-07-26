@@ -85,6 +85,11 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail, onNavigat
 
   useEffect(() => {
     if (!initialDetailId) return
+    // ADR-022 (Fase UX-4) — `setDetailOpen`/`setDetailLoading` explícitos aqui, não só no `useState`
+    // preguiçoso: com o keep-alive de módulo (visita anterior já monta o componente), um deep-link
+    // que chega DEPOIS do primeiro mount não passaria pelo estado inicial nunca mais.
+    setDetailOpen(true)
+    setDetailLoading(true)
     fetchDetail(initialDetailId).then((full) => { setDetail(full); setDetailLoading(false) })
     onConsumeInitialDetail?.()
   }, [initialDetailId, onConsumeInitialDetail])

@@ -23,11 +23,9 @@ import {
   type ProductionOrderListRow, type ProductionOrderRecord, type ProductionOrderFormData,
 } from './types'
 
-interface ProductOption { id: string; name: string }
 interface SalesOrderOption { id: string; number: string; clientName: string; items?: { id: string; description: string; quantity: number; unit: string; productId: string | null }[] }
 
 interface ProducaoPageProps {
-  products: ProductOption[]
   salesOrders: SalesOrderOption[]
   onGenerateRequisitionFromOP: (productionOrderId: string) => void
   /** Deep-link vindo de fora (Hardening pós-11.5, Prioridade 1) — quando um Orçamento aprovado gera
@@ -51,7 +49,7 @@ const PAGE_SIZE = 20
  * Produção parcial por rodada, um recurso já pronto no backend, nunca teve UI. O `DetailDrawer` abaixo
  * é essa UI, pela primeira vez.
  */
-export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromOP, initialDetailId, onConsumeInitialDetail }: ProducaoPageProps) {
+export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initialDetailId, onConsumeInitialDetail }: ProducaoPageProps) {
   const confirmAction = useConfirm()
   const [rows, setRows] = useState<ProductionOrderListRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -96,6 +94,10 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
 
   useEffect(() => {
     if (!initialDetailId) return
+    // ADR-022 (Fase UX-4) — mesmo motivo do achado em Compras/Requisições/Pedidos: com o keep-alive
+    // de módulo, o `useState` preguiçoso só cobre o primeiro mount, nunca um deep-link que chega depois.
+    setDetailOpen(true)
+    setDetailLoading(true)
     fetchDetail(initialDetailId).then((full) => {
       setDetail(full)
       setProduceQty(full ? Math.max(0, full.quantity - full.quantityCompleted) : 0)
@@ -297,7 +299,6 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
         <ProducaoFormFields
           form={form}
           onChange={setForm}
-          products={products}
           salesOrders={salesOrders}
           isEditing={editingId !== null}
           selectedSalesOrderId={selectedSalesOrderId}

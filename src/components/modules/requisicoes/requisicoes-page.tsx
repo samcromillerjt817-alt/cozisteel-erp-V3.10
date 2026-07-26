@@ -106,6 +106,10 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
 
   useEffect(() => {
     if (!initialDetailId) return
+    // ADR-022 (Fase UX-4) — mesmo motivo do achado em Compras/Pedidos/Produção: com o keep-alive de
+    // módulo, o `useState` preguiçoso só cobre o primeiro mount, nunca um deep-link que chega depois.
+    setDetailOpen(true)
+    setDetailLoading(true)
     setQuoteDrafts({})
     fetchDetail(initialDetailId).then((full) => { setDetail(full); setDetailLoading(false) })
     onConsumeInitialDetail?.()
@@ -407,7 +411,6 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
               onDraftChange={(itemId, patch) => setQuoteDrafts((prev) => ({ ...prev, [itemId]: { ...(prev[itemId] || EMPTY_QUOTE_DRAFT()), ...patch } }))}
               onAddQuote={addQuote}
               onSelectQuote={selectQuote}
-              suppliers={suppliers}
             />
 
             <div className="space-y-2">

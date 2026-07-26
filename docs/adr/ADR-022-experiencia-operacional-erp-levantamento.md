@@ -1,8 +1,8 @@
 # ADR-022 — Evolução da Experiência Operacional do ERP: Levantamento
 
-**Status**: levantamento aprovado 2026-07-25. Fases UX-1, UX-2 e UX-3 implementadas — ver Partes 6,
-7 e 8. Fases UX-4 a UX-7 ainda não iniciadas.
-**Data**: 2026-07-25 (Fases UX-1/UX-2), 2026-07-26 (Fase UX-3)
+**Status**: levantamento aprovado 2026-07-25. Fases UX-1, UX-2, UX-3 e UX-4 implementadas — ver
+Partes 6-9. Fases UX-5 a UX-7 ainda não iniciadas.
+**Data**: 2026-07-25 (Fases UX-1/UX-2), 2026-07-26 (Fases UX-3/UX-4)
 **Escopo**: revisão completa da dinâmica de trabalho de quem opera o ERP no dia a dia — não é um
 redesenho visual isolado, é uma auditoria de rotinas operacionais, tratamento de erros, recursos
 autoexplicativos, consistência visual e performance/produtividade, em todos os módulos.
@@ -467,6 +467,57 @@ execução) fica fora desta rodada — os outros 3 itens da fase não dependiam 
 fetch-em-efeito, `ReservationList`), 345/345 testes (2 novos em
 `tests/pdf-production-order-bom.test.ts`, comprova que a OP com `BomRevision` usa `BomLine` e a OP
 sem ela continua usando `ProductMaterial`), build limpo.
+
+## PARTE 9 — Fase UX-4 implementada (2026-07-26)
+
+Fase estrutural (catálogos + navegação/estado), maior risco técnico do roadmap — escopo tratado com
+cautela deliberada, ver notas de escopo reduzido abaixo.
+
+1. **Combobox com busca server-side** — novo componente reutilizável
+   `src/components/domain/searchable-select.tsx` (Popover + `cmdk`, mesma lib já usada pelo
+   `CommandPalette`, `shouldFilter={false}` porque a busca é sempre no servidor). Convertidos: Cliente
+   e Produto (por item) em Orçamentos, Produto em Produção, Fornecedor na tela de Cotação de
+   Requisições — os 4 pontos de maior uso real identificados no achado #08. As rotas já suportavam
+   `search`/`limit` desde sempre (nenhuma mudança de backend necessária). **Efeito colateral positivo
+   de limpeza**: `clients`/`loadClients` em `page.tsx` ficaram inteiramente mortos (única consumidora
+   era o select de Cliente de Orçamentos) e foram removidos; `products` em `OrcamentosPage`/
+   `ProducaoPage` também, mas o estado em si permanece em `page.tsx` (ainda consumido por Financeiro).
+   **Deliberadamente fora do escopo desta rodada** (para não expandir mais o raio de mudança):
+   `materialsFull` (não pagina no backend hoje, precisaria de uma mudança de contrato da API antes de
+   converter), o seletor "Gerar a partir de uma OP" e o campo "Fornecedor" inicial (o "chute" não
+   vinculante) em `requisicao-form-fields.tsx`.
+2. **Avaliação de `react-query`** — **decisão: não adotado nesta rodada.** A causa raiz do achado #09
+   (filtro/busca/página resetando ao trocar de módulo) é o desmonte do componente do módulo anterior,
+   não falta de cache de rede — resolvida diretamente pelo item 3 abaixo (mantém o componente montado)
+   sem precisar de uma dependência nova nem reescrever o data-fetching dos 14 módulos. `react-query`
+   fica como opção real se um caso de uso futuro precisar de cache entre navegações reais de página
+   (roteamento de verdade, ainda não implementado).
+3. **Preservação de estado ao trocar de módulo** — `page.tsx` ganhou `visitedModules` (Set) + 2
+   helpers (`keepAliveVisible`/`keepAliveClass`): um módulo "workhorse" de CRUD monta na primeira
+   visita e, dali em diante, só fica escondido via CSS (`hidden`) ao trocar de aba — nunca mais
+   desmontado, então filtro/busca/página internos sobrevivem. Aplicado a 11 módulos sem gráfico:
+   Orçamentos, Pedidos, Clientes, Produtos, Materiais, Produção, Fornecedores, Requisições, Compras,
+   Estoque, Usuários. **Deliberadamente fora**: Dashboard e Financeiro — usam `DashboardChart`
+   (Recharts `ResponsiveContainer`), que pode não redesenhar corretamente ao sair de `display:none`
+   (risco documentado, não testado nesta rodada) — mantidos com o comportamento antigo
+   (desmonta/remonta a cada troca). Relatórios e Configurações também ficaram de fora (menor valor:
+   Relatórios é "gerar sob demanda", Configurações tem sub-abas com estado mais simples).
+   **Bug real encontrado e corrigido no caminho**: os 5 módulos com deep-link cross-module
+   (`initialDetailId`) usavam `useState(() => !!initialDetailId)` para abrir o `DetailDrawer` — um
+   `useState` preguiçoso só roda uma vez, no primeiro mount. Com o keep-alive, um módulo já visitado
+   antes fica montado; um deep-link chegando depois desse primeiro mount nunca mais passaria por esse
+   estado inicial e o drawer não abriria sozinho. Corrigido nos 5 (`compras-page.tsx`,
+   `requisicoes-page.tsx`, `pedidos-page.tsx`, `producao-page.tsx`; `orcamentos-page.tsx` já estava
+   correto, `openEdit()` já chamava `setDialogOpen(true)` incondicionalmente) — o efeito que reage a
+   `initialDetailId` agora chama `setDetailOpen(true)`/`setDetailLoading(true)` explicitamente, não
+   confia mais só no estado inicial.
+
+**Verificação**: tsc limpo, lint 45 (+5 sobre a baseline de 40 — mesmo padrão sistêmico de
+fetch-em-efeito; a maior parte vem da correção real de bug acima, que adiciona uma chamada de
+`setState` a um efeito já existente em 4 arquivos, mais o próprio `SearchableSelect`), 345/345
+testes (nenhum teste novo — mudança é só de UI/composição de componentes já testados
+individualmente, sem lógica de negócio nova), build limpo. Testado manualmente via PM2 reiniciado
+com o build novo.
 
 ## Conclusão
 

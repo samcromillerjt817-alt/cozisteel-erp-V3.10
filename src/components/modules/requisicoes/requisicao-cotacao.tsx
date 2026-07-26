@@ -3,10 +3,10 @@
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { CurrencyInput } from '@/components/form/currency-input'
+import { SearchableSelect } from '@/components/domain/searchable-select'
 import { formatCurrency } from '@/lib/format'
-import type { RequisitionRecord, NewQuoteDraft } from './types'
+import { EMPTY_QUOTE_DRAFT, type RequisitionRecord, type NewQuoteDraft } from './types'
 
 interface SupplierOption { id: string; corporateName: string; tradeName: string }
 
@@ -16,12 +16,11 @@ interface RequisicaoCotacaoProps {
   onDraftChange: (itemId: string, patch: Partial<NewQuoteDraft>) => void
   onAddQuote: (itemId: string) => void
   onSelectQuote: (itemId: string, quoteId: string) => void
-  suppliers: SupplierOption[]
 }
 
 /** Conteúdo de cotação dentro do `DetailDrawer` (Subetapa 11.5.8) — antes era um segundo `Dialog`
  * aninhado, aberto a partir da linha da tabela. Mesmo comportamento, mesma API de backend. */
-export function RequisicaoCotacao({ requisition, drafts, onDraftChange, onAddQuote, onSelectQuote, suppliers }: RequisicaoCotacaoProps) {
+export function RequisicaoCotacao({ requisition, drafts, onDraftChange, onAddQuote, onSelectQuote }: RequisicaoCotacaoProps) {
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
@@ -30,7 +29,7 @@ export function RequisicaoCotacao({ requisition, drafts, onDraftChange, onAddQuo
         Compra ao avançar o status da requisição.
       </p>
       {requisition.items.map((item) => {
-        const draft = drafts[item.id] || { supplierId: '', price: 0, leadTimeDays: 0 }
+        const draft = drafts[item.id] || EMPTY_QUOTE_DRAFT()
         return (
           <div key={item.id} className="border rounded-lg p-4 space-y-3">
             <div className="flex justify-between items-baseline">
@@ -60,10 +59,14 @@ export function RequisicaoCotacao({ requisition, drafts, onDraftChange, onAddQuo
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-end pt-2 border-t">
               <div className="sm:col-span-2 space-y-1">
                 <Label className="text-xs">Fornecedor</Label>
-                <Select value={draft.supplierId || undefined} onValueChange={(v) => onDraftChange(item.id, { supplierId: v })}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                  <SelectContent>{suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.corporateName || s.tradeName}</SelectItem>)}</SelectContent>
-                </Select>
+                <SearchableSelect<SupplierOption>
+                  value={draft.supplierId}
+                  label={draft.supplierLabel}
+                  placeholder="Buscar fornecedor..."
+                  searchUrl={(q) => `/api/suppliers?search=${encodeURIComponent(q)}&limit=20`}
+                  parseResults={(json) => ((json as { data: SupplierOption[] }).data || []).map((s) => ({ id: s.id, label: s.corporateName || s.tradeName, data: s }))}
+                  onSelect={(hit) => onDraftChange(item.id, { supplierId: hit.id, supplierLabel: hit.label })}
+                />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Preço</Label>

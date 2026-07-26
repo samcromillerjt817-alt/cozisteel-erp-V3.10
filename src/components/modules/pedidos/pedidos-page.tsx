@@ -84,6 +84,10 @@ export function PedidosPage({ initialDetailId, onConsumeInitialDetail, onNavigat
 
   useEffect(() => {
     if (!initialDetailId) return
+    // ADR-022 (Fase UX-4) — mesmo motivo do achado em Compras/Requisições/Produção: com o keep-alive
+    // de módulo, o `useState` preguiçoso só cobre o primeiro mount, nunca um deep-link que chega depois.
+    setDetailOpen(true)
+    setDetailLoading(true)
     fetchDetail(initialDetailId).then((full) => { setDetail(full); setDetailLoading(false) })
     onConsumeInitialDetail?.()
   }, [initialDetailId, onConsumeInitialDetail])

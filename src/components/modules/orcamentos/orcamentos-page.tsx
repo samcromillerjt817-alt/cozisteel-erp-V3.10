@@ -12,6 +12,7 @@ import { SearchInput } from '@/components/domain/search-input'
 import { useConfirm } from '@/components/domain/confirm-dialog'
 import { useActionResult } from '@/components/domain/action-result-dialog'
 import { StatusTimeline } from '@/components/domain/status-timeline'
+import { SearchableSelect } from '@/components/domain/searchable-select'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -39,8 +40,6 @@ import {
 const PAGE_SIZE = 20
 
 interface OrcamentosPageProps {
-  clients: ClientOption[]
-  products: ProductOption[]
   /** Aprovar um orçamento gera Ordens de Produção; converter em Pedido de Venda gera um SalesOrder —
    * ambos catálogos compartilhados vivem em `page.tsx` (usados por Produção/Requisições) e precisam
    * ser recarregados fora deste módulo. Achado fechado nesta migração: `convertQuoteToOrder` nunca
@@ -73,7 +72,7 @@ interface OrcamentosPageProps {
  * mesmo o backend já somando `freightValue` no `total` persistido (bug de frete fechado antes, nesta
  * mesma subetapa, mas só no backend/PDF — o preview ao vivo do formulário ainda não refletia).
  */
-export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToPedidos, onNavigateToProducao, initialDetailId, initialDetailSalesOrder, onConsumeInitialDetail }: OrcamentosPageProps) {
+export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateToProducao, initialDetailId, initialDetailSalesOrder, onConsumeInitialDetail }: OrcamentosPageProps) {
   const confirmAction = useConfirm()
   const showActionResult = useActionResult()
 
@@ -153,12 +152,10 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
     setDialogOpen(true)
   }
 
-  function selectClient(clientId: string) {
-    const c = clients.find((cl) => cl.id === clientId)
-    if (!c) return
+  function selectClient(c: ClientOption) {
     setForm((prev) => ({
       ...prev,
-      clientId,
+      clientId: c.id,
       clientName: c.corporateName || c.tradeName || '',
       clientCnpj: c.cpfCnpj || '',
       clientContact: c.contactName || '',
@@ -312,13 +309,11 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
     setForm({ ...form, items })
   }
 
-  function selectItemProduct(idx: number, productId: string) {
+  function selectItemProduct(idx: number, product: ProductOption) {
     const items = [...form.items]
-    const product = products.find((p) => p.id === productId)
-    if (!product) return
     items[idx] = {
       ...items[idx],
-      productId,
+      productId: product.id,
       code: product.internalCode || items[idx].code,
       description: product.name || items[idx].description,
       unit: product.unit || items[idx].unit || 'UN',
@@ -436,10 +431,18 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="space-y-1.5 sm:col-span-2 lg:col-span-3">
                 <Label>Cliente cadastrado</Label>
-                <Select value={form.clientId || undefined} onValueChange={selectClient}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Selecionar um cliente já cadastrado (preenche os campos abaixo)" /></SelectTrigger>
-                  <SelectContent>{clients.map((c) => <SelectItem key={c.id} value={c.id}>{(c.tradeName || c.corporateName) + (c.cpfCnpj ? ` — ${c.cpfCnpj}` : '')}</SelectItem>)}</SelectContent>
-                </Select>
+                <SearchableSelect<ClientOption>
+                  value={form.clientId}
+                  label={form.clientName}
+                  placeholder="Buscar um cliente já cadastrado (preenche os campos abaixo)"
+                  searchUrl={(q) => `/api/clients?search=${encodeURIComponent(q)}&limit=20`}
+                  parseResults={(json) => ((json as { data: ClientOption[] }).data || []).map((c) => ({
+                    id: c.id,
+                    label: (c.tradeName || c.corporateName) + (c.cpfCnpj ? ` — ${c.cpfCnpj}` : ''),
+                    data: c,
+                  }))}
+                  onSelect={(hit) => selectClient(hit.data)}
+                />
               </div>
               <div className="space-y-1.5"><Label>Nome / Razão Social</Label><Input value={form.clientName} onChange={(e) => setForm({ ...form, clientName: e.target.value })} /></div>
               <div className="space-y-1.5">
@@ -484,10 +487,14 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
                 {form.items.map((item, idx) => (
                   <div key={idx} className="grid grid-cols-[28px_200px_110px_1fr_100px_130px_120px_36px] gap-2 px-3 py-2 items-center border-b last:border-b-0">
                     <span className="text-muted-foreground text-xs">{idx + 1}</span>
-                    <Select value={item.productId || undefined} onValueChange={(v) => selectItemProduct(idx, v)}>
-                      <SelectTrigger className="w-full"><SelectValue placeholder="Avulso" /></SelectTrigger>
-                      <SelectContent>{products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <SearchableSelect<ProductOption>
+                      value={item.productId || ''}
+                      label={item.description}
+                      placeholder="Avulso"
+                      searchUrl={(q) => `/api/products?search=${encodeURIComponent(q)}&limit=20`}
+                      parseResults={(json) => ((json as { data: ProductOption[] }).data || []).map((p) => ({ id: p.id, label: p.name, data: p }))}
+                      onSelect={(hit) => selectItemProduct(idx, hit.data)}
+                    />
                     <Input value={item.code} onChange={(e) => updateItem(idx, 'code', e.target.value)} />
                     <Input value={item.description} onChange={(e) => updateItem(idx, 'description', e.target.value)} />
                     <QuantityInput className="text-right" value={item.quantity} onChange={(v) => updateItem(idx, 'quantity', v)} />
