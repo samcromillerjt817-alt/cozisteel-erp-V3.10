@@ -2,6 +2,7 @@ import { requisitionRepository } from '@/app/repositories/requisition.repository
 import { productionOrderRepository } from '@/app/repositories/production-order.repository'
 import { materialRepository } from '@/app/repositories/material.repository'
 import { supplierRepository } from '@/app/repositories/supplier.repository'
+import { userRepository } from '@/app/repositories/user.repository'
 import { numberingService } from '@/app/services/numbering.service'
 import { auditService } from '@/app/services/audit.service'
 import { statusHistoryService } from '@/app/services/status-history.service'
@@ -70,9 +71,19 @@ class RequisitionService {
   }
 
   async getById(id: string) {
-    const requisition = await requisitionRepository.findByIdDetailed(id)
+    const requisition = await requisitionRepository.findByIdDetailed(id) as { approvedBy: string | null } & Record<string, unknown>
     if (!requisition) throw new NotFoundException('Requisição não encontrada')
-    return requisition
+
+    // ADR-022 (Fase UX-2, achado #14) — `approvedBy` é só o id do usuário (sem relação de FK no
+    // schema), nunca exibido em nenhuma tela até aqui. Resolve o nome só quando existe, sem mudar o
+    // formato do resto da resposta.
+    let approvedByName: string | null = null
+    if (requisition.approvedBy) {
+      const approver = await userRepository.findById(requisition.approvedBy) as { name: string } | null
+      approvedByName = approver?.name ?? null
+    }
+
+    return { ...requisition, approvedByName }
   }
 
   async create(data: CreateRequisitionDto, userId: string) {

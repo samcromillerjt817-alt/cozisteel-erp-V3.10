@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { formatCurrency } from '@/lib/format'
 import { PurchaseOrderReceiveDialog } from './purchase-order-receive-dialog'
 import { useConfirm } from '@/components/domain/confirm-dialog'
+import { StatusTimeline } from '@/components/domain/status-timeline'
 import {
   PURCHASE_ORDER_STATUS_LABELS, PURCHASE_ORDER_TRANSITIONS,
   type PurchaseOrderListRow, type PurchaseOrderRecord,
@@ -28,6 +29,9 @@ interface ComprasPageProps {
    * `pendingSuggestionFromOP` (Produção→Requisições). */
   initialDetailId?: string | null
   onConsumeInitialDetail?: () => void
+  /** ADR-022 (Fase UX-2, achado #12) — do detalhe do Pedido de Compra para a Requisição que o
+   * originou (existia só o caminho contrário, Requisição→Compras). */
+  onNavigateToRequisicoes: (requisitionId?: string) => void
 }
 
 /**
@@ -35,7 +39,7 @@ interface ComprasPageProps {
  * Pedido de Compra só nasce quando uma Requisição avança para "ordered". A única ação de escrita no
  * frontend é mudar o status (respeitando a máquina de estados) e registrar recebimento.
  */
-export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: ComprasPageProps) {
+export function ComprasPage({ initialDetailId, onConsumeInitialDetail, onNavigateToRequisicoes }: ComprasPageProps) {
   const confirmAction = useConfirm()
   const [rows, setRows] = useState<PurchaseOrderListRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -227,7 +231,18 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
         ) : (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-              <div><Label className="text-xs">Requisição de origem</Label><p>{detail.requisition?.number || '-'}</p></div>
+              <div>
+                <Label className="text-xs">Requisição de origem</Label>
+                {detail.requisition ? (
+                  <button
+                    type="button"
+                    className="block text-primary underline underline-offset-2 hover:no-underline"
+                    onClick={() => onNavigateToRequisicoes(detail.requisition!.id)}
+                  >
+                    {detail.requisition.number}
+                  </button>
+                ) : <p>-</p>}
+              </div>
               <div><Label className="text-xs">Prazo esperado</Label><p>{detail.expectedDate || '-'}</p></div>
               <div><Label className="text-xs">Condições de pagamento</Label><p>{detail.paymentTerms || '-'}</p></div>
               <div><Label className="text-xs">Total</Label><p>{formatCurrency(detail.total)}</p></div>
@@ -251,6 +266,14 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
               )}
             </div>
 
+            {(detail.approvedByName || detail.sentAt || detail.confirmedAt) && (
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                {detail.approvedByName && <p>Aprovado por <span className="font-medium text-foreground">{detail.approvedByName}</span>{detail.approvedAt && ` em ${new Date(detail.approvedAt).toLocaleString('pt-BR')}`}</p>}
+                {detail.sentAt && <p>Enviado ao fornecedor em {new Date(detail.sentAt).toLocaleString('pt-BR')}</p>}
+                {detail.confirmedAt && <p>Confirmado pelo fornecedor em {new Date(detail.confirmedAt).toLocaleString('pt-BR')}</p>}
+              </div>
+            )}
+
             {canReceive && (
               <Button className="w-full" onClick={() => { setReceiveTarget(detail); setReceiveQuantities(Object.fromEntries(detail.items.map((i) => [i.id, Math.max(0, i.quantity - i.quantityReceived)]))); setReceiveOpen(true) }}>
                 <Package className="w-4 h-4" /> Receber mercadoria
@@ -273,6 +296,11 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs">Histórico de Status</Label>
+              <StatusTimeline entityType="purchase_order" entityId={detail.id} domain="purchaseOrder" labels={PURCHASE_ORDER_STATUS_LABELS} />
             </div>
           </div>
         )}

@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useConfirm } from '@/components/domain/confirm-dialog'
 import { useActionResult } from '@/components/domain/action-result-dialog'
+import { StatusTimeline } from '@/components/domain/status-timeline'
 import { RequisicaoFormFields } from './requisicao-form-fields'
 import { RequisicaoCotacao } from './requisicao-cotacao'
 import {
@@ -38,6 +39,10 @@ interface RequisicoesPageProps {
   /** Hardening pós-11.5, Prioridade 1 — quando um `purchaseOrderId` é informado, Compras abre o
    * `DetailDrawer` daquele registro direto, em vez de só trocar de aba. */
   onNavigateToCompras: (purchaseOrderId?: string) => void
+  /** ADR-022 (Fase UX-2, achado #12) — quando um `requisitionId` é informado, abre o `DetailDrawer`
+   * daquela requisição direto (deep-link vindo do detalhe de um Pedido de Compra). */
+  initialDetailId?: string | null
+  onConsumeInitialDetail?: () => void
 }
 
 const PAGE_SIZE = 20
@@ -49,7 +54,7 @@ const PAGE_SIZE = 20
  * (era um `Select` inline na linha da tabela), estabelecendo um único padrão de interação para os 3
  * módulos de drill-down pesado desta subetapa.
  */
-export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pendingSuggestionFromOP, onConsumePendingSuggestion, onNavigateToCompras }: RequisicoesPageProps) {
+export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pendingSuggestionFromOP, onConsumePendingSuggestion, onNavigateToCompras, initialDetailId, onConsumeInitialDetail }: RequisicoesPageProps) {
   const confirmAction = useConfirm()
   const showActionResult = useActionResult()
   const [rows, setRows] = useState<RequisitionListRow[]>([])
@@ -62,9 +67,9 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
   const [form, setForm] = useState<RequisitionFormData>(EMPTY_REQUISITION_FORM())
   const [saving, setSaving] = useState(false)
 
-  const [detailOpen, setDetailOpen] = useState(false)
+  const [detailOpen, setDetailOpen] = useState(() => !!initialDetailId)
   const [detail, setDetail] = useState<RequisitionRecord | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(() => !!initialDetailId)
   const [statusChanging, setStatusChanging] = useState(false)
   const [quoteDrafts, setQuoteDrafts] = useState<Record<string, NewQuoteDraft>>({})
 
@@ -98,6 +103,13 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
     setDialogOpen(true)
     onConsumePendingSuggestion?.()
   }, [pendingSuggestionFromOP])
+
+  useEffect(() => {
+    if (!initialDetailId) return
+    setQuoteDrafts({})
+    fetchDetail(initialDetailId).then((full) => { setDetail(full); setDetailLoading(false) })
+    onConsumeInitialDetail?.()
+  }, [initialDetailId, onConsumeInitialDetail])
 
   function handleStatusFilterChange(value: string) {
     setStatusFilter(value)
@@ -382,6 +394,13 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
               )}
             </div>
 
+            {detail.approvedByName && (
+              <p className="text-xs text-muted-foreground">
+                Aprovada por <span className="font-medium text-foreground">{detail.approvedByName}</span>
+                {detail.approvedAt && ` em ${new Date(detail.approvedAt).toLocaleString('pt-BR')}`}
+              </p>
+            )}
+
             <RequisicaoCotacao
               requisition={detail}
               drafts={quoteDrafts}
@@ -390,6 +409,11 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
               onSelectQuote={selectQuote}
               suppliers={suppliers}
             />
+
+            <div className="space-y-2">
+              <Label className="text-xs">Histórico de Status</Label>
+              <StatusTimeline entityType="requisition" entityId={detail.id} domain="requisition" labels={REQUISITION_STATUS_LABELS} />
+            </div>
           </div>
         )}
       </DetailDrawer>

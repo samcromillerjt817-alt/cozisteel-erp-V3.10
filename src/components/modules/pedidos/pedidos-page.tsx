@@ -8,6 +8,7 @@ import { FilterBar } from '@/components/platform/filter-bar'
 import { DataTable, type DataTableColumn } from '@/components/platform/data-table'
 import { DetailDrawer } from '@/components/platform/detail-drawer'
 import { StatusBadge } from '@/components/domain/status-badge'
+import { StatusTimeline } from '@/components/domain/status-timeline'
 import { SearchInput } from '@/components/domain/search-input'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
@@ -26,6 +27,9 @@ interface PedidosPageProps {
    * manualmente na lista. Mesmo padrão de `pendingSuggestionFromOP` (Produção→Requisições). */
   initialDetailId?: string | null
   onConsumeInitialDetail?: () => void
+  /** ADR-022 (Fase UX-2, achado #12) — caminho inverso do deep-link acima: do detalhe do Pedido de
+   * Venda para o Orçamento que o originou (só existia Orçamento→Pedido antes). */
+  onNavigateToOrcamentos: (quoteId: string, salesOrder: { id: string; number: string }) => void
 }
 
 /**
@@ -39,7 +43,7 @@ interface PedidosPageProps {
  * cliente completo e Ordens de Produção vinculadas — vira o `DetailDrawer` abaixo. Mesma correção de
  * transição de status inatingível já aplicada em Compras/Requisições/Produção.
  */
-export function PedidosPage({ initialDetailId, onConsumeInitialDetail }: PedidosPageProps) {
+export function PedidosPage({ initialDetailId, onConsumeInitialDetail, onNavigateToOrcamentos }: PedidosPageProps) {
   const [rows, setRows] = useState<SalesOrderListRow[]>([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -191,7 +195,18 @@ export function PedidosPage({ initialDetailId, onConsumeInitialDetail }: Pedidos
         ) : (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-              <div><Label className="text-xs">Orçamento de origem</Label><p>{detail.quote?.number || '-'}</p></div>
+              <div>
+                <Label className="text-xs">Orçamento de origem</Label>
+                {detail.quote ? (
+                  <button
+                    type="button"
+                    className="block text-primary underline underline-offset-2 hover:no-underline"
+                    onClick={() => onNavigateToOrcamentos(detail.quote!.id, { id: detail.id, number: detail.number })}
+                  >
+                    {detail.quote.number}
+                  </button>
+                ) : <p>-</p>}
+              </div>
               <div><Label className="text-xs">Data</Label><p>{detail.date}</p></div>
               <div><Label className="text-xs">Condições de pagamento</Label><p>{detail.paymentTerms || '-'}</p></div>
               <div><Label className="text-xs">Prazo de entrega</Label><p>{detail.deliveryTime || '-'}</p></div>
@@ -244,6 +259,11 @@ export function PedidosPage({ initialDetailId, onConsumeInitialDetail }: Pedidos
                 </div>
               </div>
             )}
+
+            <div className="space-y-2">
+              <Label className="text-xs">Histórico de Status</Label>
+              <StatusTimeline entityType="sales_order" entityId={detail.id} domain="salesOrder" labels={SALES_ORDER_STATUS_LABELS} />
+            </div>
           </div>
         )}
       </DetailDrawer>

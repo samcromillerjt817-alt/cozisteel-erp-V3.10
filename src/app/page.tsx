@@ -163,6 +163,11 @@ export default function ERPPage() {
   const [pendingPedidoDetailId, setPendingPedidoDetailId] = useState<string | undefined>(undefined)
   const [pendingProductionOrderDetailId, setPendingProductionOrderDetailId] = useState<string | undefined>(undefined)
   const [pendingPurchaseOrderDetailId, setPendingPurchaseOrderDetailId] = useState<string | undefined>(undefined)
+  // ADR-022 (Fase UX-2, achado #12) — mesmo padrão acima, agora para os links reversos que faltavam:
+  // Pedido de Compra→Requisição, Pedido de Venda→Orçamento, Financeiro→Compras/Pedidos.
+  const [pendingRequisicaoDetailId, setPendingRequisicaoDetailId] = useState<string | undefined>(undefined)
+  const [pendingOrcamentoDetailId, setPendingOrcamentoDetailId] = useState<string | undefined>(undefined)
+  const [pendingOrcamentoSalesOrder, setPendingOrcamentoSalesOrder] = useState<{ id: string; number: string } | undefined>(undefined)
 
   /* ── Estoque ── */
   // Tabela de saldo + movimentações + ajuste manual migrados para `EstoquePage` (Fase 11.5, Subetapa
@@ -630,6 +635,9 @@ export default function ERPPage() {
               onDataChanged={() => { loadSalesOrders(); loadProductionOrders() }}
               onNavigateToPedidos={(pedidoId) => { setActiveModule('pedidos'); setPendingPedidoDetailId(pedidoId) }}
               onNavigateToProducao={(productionOrderId) => { setActiveModule('producao'); setPendingProductionOrderDetailId(productionOrderId) }}
+              initialDetailId={pendingOrcamentoDetailId}
+              initialDetailSalesOrder={pendingOrcamentoSalesOrder}
+              onConsumeInitialDetail={() => { setPendingOrcamentoDetailId(undefined); setPendingOrcamentoSalesOrder(undefined) }}
             />
           )}
 
@@ -640,6 +648,7 @@ export default function ERPPage() {
             <PedidosPage
               initialDetailId={pendingPedidoDetailId}
               onConsumeInitialDetail={() => setPendingPedidoDetailId(undefined)}
+              onNavigateToOrcamentos={(quoteId, salesOrder) => { setActiveModule('orcamentos'); setPendingOrcamentoDetailId(quoteId); setPendingOrcamentoSalesOrder(salesOrder) }}
             />
           )}
 
@@ -697,6 +706,8 @@ export default function ERPPage() {
               pendingSuggestionFromOP={requisitionOPSuggestion}
               onConsumePendingSuggestion={() => setRequisitionOPSuggestion(null)}
               onNavigateToCompras={(purchaseOrderId) => { setActiveModule('compras'); setPendingPurchaseOrderDetailId(purchaseOrderId) }}
+              initialDetailId={pendingRequisicaoDetailId}
+              onConsumeInitialDetail={() => setPendingRequisicaoDetailId(undefined)}
             />
           )}
 
@@ -707,6 +718,7 @@ export default function ERPPage() {
             <ComprasPage
               initialDetailId={pendingPurchaseOrderDetailId}
               onConsumeInitialDetail={() => setPendingPurchaseOrderDetailId(undefined)}
+              onNavigateToRequisicoes={(requisitionId) => { setActiveModule('requisicoes'); setPendingRequisicaoDetailId(requisitionId) }}
             />
           )}
 
@@ -718,7 +730,13 @@ export default function ERPPage() {
           {/* ═══════════════════════════════════════════════════════
               FINANCEIRO MODULE (Fase 12, Subetapa 7-UI)
               ═══════════════════════════════════════════════════════ */}
-          {activeModule === 'financeiro' && <FinanceiroPage />}
+          {activeModule === 'financeiro' && (
+            <FinanceiroPage
+              products={products}
+              onNavigateToCompras={(purchaseOrderId) => { setActiveModule('compras'); setPendingPurchaseOrderDetailId(purchaseOrderId) }}
+              onNavigateToPedidos={(pedidoId) => { setActiveModule('pedidos'); setPendingPedidoDetailId(pedidoId) }}
+            />
+          )}
 
           {/* ═══════════════════════════════════════════════════════
               RELATORIOS MODULE

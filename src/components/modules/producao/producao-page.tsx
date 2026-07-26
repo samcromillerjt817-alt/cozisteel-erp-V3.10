@@ -15,6 +15,7 @@ import { Progress } from '@/components/ui/progress'
 import { AsyncButton } from '@/components/domain/async-button'
 import { QuantityInput } from '@/components/form/quantity-input'
 import { useConfirm } from '@/components/domain/confirm-dialog'
+import { StatusTimeline } from '@/components/domain/status-timeline'
 import { ProducaoFormFields } from './producao-form-fields'
 import {
   PRODUCTION_ORDER_STATUS_LABELS, PRODUCTION_ORDER_TRANSITIONS, EMPTY_PRODUCTION_ORDER_FORM, productionOrderToFormData,
@@ -372,6 +373,11 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
                 </div>
               </div>
             )}
+
+            <div className="space-y-2">
+              <Label className="text-xs">Histórico de Status</Label>
+              <StatusTimeline entityType="production_order" entityId={detail.id} domain="productionOrder" labels={PRODUCTION_ORDER_STATUS_LABELS} />
+            </div>
           </div>
         )}
       </DetailDrawer>

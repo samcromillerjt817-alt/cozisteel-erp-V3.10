@@ -1,4 +1,5 @@
 import { purchaseOrderRepository } from '@/app/repositories/purchase-order.repository'
+import { userRepository } from '@/app/repositories/user.repository'
 import { numberingService } from '@/app/services/numbering.service'
 import { auditService } from '@/app/services/audit.service'
 import { statusHistoryService } from '@/app/services/status-history.service'
@@ -70,9 +71,18 @@ class PurchaseOrderService {
   }
 
   async getById(id: string) {
-    const purchaseOrder = await purchaseOrderRepository.findByIdDetailed(id)
+    const purchaseOrder = await purchaseOrderRepository.findByIdDetailed(id) as { approvedBy: string | null } & Record<string, unknown>
     if (!purchaseOrder) throw new NotFoundException('Pedido de compra não encontrado')
-    return purchaseOrder
+
+    // ADR-022 (Fase UX-2, achado #14) — mesmo tratamento de `requisition.service.ts`: `approvedBy`
+    // é só o id do usuário, nunca exibido em nenhuma tela até aqui.
+    let approvedByName: string | null = null
+    if (purchaseOrder.approvedBy) {
+      const approver = await userRepository.findById(purchaseOrder.approvedBy) as { name: string } | null
+      approvedByName = approver?.name ?? null
+    }
+
+    return { ...purchaseOrder, approvedByName }
   }
 
   /** Only draft purchase orders can be edited — items/prices come from the requisition's winning quotes and are not editable here. */

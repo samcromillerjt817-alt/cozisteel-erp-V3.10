@@ -11,6 +11,7 @@ import { StatusBadge } from '@/components/domain/status-badge'
 import { SearchInput } from '@/components/domain/search-input'
 import { useConfirm } from '@/components/domain/confirm-dialog'
 import { useActionResult } from '@/components/domain/action-result-dialog'
+import { StatusTimeline } from '@/components/domain/status-timeline'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -51,6 +52,12 @@ interface OrcamentosPageProps {
    * precisa mais procurar manualmente o registro recém-criado). */
   onNavigateToPedidos: (pedidoId?: string) => void
   onNavigateToProducao: (productionOrderId?: string) => void
+  /** ADR-022 (Fase UX-2, achado #12) — deep-link vindo do detalhe de um Pedido de Venda ("Ver
+   * Orçamento de origem"). `initialDetailSalesOrder` chega junto porque o Pedido de Venda já sabe seu
+   * próprio id/número — evita uma segunda ida ao backend só pra descobrir o que o chamador já tinha. */
+  initialDetailId?: string | null
+  initialDetailSalesOrder?: { id: string; number: string } | null
+  onConsumeInitialDetail?: () => void
 }
 
 /**
@@ -66,7 +73,7 @@ interface OrcamentosPageProps {
  * mesmo o backend já somando `freightValue` no `total` persistido (bug de frete fechado antes, nesta
  * mesma subetapa, mas só no backend/PDF — o preview ao vivo do formulário ainda não refletia).
  */
-export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToPedidos, onNavigateToProducao }: OrcamentosPageProps) {
+export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToPedidos, onNavigateToProducao, initialDetailId, initialDetailSalesOrder, onConsumeInitialDetail }: OrcamentosPageProps) {
   const confirmAction = useConfirm()
   const showActionResult = useActionResult()
 
@@ -122,6 +129,12 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    if (!initialDetailId) return
+    openEdit(initialDetailId, initialDetailSalesOrder ?? null)
+    onConsumeInitialDetail?.()
+  }, [initialDetailId, initialDetailSalesOrder, onConsumeInitialDetail])
 
   function handleSearchChange(value: string) {
     setSearch(value)
@@ -547,6 +560,13 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
               <div className="flex justify-between font-bold text-lg"><span>Total</span><span className="font-mono text-primary">{formatCurrency(quoteTotal)}</span></div>
             </div>
           </div>
+
+          {editingId && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Histórico de Status</Label>
+              <StatusTimeline entityType="quote" entityId={editingId} domain="quote" labels={statusLabels} />
+            </div>
+          )}
         </div>
       </FormDialog>
     </div>

@@ -1,7 +1,8 @@
 # ADR-022 — Evolução da Experiência Operacional do ERP: Levantamento
 
-**Status**: levantamento aprovado 2026-07-25. Fase UX-1 (Integridade e controle operacional)
-implementada no mesmo dia — ver Parte 6. Fases UX-2 a UX-7 ainda não iniciadas.
+**Status**: levantamento aprovado 2026-07-25. Fase UX-1 (Integridade e controle operacional) e
+Fase UX-2 (Visibilidade do que já existe) implementadas — ver Partes 6 e 7. Fases UX-3 a UX-7
+ainda não iniciadas (UX-3 depende da decisão pendente #5).
 **Data**: 2026-07-25
 **Escopo**: revisão completa da dinâmica de trabalho de quem opera o ERP no dia a dia — não é um
 redesenho visual isolado, é uma auditoria de rotinas operacionais, tratamento de erros, recursos
@@ -397,6 +398,42 @@ decisão #4 pedir mais (segundo aprovador obrigatório, alçada por valor), isso
 
 **Verificação**: tsc limpo, lint 34 (net zero, nenhum warning novo), 340/340 testes (1 novo:
 `material-stock-edit-guard.test.ts`), build limpo.
+
+## PARTE 7 — Fase UX-2 implementada (2026-07-25)
+
+Nenhum dos 4 itens desta fase dependia de decisão pendente — todos reaproveitam backend já pronto e
+testado, sem regra de negócio nova.
+
+1. **Telas de relatórios financeiros** — nova aba "Relatórios" dentro de Financeiro
+   (`financeiro-relatorios-tab.tsx`), consumindo as 5 rotas que já existiam sem nenhuma tela: Saldo
+   de Contas (`/saldo`), Fluxo de Caixa Projetado com seletor de horizonte 30/60/90 dias
+   (`/fluxo-caixa`, reaproveitando `DashboardChart` já existente — 2 séries, entradas/saídas),
+   Margem Bruta Estimada por período (`/margem`, com aviso explícito da limitação estrutural já
+   documentada em `financial-report.service.ts`), Valorização de Estoque (`/valorizacao-estoque`) e
+   Histórico de Custo por Material com seletor de produto (`/custo-material/[productId]`).
+2. **Indicador visual de título vencido** — `isOverdue()` em `financeiro-page.tsx` (título em aberto
+   com vencimento no passado) destaca a data em vermelho/negrito tanto na listagem quanto no
+   `DetailDrawer` de Contas a Pagar/Receber — mesmo cálculo que já alimentava só o dashboard, agora
+   também na tela onde o usuário realmente decide o que pagar/cobrar primeiro.
+3. **Links de navegação bidirecionais** — 4 caminhos que só existiam num sentido ganharam o
+   caminho de volta: Pedido de Compra→Requisição de origem, Pedido de Venda→Orçamento de origem,
+   Financeiro→Pedido de Compra (a partir de Contas a Pagar) e Financeiro→Pedido de Venda (a partir de
+   Contas a Receber). Mesmo padrão de deep-link já usado no projeto (`initialDetailId`/
+   `onConsumeInitialDetail` em `page.tsx`) — `RequisicoesPage` e `OrcamentosPage` ganharam esse
+   suporte pela primeira vez.
+4. **Timeline de status + dados de aprovação** — `StatusHistoryService.list()` (novo, `StatusHistory`
+   deixa de ser write-only) + rota `GET /api/status-history` + componente reutilizável
+   `StatusTimeline` (`src/components/domain/status-timeline.tsx`), plugado no detalhe de Orçamentos,
+   Pedidos de Venda, Requisições, Compras e Produção. `approvedBy`/`approvedAt` (Requisição) e
+   `approvedBy`/`approvedAt`/`sentAt`/`confirmedAt` (Pedido de Compra) já existiam como colunas
+   no banco (sem FK — só o id do usuário) e nunca eram lidos; `getById()` de ambos os Services agora
+   resolve o nome do aprovador (`approvedByName`) sob demanda, só quando o campo existe.
+
+**Verificação**: tsc limpo, lint 39 (+5 sobre a baseline de 34 — mesmo padrão sistêmico de
+fetch-em-efeito já tolerado neste projeto em toda fase anterior, não um problema novo: 3 nos cards
+independentes da aba Relatórios, 1 no `StatusTimeline`, 1 no consumo de deep-link novo em
+Requisições/Orçamentos), 343/343 testes (3 novos: `tests/status-history-visibility.test.ts`), build
+limpo.
 
 ## Conclusão
 

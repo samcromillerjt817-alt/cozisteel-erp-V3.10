@@ -74,6 +74,9 @@ export interface RequisitionDetailItem extends RequisitionListItem {
 
 export interface RequisitionRecord extends Omit<RequisitionListRow, 'items'> {
   items: RequisitionDetailItem[]
+  /** ADR-022 (Fase UX-2, achado #14) — já existiam gravados no banco, nunca expostos em nenhuma tela. */
+  approvedByName: string | null
+  approvedAt: string | null
 }
 
 export type NewQuoteDraft = { supplierId: string; price: number; leadTimeDays: number }
