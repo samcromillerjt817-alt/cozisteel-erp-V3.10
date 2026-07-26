@@ -8,6 +8,7 @@ import { BadRequestException, NotFoundException } from '@/app/exceptions'
 // Mesmo padrão gravado por scripts/apply-patch.sh ("patch-$TS.log", TS = "date +%Y%m%d-%H%M%S") —
 // validado antes de qualquer leitura de arquivo pra nunca aceitar um path arbitrário (ADR-021).
 const PATCH_LOG_FILENAME_PATTERN = /^patch-\d{8}-\d{6}\.log$/
+const MANUAL_BACKUP_FILENAME_PATTERN = /^manual-backup-\d{8}-\d{6}-\d{3}\.tar\.gz$/
 const MAX_LOG_READ_CHARS = 500_000 // ~500KB — evita resposta gigante se um log fugir do normal
 
 class SystemService {
@@ -87,6 +88,32 @@ class SystemService {
 
     const truncated = content.length > MAX_LOG_READ_CHARS
     return { content: truncated ? content.slice(-MAX_LOG_READ_CHARS) : content, truncated }
+  }
+
+  /** Backups manuais sob demanda (ADR-021, Parte 8.5), distintos dos "pre-patch-*" que
+   * `scripts/apply-patch.sh` cria automaticamente antes de cada patch. Mais recente primeiro. */
+  async listManualBackups() {
+    const backupDir = path.join(getStorageDir(), 'patches', 'backups')
+    let files: string[]
+    try {
+      files = await fs.readdir(backupDir)
+    } catch {
+      return []
+    }
+
+    const tarFiles = files.filter((f) => MANUAL_BACKUP_FILENAME_PATTERN.test(f))
+    const entries = await Promise.all(
+      tarFiles.map(async (filename) => {
+        const stat = await fs.stat(path.join(backupDir, filename))
+        const dbFilename = filename.replace(/\.tar\.gz$/, '.db')
+        let dbSizeBytes: number | null = null
+        if (files.includes(dbFilename)) {
+          dbSizeBytes = (await fs.stat(path.join(backupDir, dbFilename))).size
+        }
+        return { filename, sizeBytes: stat.size, dbSizeBytes, modifiedAt: stat.mtime }
+      })
+    )
+    return entries.sort((a, b) => b.filename.localeCompare(a.filename))
   }
 }
 

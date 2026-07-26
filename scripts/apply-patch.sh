@@ -170,8 +170,42 @@ rollback() {
   if [ -n "$DB_FILE" ] && [ -f "$PATCH_BACKUP_DIR/pre-patch-$TS.db" ]; then
     cp "$PATCH_BACKUP_DIR/pre-patch-$TS.db" "$DB_FILE"
   fi
+
+  # Achado real (relatado pelo usuário — patches que "quebravam de vez" em vez de reverter):
+  # se o patch que falhou já tinha rodado "npm install", node_modules fica incompatível com o
+  # package.json restaurado acima (o backup nunca incluiu node_modules, só o package.json) —
+  # causa plausível do PRÓPRIO build do rollback falhar.
+  if [ "$NEEDS_NPM" = "true" ]; then
+    echo "→ Reinstalando dependências para bater com o package.json restaurado..."
+    npm install || echo "⚠ AVISO: npm install do rollback falhou — o rebuild abaixo pode falhar por causa disso."
+  fi
+
   rm -rf .next
-  npm run build || true
+  if ! npm run build; then
+    # Achado real e mais grave: aqui o código antigo já estava restaurado, e o build FALHOU —
+    # ou seja, nem o patch nem o rollback produziram um build funcional. Antes, o script
+    # ignorava essa falha ("npm run build || true") e seguia direto pro "pm2 restart" mesmo
+    # assim — só que o processo do PM2 ATÉ ENTÃO ainda estava rodando o código anterior ao
+    # patch, intacto e funcionando (nenhum restart tinha acontecido ainda). Forçar o restart
+    # nesse ponto troca "site funcionando com código antigo" por "site fora do ar" — é
+    # exatamente o "quebrava de vez" relatado. Never reiniciar o PM2 quando o rebuild do
+    # rollback falha: melhor deixar rodando o que já estava no ar do que garantir a quebra.
+    echo ""
+    echo "═══════════════════════════════════════════════════════"
+    echo "  ERRO CRÍTICO: o build do ROLLBACK também falhou."
+    echo "  O sistema NÃO será reiniciado — o processo atual continua rodando"
+    echo "  com o código anterior ao patch, intacto."
+    echo "  Intervenção manual necessária: revise $LOG_FILE, rode 'npm install'"
+    echo "  e 'npm run build' manualmente na raiz do projeto antes de reiniciar o PM2."
+    echo "═══════════════════════════════════════════════════════"
+    write_status "failed" "Patch falhou E o rebuild do rollback também falhou — o sistema NÃO foi reiniciado, continua rodando a versão anterior ao patch. Intervenção manual necessária (ver log $(basename "$LOG_FILE"))."
+    node scripts/record-patch.mjs --to="$CURRENT_VERSION" --from="$CURRENT_VERSION" \
+      --title="Rollback automático de $TO_VERSION (build do rollback falhou)" --via="$APPLIED_VIA" --status=failed \
+      --error="Build do rollback falhou — sistema mantido rodando a versão anterior sem reiniciar" \
+      ${USER_ID:+--user="$USER_ID"} || echo "⚠ AVISO: não foi possível registrar em PatchLog — ver $LOG_FILE."
+    return 1
+  fi
+
   rm -rf .next/standalone/.next/static .next/standalone/public 2>/dev/null || true
   mkdir -p .next/standalone/.next
   cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
@@ -197,7 +231,15 @@ rollback() {
 # A partir daqui, QUALQUER comando que falhar (não só os que a gente checa manualmente)
 # aciona o rollback automático — isso pega casos inesperados (ex: avisos do unzip,
 # variável de ambiente ausente, etc.) que antes derrubavam o script sem reverter nada.
-trap 'rollback; exit 1' ERR
+#
+# "trap - ERR" logo no início do handler (repetido antes de toda chamada manual de
+# rollback abaixo) é essencial, não cosmético: bash decide se a trap ERR deve disparar
+# com base em se ela estava armada no INÍCIO do comando, não no fim — então rollback()
+# poder retornar 1 (desde que passou a checar se o build do PRÓPRIO rollback falha) fazia
+# a trap disparar de novo mesmo já tendo sido desarmada como primeira linha de rollback(),
+# rodando a função inteira duas vezes (incluindo um registro DUPLICADO no PatchLog).
+# Reproduzido isoladamente antes de corrigir; ver docs/adr/ADR-021 para o teste.
+trap 'trap - ERR; rollback; exit 1' ERR
 
 # ── 3. Extrai o patch ──
 write_status "extracting" "Extraindo arquivos do patch..."
@@ -210,6 +252,7 @@ if [ "$NEEDS_NPM" = "true" ]; then
   echo "→ npm install..."
   if ! npm install; then
     echo "ERRO no npm install."
+    trap - ERR
     rollback
     exit 1
   fi
@@ -220,6 +263,7 @@ if [ "$NEEDS_PRISMA" = "true" ]; then
   echo "→ prisma generate + db push..."
   if ! npx prisma generate || ! npx prisma db push; then
     echo "ERRO ao sincronizar o banco de dados."
+    trap - ERR
     rollback
     exit 1
   fi
@@ -231,6 +275,7 @@ echo "→ Buildando..."
 rm -rf .next
 if ! npm run build; then
   echo "ERRO no build."
+  trap - ERR
   rollback
   exit 1
 fi
