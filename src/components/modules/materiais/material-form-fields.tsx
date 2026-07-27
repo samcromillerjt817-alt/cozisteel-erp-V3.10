@@ -11,9 +11,13 @@ interface MaterialFormFieldsProps {
   form: MaterialFormData
   onChange: (form: MaterialFormData) => void
   categories: { id: string; name: string }[]
+  /** ADR-022 (Fase UX-1, achado #06) — "Estoque atual" só é editável na criação (saldo inicial de
+   * cadastro). Depois de criado, o saldo só muda pela tela de Estoque → Ajustar, que exige motivo e
+   * grava StockMovement — nunca mais por aqui, sem motivo e sem trilha de auditoria de estoque. */
+  isEditing?: boolean
 }
 
-export function MaterialFormFields({ form, onChange, categories }: MaterialFormFieldsProps) {
+export function MaterialFormFields({ form, onChange, categories, isEditing }: MaterialFormFieldsProps) {
   const set = <K extends keyof MaterialFormData>(key: K, value: MaterialFormData[K]) => onChange({ ...form, [key]: value })
 
   return (
@@ -30,7 +34,17 @@ export function MaterialFormFields({ form, onChange, categories }: MaterialFormF
       <div className="space-y-1.5"><Label>Unidade</Label><UnitSelect value={form.unit} onChange={(v) => set('unit', v)} /></div>
       <div className="space-y-1.5"><Label>Densidade (g/cm³)</Label><QuantityInput value={form.density} onChange={(v) => set('density', v)} /></div>
       <div className="space-y-1.5"><Label>Custo unitário</Label><CurrencyInput value={form.costPrice} onChange={(v) => set('costPrice', v)} /></div>
-      <div className="space-y-1.5"><Label>Estoque atual</Label><QuantityInput value={form.stockQty} onChange={(v) => set('stockQty', v)} /></div>
+      <div className="space-y-1.5">
+        <Label>Estoque atual</Label>
+        {isEditing ? (
+          <>
+            <Input value={`${form.stockQty} ${form.unit}`} disabled />
+            <p className="text-xs text-muted-foreground">Para ajustar o saldo, use Estoque → Ajustar (exige motivo).</p>
+          </>
+        ) : (
+          <QuantityInput value={form.stockQty} onChange={(v) => set('stockQty', v)} />
+        )}
+      </div>
       <div className="space-y-1.5"><Label>Estoque mínimo</Label><QuantityInput value={form.minStockQty} onChange={(v) => set('minStockQty', v)} /></div>
       <div className="space-y-1.5 sm:col-span-2"><Label>Descrição</Label><Textarea rows={2} value={form.description} onChange={(e) => set('description', e.target.value)} /></div>
       <div className="space-y-1.5 sm:col-span-2"><Label>Observações</Label><Textarea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>

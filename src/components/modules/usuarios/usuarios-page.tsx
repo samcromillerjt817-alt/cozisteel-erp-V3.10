@@ -39,6 +39,10 @@ export function UsuariosPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<UserFormData>(EMPTY_USER_FORM)
   const [saving, setSaving] = useState(false)
+  /** ADR-022 (Fase UX-1, achado #04/#18) — perfil do usuário ANTES da edição atual, só para saber se
+   * o Salvar está prestes a elevar alguém a Administrador (perfil novo ou promoção de um já
+   * existente) — a ação mais sensível de todo o RBAC não tinha nenhuma confirmação extra. */
+  const [editingOriginalRole, setEditingOriginalRole] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -54,7 +58,7 @@ export function UsuariosPage() {
         setTotal(json.total || 0)
       }
     } catch {
-      toast.error('Erro ao carregar usuários')
+      toast.error('Erro ao carregar usuários. Recarregue a página — se persistir, contate o suporte.')
     } finally {
       setLoading(false)
     }
@@ -71,17 +75,23 @@ export function UsuariosPage() {
 
   function openNew() {
     setEditingId(null)
+    setEditingOriginalRole(null)
     setForm(EMPTY_USER_FORM)
     setDialogOpen(true)
   }
 
   function openEdit(user: UserRecord) {
     setEditingId(user.id)
+    setEditingOriginalRole(user.role)
     setForm(userToFormData(user))
     setDialogOpen(true)
   }
 
   async function save() {
+    if (form.role === 'admin' && editingOriginalRole !== 'admin' && !(await confirmAction({
+      title: 'Conceder acesso de Administrador',
+      description: `Tem certeza que quer dar o perfil Administrador a "${form.name || form.username}"? Esse perfil tem acesso total ao sistema, incluindo a Central de Administração.`,
+    }))) return
     setSaving(true)
     try {
       const url = editingId ? `/api/users/${editingId}` : '/api/users'
@@ -96,7 +106,7 @@ export function UsuariosPage() {
         toast.error(err.error || 'Erro ao salvar')
       }
     } catch {
-      toast.error('Erro ao salvar usuário')
+      toast.error('Erro ao salvar usuário. Verifique os dados e tente novamente — se persistir, contate o suporte.')
     } finally {
       setSaving(false)
     }
@@ -114,7 +124,7 @@ export function UsuariosPage() {
         toast.error(err.error || 'Erro ao excluir')
       }
     } catch {
-      toast.error('Erro ao excluir')
+      toast.error('Erro ao excluir usuário. Tente novamente — se persistir, contate o suporte.')
     }
   }
 

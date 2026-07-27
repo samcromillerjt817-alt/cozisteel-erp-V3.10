@@ -17,13 +17,32 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { formatCurrency } from '@/lib/format'
 import { RegisterMovementDialog, todayDDMMYYYY } from './register-movement-dialog'
+import { FinanceiroRelatoriosTab } from './financeiro-relatorios-tab'
 import { FINANCEIRO_STATUS_LABELS, outstandingAmount, type AccountPayableRow, type AccountReceivableRow } from './types'
 
 const PAGE_SIZE = 20
 const OPEN_STATUSES = ['open', 'partially_paid']
 
+interface FinanceiroPageProps {
+  /** ADR-022 (Fase UX-2, achado #01) — só para o seletor de produto do histórico de custo por
+   * material na aba Relatórios. */
+  products: { id: string; name: string; internalCode?: string }[]
+  /** ADR-022 (Fase UX-2, achado #12) — de um título financeiro para o Pedido de Compra/Venda que o
+   * originou (antes era só texto estático, sem nenhuma navegação). */
+  onNavigateToCompras: (purchaseOrderId?: string) => void
+  onNavigateToPedidos: (pedidoId?: string) => void
+}
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('pt-BR')
+}
+
+/** ADR-022 (Fase UX-2, achado #11) — o backend já calcula "vencido" pro Dashboard
+ * (`financial-report.service.ts`), mas a listagem de títulos nunca destacava isso — um título aberto
+ * há 60 dias tinha o mesmo badge cinza que um que vence daqui a 30. Só considera vencido quem ainda
+ * está em aberto (título já pago/cancelado nunca é "vencido"). */
+function isOverdue(dueDate: string, status: string): boolean {
+  return (status === 'open' || status === 'partially_paid') && new Date(dueDate) < new Date()
 }
 
 /**
@@ -31,9 +50,9 @@ function formatDate(iso: string): string {
  * `PageHeader` já usado em Estoque (Saldo/Movimentações): cada aba é autocontida, com seu próprio
  * estado/efeito de carregamento — nunca um único efeito compartilhado disparando as duas listas.
  */
-export function FinanceiroPage() {
+export function FinanceiroPage({ products, onNavigateToCompras, onNavigateToPedidos }: FinanceiroPageProps) {
   const confirmAction = useConfirm()
-  const [view, setView] = useState<'pagar' | 'receber'>('pagar')
+  const [view, setView] = useState<'pagar' | 'receber' | 'relatorios'>('pagar')
 
   // ── Contas a Pagar ──
   const [payableRows, setPayableRows] = useState<AccountPayableRow[]>([])
@@ -251,16 +270,48 @@ export function FinanceiroPage() {
 
   const payableColumns: DataTableColumn<AccountPayableRow>[] = [
     { id: 'number', header: 'Número', cell: (a) => <span className="font-mono text-sm">{a.number}</span> },
-    { id: 'purchaseOrder', header: 'Pedido de Compra', cell: (a) => a.purchaseOrder ? `${a.purchaseOrder.number} — ${a.purchaseOrder.supplier?.corporateName || a.purchaseOrder.supplier?.tradeName || '-'}` : '-' },
-    { id: 'dueDate', header: 'Vencimento', cell: (a) => formatDate(a.dueDate), hideBelow: 'sm' },
+    {
+      id: 'purchaseOrder', header: 'Pedido de Compra',
+      cell: (a) => a.purchaseOrder ? (
+        <button
+          type="button"
+          className="text-primary underline underline-offset-2 hover:no-underline"
+          onClick={(e) => { e.stopPropagation(); onNavigateToCompras(a.purchaseOrder!.id) }}
+        >
+          {a.purchaseOrder.number} — {a.purchaseOrder.supplier?.corporateName || a.purchaseOrder.supplier?.tradeName || '-'}
+        </button>
+      ) : '-',
+    },
+    {
+      id: 'dueDate', header: 'Vencimento', hideBelow: 'sm',
+      cell: (a) => isOverdue(a.dueDate, a.status)
+        ? <span className="text-destructive font-semibold">{formatDate(a.dueDate)} · vencido</span>
+        : formatDate(a.dueDate),
+    },
     { id: 'status', header: 'Status', cell: (a) => <StatusBadge domain="financeiro" status={a.status} label={FINANCEIRO_STATUS_LABELS[a.status] || a.status} /> },
     { id: 'amount', header: 'Valor', align: 'right', cell: (a) => formatCurrency(a.amount) },
   ]
 
   const receivableColumns: DataTableColumn<AccountReceivableRow>[] = [
     { id: 'number', header: 'Número', cell: (a) => <span className="font-mono text-sm">{a.number}</span> },
-    { id: 'invoice', header: 'Fatura / Pedido de Venda', cell: (a) => a.invoice ? `${a.invoice.number}${a.invoice.salesOrder ? ` — ${a.invoice.salesOrder.clientName}` : ''}` : '-' },
-    { id: 'dueDate', header: 'Vencimento', cell: (a) => formatDate(a.dueDate), hideBelow: 'sm' },
+    {
+      id: 'invoice', header: 'Fatura / Pedido de Venda',
+      cell: (a) => !a.invoice ? '-' : a.invoice.salesOrder ? (
+        <button
+          type="button"
+          className="text-primary underline underline-offset-2 hover:no-underline"
+          onClick={(e) => { e.stopPropagation(); onNavigateToPedidos(a.invoice!.salesOrder!.id) }}
+        >
+          {a.invoice.number} — {a.invoice.salesOrder.clientName}
+        </button>
+      ) : a.invoice.number,
+    },
+    {
+      id: 'dueDate', header: 'Vencimento', hideBelow: 'sm',
+      cell: (a) => isOverdue(a.dueDate, a.status)
+        ? <span className="text-destructive font-semibold">{formatDate(a.dueDate)} · vencido</span>
+        : formatDate(a.dueDate),
+    },
     { id: 'status', header: 'Status', cell: (a) => <StatusBadge domain="financeiro" status={a.status} label={FINANCEIRO_STATUS_LABELS[a.status] || a.status} /> },
     { id: 'amount', header: 'Valor', align: 'right', cell: (a) => formatCurrency(a.amount) },
   ]
@@ -271,10 +322,11 @@ export function FinanceiroPage() {
         title="Financeiro"
         description="Contas a Pagar e a Receber — baixa de títulos gerados automaticamente pelo recebimento de Pedidos de Compra e pelo faturamento de Pedidos de Venda."
         actions={
-          <Tabs value={view} onValueChange={(v) => setView(v as 'pagar' | 'receber')}>
+          <Tabs value={view} onValueChange={(v) => setView(v as 'pagar' | 'receber' | 'relatorios')}>
             <TabsList>
               <TabsTrigger value="pagar">Contas a Pagar</TabsTrigger>
               <TabsTrigger value="receber">Contas a Receber</TabsTrigger>
+              <TabsTrigger value="relatorios">Relatórios</TabsTrigger>
             </TabsList>
           </Tabs>
         }
@@ -338,6 +390,8 @@ export function FinanceiroPage() {
         </>
       )}
 
+      {view === 'relatorios' && <FinanceiroRelatoriosTab products={products} />}
+
       <DetailDrawer
         open={payableDetailOpen}
         onOpenChange={setPayableDetailOpen}
@@ -350,7 +404,7 @@ export function FinanceiroPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div><Label className="text-xs">Fornecedor</Label><p>{payableDetail.purchaseOrder?.supplier?.corporateName || payableDetail.purchaseOrder?.supplier?.tradeName || '-'}</p></div>
-              <div><Label className="text-xs">Vencimento</Label><p>{formatDate(payableDetail.dueDate)}</p></div>
+              <div><Label className="text-xs">Vencimento</Label><p className={isOverdue(payableDetail.dueDate, payableDetail.status) ? 'text-destructive font-semibold' : ''}>{formatDate(payableDetail.dueDate)}{isOverdue(payableDetail.dueDate, payableDetail.status) ? ' · vencido' : ''}</p></div>
               <div><Label className="text-xs">Valor total</Label><p>{formatCurrency(payableDetail.amount)}</p></div>
               <div><Label className="text-xs">Saldo em aberto</Label><p className="font-semibold">{formatCurrency(outstandingAmount(payableDetail.amount, payableDetail.payments))}</p></div>
             </div>
@@ -369,6 +423,11 @@ export function FinanceiroPage() {
               {payableDetail.status === 'open' && (
                 <Button variant="outline" className="flex-1" onClick={() => cancelPayable(payableDetail)}>
                   <Ban className="w-4 h-4" /> Cancelar
+                </Button>
+              )}
+              {payableDetail.purchaseOrder && (
+                <Button variant="outline" className="flex-1" onClick={() => onNavigateToCompras(payableDetail.purchaseOrder!.id)}>
+                  Abrir Pedido de Compra
                 </Button>
               )}
             </div>
@@ -407,7 +466,7 @@ export function FinanceiroPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div><Label className="text-xs">Cliente</Label><p>{receivableDetail.invoice?.salesOrder?.clientName || '-'}</p></div>
-              <div><Label className="text-xs">Vencimento</Label><p>{formatDate(receivableDetail.dueDate)}</p></div>
+              <div><Label className="text-xs">Vencimento</Label><p className={isOverdue(receivableDetail.dueDate, receivableDetail.status) ? 'text-destructive font-semibold' : ''}>{formatDate(receivableDetail.dueDate)}{isOverdue(receivableDetail.dueDate, receivableDetail.status) ? ' · vencido' : ''}</p></div>
               <div><Label className="text-xs">Valor total</Label><p>{formatCurrency(receivableDetail.amount)}</p></div>
               <div><Label className="text-xs">Saldo em aberto</Label><p className="font-semibold">{formatCurrency(outstandingAmount(receivableDetail.amount, receivableDetail.receipts))}</p></div>
             </div>
@@ -426,6 +485,11 @@ export function FinanceiroPage() {
               {receivableDetail.status === 'open' && (
                 <Button variant="outline" className="flex-1" onClick={() => cancelReceivable(receivableDetail)}>
                   <Ban className="w-4 h-4" /> Cancelar
+                </Button>
+              )}
+              {receivableDetail.invoice?.salesOrder && (
+                <Button variant="outline" className="flex-1" onClick={() => onNavigateToPedidos(receivableDetail.invoice!.salesOrder!.id)}>
+                  Abrir Pedido de Venda
                 </Button>
               )}
             </div>

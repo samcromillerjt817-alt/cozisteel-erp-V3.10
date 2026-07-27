@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Edit, Copy, FileOutput, Image as ImageIcon, Truck, ShoppingCart, Trash2, X } from 'lucide-react'
+import { Plus, Edit, Copy, FileOutput, Image as ImageIcon, Truck, ShoppingCart, Trash2, X, AlertTriangle } from 'lucide-react'
 import { PageHeader } from '@/components/platform/page-header'
 import { FilterBar } from '@/components/platform/filter-bar'
 import { DataTable, type DataTableColumn } from '@/components/platform/data-table'
@@ -11,6 +11,8 @@ import { StatusBadge } from '@/components/domain/status-badge'
 import { SearchInput } from '@/components/domain/search-input'
 import { useConfirm } from '@/components/domain/confirm-dialog'
 import { useActionResult } from '@/components/domain/action-result-dialog'
+import { StatusTimeline } from '@/components/domain/status-timeline'
+import { SearchableSelect } from '@/components/domain/searchable-select'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -38,8 +40,6 @@ import {
 const PAGE_SIZE = 20
 
 interface OrcamentosPageProps {
-  clients: ClientOption[]
-  products: ProductOption[]
   /** Aprovar um orçamento gera Ordens de Produção; converter em Pedido de Venda gera um SalesOrder —
    * ambos catálogos compartilhados vivem em `page.tsx` (usados por Produção/Requisições) e precisam
    * ser recarregados fora deste módulo. Achado fechado nesta migração: `convertQuoteToOrder` nunca
@@ -51,6 +51,12 @@ interface OrcamentosPageProps {
    * precisa mais procurar manualmente o registro recém-criado). */
   onNavigateToPedidos: (pedidoId?: string) => void
   onNavigateToProducao: (productionOrderId?: string) => void
+  /** ADR-022 (Fase UX-2, achado #12) — deep-link vindo do detalhe de um Pedido de Venda ("Ver
+   * Orçamento de origem"). `initialDetailSalesOrder` chega junto porque o Pedido de Venda já sabe seu
+   * próprio id/número — evita uma segunda ida ao backend só pra descobrir o que o chamador já tinha. */
+  initialDetailId?: string | null
+  initialDetailSalesOrder?: { id: string; number: string } | null
+  onConsumeInitialDetail?: () => void
 }
 
 /**
@@ -66,7 +72,7 @@ interface OrcamentosPageProps {
  * mesmo o backend já somando `freightValue` no `total` persistido (bug de frete fechado antes, nesta
  * mesma subetapa, mas só no backend/PDF — o preview ao vivo do formulário ainda não refletia).
  */
-export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToPedidos, onNavigateToProducao }: OrcamentosPageProps) {
+export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateToProducao, initialDetailId, initialDetailSalesOrder, onConsumeInitialDetail }: OrcamentosPageProps) {
   const confirmAction = useConfirm()
   const showActionResult = useActionResult()
 
@@ -81,6 +87,11 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  /** ADR-022, Fase UX-1 — orçamento já convertido em Pedido de Venda continua editável de propósito
+   * (excluir a capacidade seria remover funcionalidade sem necessidade comprovada), mas sem nenhum
+   * aviso o usuário não sabia que o Pedido de Venda já gerado NÃO reflete mudanças feitas aqui depois
+   * da conversão — risco de divergência silenciosa de preço/itens entre os dois documentos. */
+  const [editingSalesOrder, setEditingSalesOrder] = useState<{ id: string; number: string } | null>(null)
   const [form, setForm] = useState<QuoteFormData>(emptyQuoteForm())
   const [saving, setSaving] = useState(false)
 
@@ -108,7 +119,7 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
         setTotal(json.total || 0)
       }
     } catch {
-      toast.error('Erro ao carregar orçamentos')
+      toast.error('Erro ao carregar orçamentos. Recarregue a página — se persistir, contate o suporte.')
     } finally {
       setLoading(false)
     }
@@ -117,6 +128,12 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    if (!initialDetailId) return
+    openEdit(initialDetailId, initialDetailSalesOrder ?? null)
+    onConsumeInitialDetail?.()
+  }, [initialDetailId, initialDetailSalesOrder, onConsumeInitialDetail])
 
   function handleSearchChange(value: string) {
     setSearch(value)
@@ -130,16 +147,15 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
 
   function openNew() {
     setEditingId(null)
+    setEditingSalesOrder(null)
     setForm(emptyQuoteForm())
     setDialogOpen(true)
   }
 
-  function selectClient(clientId: string) {
-    const c = clients.find((cl) => cl.id === clientId)
-    if (!c) return
+  function selectClient(c: ClientOption) {
     setForm((prev) => ({
       ...prev,
-      clientId,
+      clientId: c.id,
       clientName: c.corporateName || c.tradeName || '',
       clientCnpj: c.cpfCnpj || '',
       clientContact: c.contactName || '',
@@ -151,12 +167,13 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
     }))
   }
 
-  async function openEdit(id: string) {
+  async function openEdit(id: string, salesOrder: { id: string; number: string } | null = null) {
     try {
       const r = await fetch(`/api/quotes/${id}`)
       if (!r.ok) { toast.error('Erro ao carregar orçamento'); return }
       const q = await r.json()
       setEditingId(id)
+      setEditingSalesOrder(salesOrder)
       setForm({
         clientId: q.clientId || '', clientName: q.clientName || '', clientCnpj: q.clientCnpj || '',
         clientContact: q.clientContact || '', clientPhone: q.clientPhone || '', clientEmail: q.clientEmail || '',
@@ -169,7 +186,7 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
       })
       setDialogOpen(true)
     } catch {
-      toast.error('Erro ao carregar orçamento')
+      toast.error('Erro ao carregar orçamento. Recarregue a página — se persistir, contate o suporte.')
     }
   }
 
@@ -190,7 +207,7 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
         toast.error(err.error || 'Erro ao salvar')
       }
     } catch {
-      toast.error('Erro ao salvar orçamento')
+      toast.error('Erro ao salvar orçamento. Verifique sua conexão e tente novamente — se persistir, contate o suporte.')
     } finally {
       setSaving(false)
     }
@@ -202,11 +219,15 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
       if (r.ok) { toast.success('Orçamento duplicado!'); load() }
       else toast.error('Erro ao duplicar')
     } catch {
-      toast.error('Erro ao duplicar')
+      toast.error('Erro ao duplicar orçamento. Tente novamente — se persistir, contate o suporte.')
     }
   }
 
   async function changeStatus(id: string, status: string) {
+    if (status === 'approved' && !(await confirmAction({
+      title: 'Aprovar orçamento',
+      description: 'Aprovar este orçamento gera automaticamente Ordem(ns) de Produção. Esta ação não pode ser desfeita pelo sistema. Confirma?',
+    }))) return
     await runStatusChange(id, async () => {
       try {
         const r = await fetch(`/api/quotes/${id}/status`, {
@@ -234,7 +255,7 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
         load()
         onDataChanged()
       } catch {
-        toast.error('Erro ao alterar status')
+        toast.error('Erro ao alterar status. Tente novamente — se persistir, contate o suporte.')
       }
     })
   }
@@ -260,7 +281,7 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
           toast.error(json.error || 'Erro ao converter orçamento')
         }
       } catch {
-        toast.error('Erro ao converter orçamento')
+        toast.error('Erro ao converter orçamento. Tente novamente — se persistir, contate o suporte.')
       }
     })
   }
@@ -272,10 +293,10 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
       if (r.ok) { toast.success('Orçamento excluído!'); load() }
       else {
         const err = await r.json()
-        toast.error(err.error || 'Erro ao excluir')
+        toast.error(err.error || 'Erro ao excluir orçamento. Tente novamente — se persistir, contate o suporte.')
       }
     } catch {
-      toast.error('Erro ao excluir')
+      toast.error('Erro ao excluir orçamento. Tente novamente — se persistir, contate o suporte.')
     }
   }
 
@@ -288,13 +309,11 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
     setForm({ ...form, items })
   }
 
-  function selectItemProduct(idx: number, productId: string) {
+  function selectItemProduct(idx: number, product: ProductOption) {
     const items = [...form.items]
-    const product = products.find((p) => p.id === productId)
-    if (!product) return
     items[idx] = {
       ...items[idx],
-      productId,
+      productId: product.id,
       code: product.internalCode || items[idx].code,
       description: product.name || items[idx].description,
       unit: product.unit || items[idx].unit || 'UN',
@@ -378,7 +397,7 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
             label: 'Converter em Pedido de Venda', icon: <ShoppingCart />, onClick: (q) => convertToOrder(q.id),
             disabled: (q) => q.status !== 'approved' || !!q.salesOrder || pendingStatusIds.has(q.id),
           },
-          { label: 'Editar', icon: <Edit />, onClick: (q) => openEdit(q.id) },
+          { label: 'Editar', icon: <Edit />, onClick: (q) => openEdit(q.id, q.salesOrder) },
           { label: 'Duplicar', icon: <Copy />, onClick: (q) => duplicateQuote(q.id) },
           { label: 'PDF Comercial', icon: <FileOutput />, onClick: (q) => window.open(`/api/quotes/${q.id}/pdf?variant=comercial`, '_blank') },
           { label: 'PDF Técnico (com foto)', icon: <ImageIcon />, onClick: (q) => window.open(`/api/quotes/${q.id}/pdf?variant=tecnico`, '_blank') },
@@ -398,15 +417,32 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
         saving={saving}
       >
         <div className="space-y-6">
+          {editingSalesOrder && (
+            <div className="flex items-start gap-2.5 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <p>
+                Este orçamento já foi convertido no Pedido de Venda <strong>{editingSalesOrder.number}</strong>.
+                Alterações feitas aqui não são refletidas automaticamente no pedido já gerado.
+              </p>
+            </div>
+          )}
           <div>
             <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">Dados do Cliente</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="space-y-1.5 sm:col-span-2 lg:col-span-3">
                 <Label>Cliente cadastrado</Label>
-                <Select value={form.clientId || undefined} onValueChange={selectClient}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Selecionar um cliente já cadastrado (preenche os campos abaixo)" /></SelectTrigger>
-                  <SelectContent>{clients.map((c) => <SelectItem key={c.id} value={c.id}>{(c.tradeName || c.corporateName) + (c.cpfCnpj ? ` — ${c.cpfCnpj}` : '')}</SelectItem>)}</SelectContent>
-                </Select>
+                <SearchableSelect<ClientOption>
+                  value={form.clientId}
+                  label={form.clientName}
+                  placeholder="Buscar um cliente já cadastrado (preenche os campos abaixo)"
+                  searchUrl={(q) => `/api/clients?search=${encodeURIComponent(q)}&limit=20`}
+                  parseResults={(json) => ((json as { data: ClientOption[] }).data || []).map((c) => ({
+                    id: c.id,
+                    label: (c.tradeName || c.corporateName) + (c.cpfCnpj ? ` — ${c.cpfCnpj}` : ''),
+                    data: c,
+                  }))}
+                  onSelect={(hit) => selectClient(hit.data)}
+                />
               </div>
               <div className="space-y-1.5"><Label>Nome / Razão Social</Label><Input value={form.clientName} onChange={(e) => setForm({ ...form, clientName: e.target.value })} /></div>
               <div className="space-y-1.5">
@@ -451,10 +487,14 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
                 {form.items.map((item, idx) => (
                   <div key={idx} className="grid grid-cols-[28px_200px_110px_1fr_100px_130px_120px_36px] gap-2 px-3 py-2 items-center border-b last:border-b-0">
                     <span className="text-muted-foreground text-xs">{idx + 1}</span>
-                    <Select value={item.productId || undefined} onValueChange={(v) => selectItemProduct(idx, v)}>
-                      <SelectTrigger className="w-full"><SelectValue placeholder="Avulso" /></SelectTrigger>
-                      <SelectContent>{products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <SearchableSelect<ProductOption>
+                      value={item.productId || ''}
+                      label={item.description}
+                      placeholder="Avulso"
+                      searchUrl={(q) => `/api/products?search=${encodeURIComponent(q)}&limit=20`}
+                      parseResults={(json) => ((json as { data: ProductOption[] }).data || []).map((p) => ({ id: p.id, label: p.name, data: p }))}
+                      onSelect={(hit) => selectItemProduct(idx, hit.data)}
+                    />
                     <Input value={item.code} onChange={(e) => updateItem(idx, 'code', e.target.value)} />
                     <Input value={item.description} onChange={(e) => updateItem(idx, 'description', e.target.value)} />
                     <QuantityInput className="text-right" value={item.quantity} onChange={(v) => updateItem(idx, 'quantity', v)} />
@@ -527,6 +567,13 @@ export function OrcamentosPage({ clients, products, onDataChanged, onNavigateToP
               <div className="flex justify-between font-bold text-lg"><span>Total</span><span className="font-mono text-primary">{formatCurrency(quoteTotal)}</span></div>
             </div>
           </div>
+
+          {editingId && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Histórico de Status</Label>
+              <StatusTimeline entityType="quote" entityId={editingId} domain="quote" labels={statusLabels} />
+            </div>
+          )}
         </div>
       </FormDialog>
     </div>

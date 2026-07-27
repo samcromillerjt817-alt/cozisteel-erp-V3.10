@@ -824,7 +824,19 @@ class PdfService {
       y += lines.length * 4 + 6
     }
 
-    const materials = order.product?.materials || []
+    // ADR-022 (Fase UX-3, achado #06) — antes disto, o PDF sempre usava a receita simples
+    // (`ProductMaterial`) mesmo quando a OP tinha uma `BomRevision` congelada vinculada — o motor real
+    // de consumo (`ProductionOrderService.resolveConsumptionLines()`) prioriza a revisão congelada
+    // quando existe, então o papel impresso podia divergir do que era efetivamente baixado do estoque.
+    // Mesma prioridade aqui: BOM formal primeiro, receita simples só na ausência dela. Só linhas do
+    // tipo "material" (não "component"/subconjunto) — mesmo escopo que a tabela já cobria antes.
+    const materials = order.bomRevisionId
+      ? (await db.bomLine.findMany({
+          where: { bomRevisionId: order.bomRevisionId, lineType: 'material', materialId: { not: null } },
+          include: { material: { select: { name: true, stockQty: true } } },
+          orderBy: { order: 'asc' },
+        })).filter((l): l is typeof l & { material: { name: string; stockQty: number } } => l.material !== null)
+      : (order.product?.materials || [])
     if (materials.length > 0) {
       y = ensureSpace(doc, y, 45)
       sectionTitle(doc, 'MATÉRIA-PRIMA NECESSÁRIA', 14, y)

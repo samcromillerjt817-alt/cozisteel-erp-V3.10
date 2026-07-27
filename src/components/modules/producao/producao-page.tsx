@@ -15,17 +15,17 @@ import { Progress } from '@/components/ui/progress'
 import { AsyncButton } from '@/components/domain/async-button'
 import { QuantityInput } from '@/components/form/quantity-input'
 import { useConfirm } from '@/components/domain/confirm-dialog'
+import { StatusTimeline } from '@/components/domain/status-timeline'
 import { ProducaoFormFields } from './producao-form-fields'
+import { ReservationList } from './reservation-list'
 import {
   PRODUCTION_ORDER_STATUS_LABELS, PRODUCTION_ORDER_TRANSITIONS, EMPTY_PRODUCTION_ORDER_FORM, productionOrderToFormData,
   type ProductionOrderListRow, type ProductionOrderRecord, type ProductionOrderFormData,
 } from './types'
 
-interface ProductOption { id: string; name: string }
 interface SalesOrderOption { id: string; number: string; clientName: string; items?: { id: string; description: string; quantity: number; unit: string; productId: string | null }[] }
 
 interface ProducaoPageProps {
-  products: ProductOption[]
   salesOrders: SalesOrderOption[]
   onGenerateRequisitionFromOP: (productionOrderId: string) => void
   /** Deep-link vindo de fora (Hardening pós-11.5, Prioridade 1) — quando um Orçamento aprovado gera
@@ -49,7 +49,7 @@ const PAGE_SIZE = 20
  * Produção parcial por rodada, um recurso já pronto no backend, nunca teve UI. O `DetailDrawer` abaixo
  * é essa UI, pela primeira vez.
  */
-export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromOP, initialDetailId, onConsumeInitialDetail }: ProducaoPageProps) {
+export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initialDetailId, onConsumeInitialDetail }: ProducaoPageProps) {
   const confirmAction = useConfirm()
   const [rows, setRows] = useState<ProductionOrderListRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -82,7 +82,7 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
         setTotal(json.total || 0)
       }
     } catch {
-      toast.error('Erro ao carregar ordens de produção')
+      toast.error('Erro ao carregar ordens de produção. Recarregue a página — se persistir, contate o suporte.')
     } finally {
       setLoading(false)
     }
@@ -94,6 +94,10 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
 
   useEffect(() => {
     if (!initialDetailId) return
+    // ADR-022 (Fase UX-4) — mesmo motivo do achado em Compras/Requisições/Pedidos: com o keep-alive
+    // de módulo, o `useState` preguiçoso só cobre o primeiro mount, nunca um deep-link que chega depois.
+    setDetailOpen(true)
+    setDetailLoading(true)
     fetchDetail(initialDetailId).then((full) => {
       setDetail(full)
       setProduceQty(full ? Math.max(0, full.quantity - full.quantityCompleted) : 0)
@@ -146,7 +150,7 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
         toast.error(err.error || 'Erro ao salvar ordem')
       }
     } catch {
-      toast.error('Erro ao salvar ordem')
+      toast.error('Erro ao salvar ordem de produção. Verifique sua conexão e tente novamente — se persistir, contate o suporte.')
     } finally {
       setSaving(false)
     }
@@ -164,7 +168,7 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
         toast.error(err.error || 'Erro ao excluir')
       }
     } catch {
-      toast.error('Erro ao excluir')
+      toast.error('Erro ao excluir ordem de produção. Tente novamente — se persistir, contate o suporte.')
     }
   }
 
@@ -172,7 +176,7 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
     try {
       const r = await fetch(`/api/production-orders/${id}`)
       if (!r.ok) {
-        toast.error('Erro ao carregar ordem de produção')
+        toast.error('Erro ao carregar ordem de produção. Recarregue a página — se persistir, contate o suporte.')
         return null
       }
       return await r.json()
@@ -192,6 +196,10 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
   }
 
   async function changeStatus(id: string, status: string) {
+    if (status === 'completed' && !(await confirmAction({
+      title: 'Concluir Ordem de Produção',
+      description: 'Concluir esta OP dá baixa na matéria-prima restante e gera entrada do produto acabado no estoque. Esta ação não pode ser desfeita pelo sistema. Confirma?',
+    }))) return
     setStatusChanging(true)
     try {
       const r = await fetch(`/api/production-orders/${id}`, {
@@ -208,7 +216,7 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
         toast.error(err.error || 'Erro ao mudar status')
       }
     } catch {
-      toast.error('Erro ao mudar status')
+      toast.error('Erro ao mudar status da OP. Tente novamente — se persistir, contate o suporte.')
     } finally {
       setStatusChanging(false)
     }
@@ -220,6 +228,10 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
       toast.error('Informe uma quantidade maior que zero')
       return
     }
+    if (!(await confirmAction({
+      title: 'Registrar produção',
+      description: `Confirma produzir ${produceQty} ${detail.unit}? Isso dá baixa na matéria-prima e gera um novo lote de produto acabado — não pode ser desfeito pelo sistema.`,
+    }))) return
     setProducing(true)
     try {
       const r = await fetch(`/api/production-orders/${detail.id}/produce`, {
@@ -237,7 +249,7 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
         toast.error(err.error || 'Erro ao registrar produção')
       }
     } catch {
-      toast.error('Erro ao registrar produção')
+      toast.error('Erro ao registrar produção. Verifique se o servidor reiniciou e recarregue a página — se persistir, contate o suporte.')
     } finally {
       setProducing(false)
     }
@@ -287,7 +299,6 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
         <ProducaoFormFields
           form={form}
           onChange={setForm}
-          products={products}
           salesOrders={salesOrders}
           isEditing={editingId !== null}
           selectedSalesOrderId={selectedSalesOrderId}
@@ -364,6 +375,16 @@ export function ProducaoPage({ products, salesOrders, onGenerateRequisitionFromO
                 </div>
               </div>
             )}
+
+            <div className="space-y-2">
+              <Label className="text-xs">Reserva de Material</Label>
+              <ReservationList productionOrderId={detail.id} />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs">Histórico de Status</Label>
+              <StatusTimeline entityType="production_order" entityId={detail.id} domain="productionOrder" labels={PRODUCTION_ORDER_STATUS_LABELS} />
+            </div>
           </div>
         )}
       </DetailDrawer>

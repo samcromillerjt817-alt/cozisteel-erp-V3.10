@@ -67,7 +67,6 @@ import { FormDialog } from '@/components/domain/form-dialog'
 interface SessionUser { id: string; name: string; role: string; email?: string }
 interface Quote { id: string; number: string; status: string; date: string; clientName: string; total: number; clientId: string; version: number; createdAt: string; items?: QuoteItem[]; salesOrder?: { id: string; number: string } | null }
 interface QuoteItem { id?: string; productId?: string; code: string; description: string; quantity: number; unit: string; unitPrice: number; total: number; weight: number; width: number; height: number; length: number; order: number }
-interface Client { id: string; corporateName: string; tradeName: string; cpfCnpj: string | null; email: string; phone: string; contactName?: string; contactPhone?: string; address?: string; number?: string; neighborhood?: string; zipCode?: string; city: string; state: string; active: boolean; createdAt: string; situacaoCadastral?: string; cnaeCode?: string; cnaeDescription?: string }
 interface Product { id: string; internalCode: string; name: string; description: string; categoryName: string; materialName: string; costPrice: number; salePrice: number; weight: number; unit?: string; active: boolean; createdAt: string; images?: { id: string; url: string; isPrimary: boolean }[] }
 type ModuleKey = 'dashboard' | 'orcamentos' | 'pedidos' | 'clientes' | 'produtos' | 'materiais' | 'producao' | 'fornecedores' | 'requisicoes' | 'compras' | 'estoque' | 'relatorios' | 'financeiro' | 'usuarios' | 'configuracoes'
 
@@ -90,6 +89,28 @@ export default function ERPPage() {
   const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard')
   const [configSub, setConfigSub] = useState<ConfigSubModule>('empresa')
 
+  // ADR-022 (Fase UX-4, achado #09) — trocar de módulo desmontava o componente anterior por
+  // completo, perdendo filtro/busca/página sempre que o usuário voltava. Solução mínima (sem trocar
+  // roteamento nem adotar react-query, ambos fora do escopo desta rodada): módulos "workhorse" de
+  // CRUD (lista+filtro+paginação, sem gráfico) ficam montados depois da primeira visita, só
+  // escondidos via CSS ao trocar de aba — o estado interno de cada `XPage` sobrevive. Dashboard e
+  // Financeiro ficam de fora de propósito: usam `DashboardChart`/Recharts, que pode não redesenhar
+  // corretamente ao sair de `display:none` (risco documentado, não testado nesta rodada) —
+  // continuam com o comportamento antigo (desmonta/remonta).
+  // Lista de referência (aplicada diretamente nos blocos JSX abaixo, não checada aqui em runtime):
+  // orcamentos, pedidos, clientes, produtos, materiais, producao, fornecedores, requisicoes, compras,
+  // estoque, usuarios.
+  const [visitedModules, setVisitedModules] = useState<Set<ModuleKey>>(() => new Set([activeModule]))
+  useEffect(() => {
+    setVisitedModules((prev) => (prev.has(activeModule) ? prev : new Set(prev).add(activeModule)))
+  }, [activeModule])
+  function keepAliveVisible(key: ModuleKey): boolean {
+    return visitedModules.has(key)
+  }
+  function keepAliveClass(key: ModuleKey): string {
+    return activeModule === key ? '' : 'hidden'
+  }
+
   // Notificações migradas para `NotificationCenter` (Fase 11.5, Subetapa 11.5.10), autocontido —
   // busca seus próprios alertas via `GET /api/dashboard/alerts`, já com severidade.
 
@@ -107,13 +128,6 @@ export default function ERPPage() {
   // autocontido. `salesOrders`/`loadSalesOrders` permanecem — catálogo compartilhado com o seletor
   // "gerar OP a partir de um Pedido de Venda" em Produção.
   const [salesOrders, setSalesOrders] = useState<any[]>([])
-
-  /* ── Clientes ── */
-  // A tabela paginada + formulário do módulo Clientes foram migrados para o componente
-  // `ClientesPage` (Fase 11.5, Subetapa 11.5.6 — piloto/template oficial da plataforma), autocontido,
-  // sem estado próprio aqui. `clients`/`loadClients` continuam aqui porque alimentam também o select
-  // de cliente do Orçamento (catálogo completo, sem paginação) — estado compartilhado fora do módulo.
-  const [clients, setClients] = useState<Client[]>([])
 
   /* ── Produtos ── */
   // Tabela paginada + formulário migrados para `ProdutosPage` (Fase 11.5, Subetapa 11.5.7),
@@ -163,6 +177,11 @@ export default function ERPPage() {
   const [pendingPedidoDetailId, setPendingPedidoDetailId] = useState<string | undefined>(undefined)
   const [pendingProductionOrderDetailId, setPendingProductionOrderDetailId] = useState<string | undefined>(undefined)
   const [pendingPurchaseOrderDetailId, setPendingPurchaseOrderDetailId] = useState<string | undefined>(undefined)
+  // ADR-022 (Fase UX-2, achado #12) — mesmo padrão acima, agora para os links reversos que faltavam:
+  // Pedido de Compra→Requisição, Pedido de Venda→Orçamento, Financeiro→Compras/Pedidos.
+  const [pendingRequisicaoDetailId, setPendingRequisicaoDetailId] = useState<string | undefined>(undefined)
+  const [pendingOrcamentoDetailId, setPendingOrcamentoDetailId] = useState<string | undefined>(undefined)
+  const [pendingOrcamentoSalesOrder, setPendingOrcamentoSalesOrder] = useState<{ id: string; number: string } | undefined>(undefined)
 
   /* ── Estoque ── */
   // Tabela de saldo + movimentações + ajuste manual migrados para `EstoquePage` (Fase 11.5, Subetapa
@@ -198,21 +217,6 @@ export default function ERPPage() {
       const r = await fetch('/api/sales-orders?limit=100')
       if (r.ok) { const json = await r.json(); setSalesOrders(json.data || []) }
     } catch { toast.error('Erro ao carregar pedidos de venda') }
-  }, [])
-
-  // `loadClients`/`clients` alimenta o select de cliente do Orçamento (catálogo completo, sem
-  // paginação — nota: `parsePagination` do backend usa limit padrão 20 quando nenhum `limit` é
-  // enviado, então esse catálogo já era limitado a 20 registros antes desta migração; achado
-  // pré-existente, não introduzido aqui, fora do escopo da Subetapa 11.5.6, catalogado no relatório).
-  // A tabela paginada + formulário do módulo Clientes agora vivem inteiramente em `ClientesPage`.
-  const loadClients = useCallback(async () => {
-    try {
-      const r = await fetch('/api/clients')
-      if (r.ok) {
-        const json = await r.json()
-        setClients(json.data || [])
-      }
-    } catch { toast.error('Erro ao carregar clientes') }
   }, [])
 
   // `loadProducts`/`products` alimentam também os selects de produto de Orçamento e Ordem de
@@ -311,8 +315,10 @@ export default function ERPPage() {
       loadProducts()
       loadSalesOrders()
     }
-    if (moduleRef === 'orcamentos') {
-      loadClients()
+    // ADR-022 (Fase UX-4) — Orçamentos não usa mais o catálogo completo de produtos (converteu pro
+    // combobox com busca própria); Financeiro ainda precisa dele pro seletor de produto do histórico
+    // de custo por material (Relatórios), então o gatilho de carga muda de módulo, não desaparece.
+    if (moduleRef === 'financeiro') {
       loadProducts()
     }
     if (moduleRef === 'fornecedores') { loadMaterialsFull() }
@@ -623,24 +629,30 @@ export default function ERPPage() {
           {/* ═══════════════════════════════════════════════════════
               ORCAMENTOS MODULE
               ═══════════════════════════════════════════════════════ */}
-          {activeModule === 'orcamentos' && (
-            <OrcamentosPage
-              clients={clients}
-              products={products}
-              onDataChanged={() => { loadSalesOrders(); loadProductionOrders() }}
-              onNavigateToPedidos={(pedidoId) => { setActiveModule('pedidos'); setPendingPedidoDetailId(pedidoId) }}
-              onNavigateToProducao={(productionOrderId) => { setActiveModule('producao'); setPendingProductionOrderDetailId(productionOrderId) }}
-            />
+          {keepAliveVisible('orcamentos') && (
+            <div className={keepAliveClass('orcamentos')}>
+              <OrcamentosPage
+                onDataChanged={() => { loadSalesOrders(); loadProductionOrders() }}
+                onNavigateToPedidos={(pedidoId) => { setActiveModule('pedidos'); setPendingPedidoDetailId(pedidoId) }}
+                onNavigateToProducao={(productionOrderId) => { setActiveModule('producao'); setPendingProductionOrderDetailId(productionOrderId) }}
+                initialDetailId={pendingOrcamentoDetailId}
+                initialDetailSalesOrder={pendingOrcamentoSalesOrder}
+                onConsumeInitialDetail={() => { setPendingOrcamentoDetailId(undefined); setPendingOrcamentoSalesOrder(undefined) }}
+              />
+            </div>
           )}
 
           {/* ═══════════════════════════════════════════════════════
               PEDIDOS DE VENDA MODULE
               ═══════════════════════════════════════════════════════ */}
-          {activeModule === 'pedidos' && (
-            <PedidosPage
-              initialDetailId={pendingPedidoDetailId}
-              onConsumeInitialDetail={() => setPendingPedidoDetailId(undefined)}
-            />
+          {keepAliveVisible('pedidos') && (
+            <div className={keepAliveClass('pedidos')}>
+              <PedidosPage
+                initialDetailId={pendingPedidoDetailId}
+                onConsumeInitialDetail={() => setPendingPedidoDetailId(undefined)}
+                onNavigateToOrcamentos={(quoteId, salesOrder) => { setActiveModule('orcamentos'); setPendingOrcamentoDetailId(quoteId); setPendingOrcamentoSalesOrder(salesOrder) }}
+              />
+            </div>
           )}
 
           {/* ═══════════════════════════════════════════════════════
@@ -651,7 +663,7 @@ export default function ERPPage() {
               Migrado para `ClientesPage` (PageHeader→FilterBar→DataTable→FormDialog, autocontido) —
               nenhuma lógica de apresentação ou estado do módulo permanece aqui, só orquestração.
               ═══════════════════════════════════════════════════════ */}
-          {activeModule === 'clientes' && <ClientesPage onCatalogChanged={loadClients} />}
+          {keepAliveVisible('clientes') && <div className={keepAliveClass('clientes')}><ClientesPage /></div>}
 
           {/* ═══════════════════════════════════════════════════════
               PRODUTOS MODULE
@@ -659,15 +671,17 @@ export default function ERPPage() {
           {/* ═══════════════════════════════════════════════════════
               PRODUTOS MODULE — Fase 11.5, Subetapa 11.5.7 (propagação do template, última das 4)
               ═══════════════════════════════════════════════════════ */}
-          {activeModule === 'produtos' && (
-            <ProdutosPage
-              categories={categories}
-              materials={materials}
-              materialsFull={materialsFull}
-              onCatalogChanged={loadProducts}
-              onAuxiliaryCatalogChanged={loadCategoriesAndMaterials}
-              onNavigateToMateriais={() => setActiveModule('materiais')}
-            />
+          {keepAliveVisible('produtos') && (
+            <div className={keepAliveClass('produtos')}>
+              <ProdutosPage
+                categories={categories}
+                materials={materials}
+                materialsFull={materialsFull}
+                onCatalogChanged={loadProducts}
+                onAuxiliaryCatalogChanged={loadCategoriesAndMaterials}
+                onNavigateToMateriais={() => setActiveModule('materiais')}
+              />
+            </div>
           )}
 
           {/* ═══════════════════════════════════════════════════════
@@ -676,7 +690,7 @@ export default function ERPPage() {
           {/* ═══════════════════════════════════════════════════════
               MATERIAIS MODULE — Fase 11.5, Subetapa 11.5.7 (propagação do template)
               ═══════════════════════════════════════════════════════ */}
-          {activeModule === 'materiais' && <MateriaisPage categories={categories} onCatalogChanged={loadMaterialsFull} />}
+          {keepAliveVisible('materiais') && <div className={keepAliveClass('materiais')}><MateriaisPage categories={categories} onCatalogChanged={loadMaterialsFull} /></div>}
 
           {/* ═══════════════════════════════════════════════════════
               FORNECEDORES MODULE
@@ -684,41 +698,54 @@ export default function ERPPage() {
           {/* ═══════════════════════════════════════════════════════
               FORNECEDORES MODULE — Fase 11.5, Subetapa 11.5.7 (propagação do template)
               ═══════════════════════════════════════════════════════ */}
-          {activeModule === 'fornecedores' && <FornecedoresPage materialsFull={materialsFull} onCatalogChanged={loadSuppliers} />}
+          {keepAliveVisible('fornecedores') && <div className={keepAliveClass('fornecedores')}><FornecedoresPage materialsFull={materialsFull} onCatalogChanged={loadSuppliers} /></div>}
 
           {/* ═══════════════════════════════════════════════════════
               REQUISICOES MODULE
               ═══════════════════════════════════════════════════════ */}
-          {activeModule === 'requisicoes' && (
-            <RequisicoesPage
-              materialsFull={materialsFull}
-              suppliers={suppliers}
-              productionOrders={productionOrders}
-              pendingSuggestionFromOP={requisitionOPSuggestion}
-              onConsumePendingSuggestion={() => setRequisitionOPSuggestion(null)}
-              onNavigateToCompras={(purchaseOrderId) => { setActiveModule('compras'); setPendingPurchaseOrderDetailId(purchaseOrderId) }}
-            />
+          {keepAliveVisible('requisicoes') && (
+            <div className={keepAliveClass('requisicoes')}>
+              <RequisicoesPage
+                materialsFull={materialsFull}
+                suppliers={suppliers}
+                productionOrders={productionOrders}
+                pendingSuggestionFromOP={requisitionOPSuggestion}
+                onConsumePendingSuggestion={() => setRequisitionOPSuggestion(null)}
+                onNavigateToCompras={(purchaseOrderId) => { setActiveModule('compras'); setPendingPurchaseOrderDetailId(purchaseOrderId) }}
+                initialDetailId={pendingRequisicaoDetailId}
+                onConsumeInitialDetail={() => setPendingRequisicaoDetailId(undefined)}
+              />
+            </div>
           )}
 
           {/* ═══════════════════════════════════════════════════════
               COMPRAS (PEDIDO DE COMPRA) MODULE
               ═══════════════════════════════════════════════════════ */}
-          {activeModule === 'compras' && (
-            <ComprasPage
-              initialDetailId={pendingPurchaseOrderDetailId}
-              onConsumeInitialDetail={() => setPendingPurchaseOrderDetailId(undefined)}
-            />
+          {keepAliveVisible('compras') && (
+            <div className={keepAliveClass('compras')}>
+              <ComprasPage
+                initialDetailId={pendingPurchaseOrderDetailId}
+                onConsumeInitialDetail={() => setPendingPurchaseOrderDetailId(undefined)}
+                onNavigateToRequisicoes={(requisitionId) => { setActiveModule('requisicoes'); setPendingRequisicaoDetailId(requisitionId) }}
+              />
+            </div>
           )}
 
           {/* ═══════════════════════════════════════════════════════
               ESTOQUE MODULE
               ═══════════════════════════════════════════════════════ */}
-          {activeModule === 'estoque' && <EstoquePage />}
+          {keepAliveVisible('estoque') && <div className={keepAliveClass('estoque')}><EstoquePage /></div>}
 
           {/* ═══════════════════════════════════════════════════════
               FINANCEIRO MODULE (Fase 12, Subetapa 7-UI)
               ═══════════════════════════════════════════════════════ */}
-          {activeModule === 'financeiro' && <FinanceiroPage />}
+          {activeModule === 'financeiro' && (
+            <FinanceiroPage
+              products={products}
+              onNavigateToCompras={(purchaseOrderId) => { setActiveModule('compras'); setPendingPurchaseOrderDetailId(purchaseOrderId) }}
+              onNavigateToPedidos={(pedidoId) => { setActiveModule('pedidos'); setPendingPedidoDetailId(pedidoId) }}
+            />
+          )}
 
           {/* ═══════════════════════════════════════════════════════
               RELATORIOS MODULE
@@ -728,14 +755,15 @@ export default function ERPPage() {
           {/* ═══════════════════════════════════════════════════════
               PRODUCAO MODULE
               ═══════════════════════════════════════════════════════ */}
-          {activeModule === 'producao' && (
-            <ProducaoPage
-              products={products}
-              salesOrders={salesOrders}
-              onGenerateRequisitionFromOP={(id) => { setActiveModule('requisicoes'); setRequisitionOPSuggestion(id) }}
-              initialDetailId={pendingProductionOrderDetailId}
-              onConsumeInitialDetail={() => setPendingProductionOrderDetailId(undefined)}
-            />
+          {keepAliveVisible('producao') && (
+            <div className={keepAliveClass('producao')}>
+              <ProducaoPage
+                salesOrders={salesOrders}
+                onGenerateRequisitionFromOP={(id) => { setActiveModule('requisicoes'); setRequisitionOPSuggestion(id) }}
+                initialDetailId={pendingProductionOrderDetailId}
+                onConsumeInitialDetail={() => setPendingProductionOrderDetailId(undefined)}
+              />
+            </div>
           )}
 
           {/* ═══════════════════════════════════════════════════════
@@ -744,7 +772,7 @@ export default function ERPPage() {
           {/* ═══════════════════════════════════════════════════════
               USUARIOS MODULE — Fase 11.5, Subetapa 11.5.7 (propagação do template)
               ═══════════════════════════════════════════════════════ */}
-          {activeModule === 'usuarios' && canAccess('usuarios') && <UsuariosPage />}
+          {keepAliveVisible('usuarios') && canAccess('usuarios') && <div className={keepAliveClass('usuarios')}><UsuariosPage /></div>}
 
           {/* ═══════════════════════════════════════════════════════
               CONFIGURACOES MODULES

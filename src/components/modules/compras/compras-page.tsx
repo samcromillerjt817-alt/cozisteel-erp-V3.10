@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { formatCurrency } from '@/lib/format'
 import { PurchaseOrderReceiveDialog } from './purchase-order-receive-dialog'
+import { useConfirm } from '@/components/domain/confirm-dialog'
+import { StatusTimeline } from '@/components/domain/status-timeline'
 import {
   PURCHASE_ORDER_STATUS_LABELS, PURCHASE_ORDER_TRANSITIONS,
   type PurchaseOrderListRow, type PurchaseOrderRecord,
@@ -27,6 +29,9 @@ interface ComprasPageProps {
    * `pendingSuggestionFromOP` (Produção→Requisições). */
   initialDetailId?: string | null
   onConsumeInitialDetail?: () => void
+  /** ADR-022 (Fase UX-2, achado #12) — do detalhe do Pedido de Compra para a Requisição que o
+   * originou (existia só o caminho contrário, Requisição→Compras). */
+  onNavigateToRequisicoes: (requisitionId?: string) => void
 }
 
 /**
@@ -34,7 +39,8 @@ interface ComprasPageProps {
  * Pedido de Compra só nasce quando uma Requisição avança para "ordered". A única ação de escrita no
  * frontend é mudar o status (respeitando a máquina de estados) e registrar recebimento.
  */
-export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: ComprasPageProps) {
+export function ComprasPage({ initialDetailId, onConsumeInitialDetail, onNavigateToRequisicoes }: ComprasPageProps) {
+  const confirmAction = useConfirm()
   const [rows, setRows] = useState<PurchaseOrderListRow[]>([])
   const [loading, setLoading] = useState(false)
   const [statusFilter, setStatusFilter] = useState('all')
@@ -49,6 +55,8 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
   const [receiveOpen, setReceiveOpen] = useState(false)
   const [receiveTarget, setReceiveTarget] = useState<PurchaseOrderRecord | null>(null)
   const [receiveQuantities, setReceiveQuantities] = useState<Record<string, number>>({})
+  const [receiveBatchNumbers, setReceiveBatchNumbers] = useState<Record<string, string>>({})
+  const [receiveExpiresAt, setReceiveExpiresAt] = useState<Record<string, string>>({})
   const [receiveSaving, setReceiveSaving] = useState(false)
 
   const load = useCallback(async () => {
@@ -65,7 +73,7 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
         setTotal(json.total || 0)
       }
     } catch {
-      toast.error('Erro ao carregar pedidos de compra')
+      toast.error('Erro ao carregar pedidos de compra. Recarregue a página — se persistir, contate o suporte.')
     } finally {
       setLoading(false)
     }
@@ -77,6 +85,11 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
 
   useEffect(() => {
     if (!initialDetailId) return
+    // ADR-022 (Fase UX-4) — `setDetailOpen`/`setDetailLoading` explícitos aqui, não só no `useState`
+    // preguiçoso: com o keep-alive de módulo (visita anterior já monta o componente), um deep-link
+    // que chega DEPOIS do primeiro mount não passaria pelo estado inicial nunca mais.
+    setDetailOpen(true)
+    setDetailLoading(true)
     fetchDetail(initialDetailId).then((full) => { setDetail(full); setDetailLoading(false) })
     onConsumeInitialDetail?.()
   }, [initialDetailId, onConsumeInitialDetail])
@@ -90,7 +103,7 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
     try {
       const r = await fetch(`/api/purchase-orders/${id}`)
       if (!r.ok) {
-        toast.error('Erro ao carregar pedido de compra')
+        toast.error('Erro ao carregar pedido de compra. Recarregue a página — se persistir, contate o suporte.')
         return null
       }
       return await r.json()
@@ -109,6 +122,10 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
   }
 
   async function changeStatus(id: string, status: string) {
+    if (status === 'approved' && !(await confirmAction({
+      title: 'Aprovar Pedido de Compra',
+      description: 'Você está aprovando este pedido sozinho — o sistema não exige um segundo aprovador. Confirme só se tiver revisado fornecedor, itens e valores.',
+    }))) return
     setStatusChanging(true)
     try {
       const r = await fetch(`/api/purchase-orders/${id}/status`, {
@@ -123,7 +140,7 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
         toast.error(err.error || 'Erro ao mudar status')
       }
     } catch {
-      toast.error('Erro ao mudar status')
+      toast.error('Erro ao mudar status do pedido. Tente novamente — se persistir, contate o suporte.')
     } finally {
       setStatusChanging(false)
     }
@@ -134,6 +151,8 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
     if (!full) return
     setReceiveTarget(full)
     setReceiveQuantities(Object.fromEntries(full.items.map((i) => [i.id, Math.max(0, i.quantity - i.quantityReceived)])))
+    setReceiveBatchNumbers({})
+    setReceiveExpiresAt({})
     setReceiveOpen(true)
   }
 
@@ -141,11 +160,20 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
     if (!receiveTarget) return
     const items = Object.entries(receiveQuantities)
       .filter(([, q]) => Number(q) > 0)
-      .map(([purchaseOrderItemId, quantityReceived]) => ({ purchaseOrderItemId, quantityReceived: Number(quantityReceived) }))
+      .map(([purchaseOrderItemId, quantityReceived]) => ({
+        purchaseOrderItemId,
+        quantityReceived: Number(quantityReceived),
+        ...(receiveBatchNumbers[purchaseOrderItemId] ? { batchNumber: receiveBatchNumbers[purchaseOrderItemId] } : {}),
+        ...(receiveExpiresAt[purchaseOrderItemId] ? { expiresAt: receiveExpiresAt[purchaseOrderItemId] } : {}),
+      }))
     if (items.length === 0) {
       toast.error('Informe ao menos uma quantidade recebida')
       return
     }
+    if (!(await confirmAction({
+      title: 'Confirmar recebimento',
+      description: 'Confirmar dá entrada imediata das quantidades informadas no estoque. Não é possível estornar um recebimento por esta tela depois de confirmado. Confirma?',
+    }))) return
     setReceiveSaving(true)
     try {
       const r = await fetch(`/api/purchase-orders/${receiveTarget.id}/receive`, {
@@ -161,7 +189,7 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
         toast.error(err.error || 'Erro ao registrar recebimento')
       }
     } catch {
-      toast.error('Erro ao registrar recebimento')
+      toast.error('Erro ao registrar recebimento. Verifique se as quantidades foram gravadas antes de tentar de novo — se persistir, contate o suporte.')
     } finally {
       setReceiveSaving(false)
     }
@@ -217,7 +245,18 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
         ) : (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-              <div><Label className="text-xs">Requisição de origem</Label><p>{detail.requisition?.number || '-'}</p></div>
+              <div>
+                <Label className="text-xs">Requisição de origem</Label>
+                {detail.requisition ? (
+                  <button
+                    type="button"
+                    className="block text-primary underline underline-offset-2 hover:no-underline"
+                    onClick={() => onNavigateToRequisicoes(detail.requisition!.id)}
+                  >
+                    {detail.requisition.number}
+                  </button>
+                ) : <p>-</p>}
+              </div>
               <div><Label className="text-xs">Prazo esperado</Label><p>{detail.expectedDate || '-'}</p></div>
               <div><Label className="text-xs">Condições de pagamento</Label><p>{detail.paymentTerms || '-'}</p></div>
               <div><Label className="text-xs">Total</Label><p>{formatCurrency(detail.total)}</p></div>
@@ -241,8 +280,16 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
               )}
             </div>
 
+            {(detail.approvedByName || detail.sentAt || detail.confirmedAt) && (
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                {detail.approvedByName && <p>Aprovado por <span className="font-medium text-foreground">{detail.approvedByName}</span>{detail.approvedAt && ` em ${new Date(detail.approvedAt).toLocaleString('pt-BR')}`}</p>}
+                {detail.sentAt && <p>Enviado ao fornecedor em {new Date(detail.sentAt).toLocaleString('pt-BR')}</p>}
+                {detail.confirmedAt && <p>Confirmado pelo fornecedor em {new Date(detail.confirmedAt).toLocaleString('pt-BR')}</p>}
+              </div>
+            )}
+
             {canReceive && (
-              <Button className="w-full" onClick={() => { setReceiveTarget(detail); setReceiveQuantities(Object.fromEntries(detail.items.map((i) => [i.id, Math.max(0, i.quantity - i.quantityReceived)]))); setReceiveOpen(true) }}>
+              <Button className="w-full" onClick={() => { setReceiveTarget(detail); setReceiveQuantities(Object.fromEntries(detail.items.map((i) => [i.id, Math.max(0, i.quantity - i.quantityReceived)]))); setReceiveBatchNumbers({}); setReceiveExpiresAt({}); setReceiveOpen(true) }}>
                 <Package className="w-4 h-4" /> Receber mercadoria
               </Button>
             )}
@@ -264,6 +311,11 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
                 ))}
               </div>
             </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs">Histórico de Status</Label>
+              <StatusTimeline entityType="purchase_order" entityId={detail.id} domain="purchaseOrder" labels={PURCHASE_ORDER_STATUS_LABELS} />
+            </div>
           </div>
         )}
       </DetailDrawer>
@@ -274,6 +326,10 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail }: Compras
         purchaseOrder={receiveTarget}
         quantities={receiveQuantities}
         onQuantityChange={(itemId, value) => setReceiveQuantities((prev) => ({ ...prev, [itemId]: value }))}
+        batchNumbers={receiveBatchNumbers}
+        onBatchNumberChange={(itemId, value) => setReceiveBatchNumbers((prev) => ({ ...prev, [itemId]: value }))}
+        expiresAtValues={receiveExpiresAt}
+        onExpiresAtChange={(itemId, value) => setReceiveExpiresAt((prev) => ({ ...prev, [itemId]: value }))}
         onConfirm={confirmReceive}
         saving={receiveSaving}
       />

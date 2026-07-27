@@ -74,7 +74,14 @@ export interface RequisitionDetailItem extends RequisitionListItem {
 
 export interface RequisitionRecord extends Omit<RequisitionListRow, 'items'> {
   items: RequisitionDetailItem[]
+  /** ADR-022 (Fase UX-2, achado #14) — já existiam gravados no banco, nunca expostos em nenhuma tela. */
+  approvedByName: string | null
+  approvedAt: string | null
 }
 
-export type NewQuoteDraft = { supplierId: string; price: number; leadTimeDays: number }
-export const EMPTY_QUOTE_DRAFT = (): NewQuoteDraft => ({ supplierId: '', price: 0, leadTimeDays: 0 })
+// ADR-022 (Fase UX-4, achado #08) — `supplierLabel` guarda o texto do fornecedor escolhido via
+// combobox de busca; sem isso, o rascunho só teria o id e a tela não conseguiria mostrar o nome
+// depois de fechar o popover de busca (o catálogo completo de fornecedores não fica mais carregado
+// no frontend pra fazer esse lookup).
+export type NewQuoteDraft = { supplierId: string; supplierLabel: string; price: number; leadTimeDays: number }
+export const EMPTY_QUOTE_DRAFT = (): NewQuoteDraft => ({ supplierId: '', supplierLabel: '', price: 0, leadTimeDays: 0 })

@@ -55,4 +55,9 @@ export interface PurchaseOrderRecord extends PurchaseOrderListRow {
   paymentTerms: string
   notes: string
   items: PurchaseOrderItem[]
+  /** ADR-022 (Fase UX-2, achado #14) — já existiam gravados no banco, nunca expostos em nenhuma tela. */
+  approvedByName: string | null
+  approvedAt: string | null
+  sentAt: string | null
+  confirmedAt: string | null
 }

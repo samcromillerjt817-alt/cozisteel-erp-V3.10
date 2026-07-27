@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server'
-import { requireAuth, requireModulePermission, unauthorized, forbidden, notFound, badRequest, ok, handleRouteError, UnauthorizedError, ForbiddenError } from '@/lib/api-utils'
-import { NotFoundException } from '@/app/exceptions'
+import { requireAuth, requireModulePermission, ok, handleRouteError } from '@/lib/api-utils'
 import { quoteService } from '@/app/services/quote.service'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -26,13 +25,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
     const updated = await quoteService.update(id, body, user.id)
     return ok(updated)
   } catch (error) {
-    if (error instanceof UnauthorizedError) return unauthorized()
-    if (error instanceof ForbiddenError) return forbidden(error.message)
-    if (error instanceof NotFoundException) return notFound(error.message)
-    console.error('PUT /api/quotes/[id] error:', error)
-    // Em desenvolvimento/depuração, devolve a mensagem real do erro em vez de um texto genérico
-    const message = error instanceof Error ? error.message : 'Erro ao atualizar orçamento'
-    return badRequest(message)
+    return handleRouteError(error, 'Erro ao atualizar orçamento')
   }
 }
 

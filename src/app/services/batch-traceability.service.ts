@@ -84,7 +84,26 @@ interface RawProductBatch {
  * consulta for repetida com frequência (ex.: uma tela de auditoria abrindo a mesma árvore várias
  * vezes) — hoje cada chamada recalcula do zero, aceitável para uma capacidade ainda sem UI/API.
  */
+export interface BatchSearchResult {
+  materialBatches: Array<{ id: string; batchNumber: string; materialName: string; receivedAt: Date }>
+  productBatches: Array<{ id: string; batchNumber: string; productName: string; producedAt: Date }>
+}
+
 class BatchTraceabilityService {
+  /** ADR-022 (Fase UX-3, achado #06) — busca por número de lote, primeiro passo da tela de
+   * rastreabilidade (o usuário nunca sabe o id interno de um lote). */
+  async search(query: string): Promise<BatchSearchResult> {
+    if (!query.trim()) return { materialBatches: [], productBatches: [] }
+    const [materialBatches, productBatches] = await batchTraceabilityRepository.searchByBatchNumber(query) as [
+      Array<{ id: string; batchNumber: string; receivedAt: Date; material: { name: string } }>,
+      Array<{ id: string; batchNumber: string; producedAt: Date; product: { name: string } }>,
+    ]
+    return {
+      materialBatches: materialBatches.map((b) => ({ id: b.id, batchNumber: b.batchNumber, materialName: b.material.name, receivedAt: b.receivedAt })),
+      productBatches: productBatches.map((b) => ({ id: b.id, batchNumber: b.batchNumber, productName: b.product.name, producedAt: b.producedAt })),
+    }
+  }
+
   /** Proteção adicional além da detecção de ciclo por conjunto visitado — mesmo espírito defensivo
    * de `bomExplosionService`, que também assume que um ciclo genuíno não deveria ser alcançável (a
    * ordem de criação dos lotes torna um ciclo estruturalmente impossível: um `ProductBatch` só pode

@@ -15,8 +15,17 @@ class MaterialReservationRepository extends BaseRepository<typeof db.materialRes
     super(db.materialReservation)
   }
 
+  /** ADR-022 (Fase UX-3, achado #06) — `include` de nome adicionado agora que a 1ª tela de consulta
+   * de reserva existe; antes deste ADR nenhum consumidor chamava este método (achado confirmado por
+   * varredura de todo o `src/`), então não há risco de quebrar um formato já em uso. */
   findManyByOrder(productionOrderId: string) {
-    return this.delegate.findMany({ where: { productionOrderId } })
+    return this.delegate.findMany({
+      where: { productionOrderId },
+      include: {
+        material: { select: { id: true, name: true, unit: true } },
+        product: { select: { id: true, name: true } },
+      },
+    })
   }
 
   /**
