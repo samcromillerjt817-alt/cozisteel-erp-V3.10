@@ -229,6 +229,11 @@ export const createInvoiceSchema = z.object({
   notes: z.string().default(''),
 })
 
+// ADR-023 (Decisão #1, Estorno) — motivo é sempre obrigatório, nunca opcional.
+export const reverseStockMovementSchema = z.object({
+  reason: z.string().min(1, 'Informe o motivo do estorno'),
+})
+
 export const updatePurchaseOrderSchema = z.object({
   expectedDate: z.string().optional(),
   paymentTerms: z.string().optional(),
@@ -314,6 +319,7 @@ export type BomLineDto = z.infer<typeof bomLineSchema>
 export type CreateOperationTypeDto = z.infer<typeof createOperationTypeSchema>
 export type ProductOperationDto = z.infer<typeof productOperationSchema>
 export type CreateInvoiceDto = z.infer<typeof createInvoiceSchema>
+export type ReverseStockMovementDto = z.infer<typeof reverseStockMovementSchema>
 
 export function validateDto<T>(schema: z.ZodType<T>, data: unknown): T {
   const result = schema.safeParse(data)

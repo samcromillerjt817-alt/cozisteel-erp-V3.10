@@ -1,3 +1,4 @@
+import { db } from '@/lib/db'
 import { purchaseOrderRepository } from '@/app/repositories/purchase-order.repository'
 import { userRepository } from '@/app/repositories/user.repository'
 import { numberingService } from '@/app/services/numbering.service'
@@ -229,6 +230,81 @@ class PurchaseOrderService {
     })
 
     return updated
+  }
+
+  /**
+   * ADR-023 (Decisão #1, Estorno) — reverte UM lançamento de recebimento (não o pedido inteiro).
+   * Recusa nesta rodada quando o lote já foi consumido por uma produção — sem estorno em cascata
+   * (decisão explícita do usuário: casos assim exigem uma correção administrativa especializada
+   * futura, não um estorno comum). Ao recusar, a mensagem já nomeia o lote, as OPs que o consumiram
+   * e os produtos gerados, para quem for analisar o caso não precisar investigar do zero.
+   */
+  async reverseReceipt(movementId: string, reason: string, userId: string) {
+    const movement = await db.stockMovement.findUnique({ where: { id: movementId } })
+    if (!movement) throw new NotFoundException('Movimentação de estoque não encontrada')
+    if (movement.itemType !== 'material' || movement.type !== 'IN' || movement.referenceType !== 'purchase_order') {
+      throw new BadRequestException('Esta movimentação não é um recebimento de compra e não pode ser estornada por aqui')
+    }
+    if (movement.reversedAt) throw new BadRequestException('Este recebimento já foi estornado')
+    if (movement.reversalOfId) throw new BadRequestException('Não é possível estornar um estorno')
+
+    const purchaseOrder = (await purchaseOrderRepository.findById(movement.referenceId)) as { id: string; number: string } | null
+    if (!purchaseOrder) throw new NotFoundException('Pedido de compra não encontrado')
+
+    let purchaseOrderItemId: string
+    if (movement.materialBatchId) {
+      const batch = await db.materialBatch.findUnique({ where: { id: movement.materialBatchId } })
+      if (!batch?.purchaseOrderItemId) {
+        throw new BadRequestException('Não é possível identificar automaticamente o item deste recebimento — contate um administrador')
+      }
+      purchaseOrderItemId = batch.purchaseOrderItemId
+
+      // Bloqueio central desta decisão: o saldo disponível do lote caiu abaixo do que este
+      // recebimento contribuiu, ou seja, produção já consumiu parte ou todo o lote.
+      if (batch.quantityAvailable < movement.quantity - 1e-9) {
+        const consumptions = await db.batchConsumption.findMany({
+          where: { materialBatchId: batch.id },
+          include: { productBatch: { include: { productionOrder: { select: { number: true } }, product: { select: { name: true } } } } },
+        })
+        const opNumbers = [...new Set(consumptions.map((c) => c.productBatch.productionOrder.number))]
+        const productNames = [...new Set(consumptions.map((c) => c.productBatch.product.name))]
+        throw new BadRequestException(
+          `Não é possível estornar: o lote ${batch.batchNumber || batch.id} já foi consumido` +
+          (opNumbers.length ? ` na(s) Ordem(ns) de Produção ${opNumbers.join(', ')}` : '') +
+          (productNames.length ? `, gerando ${productNames.join(', ')}` : '') +
+          '. Para reverter esse caso, é necessária uma correção administrativa especializada (Central de Administração), não um estorno comum.'
+        )
+      }
+    } else {
+      const candidates = await db.purchaseOrderItem.findMany({
+        where: { purchaseOrderId: purchaseOrder.id, materialId: movement.materialId },
+      })
+      if (candidates.length !== 1) {
+        throw new BadRequestException('Não é possível identificar automaticamente o item deste recebimento — contate um administrador')
+      }
+      purchaseOrderItemId = candidates[0].id
+    }
+
+    const { updatedPurchaseOrder, reversalMovement } = await purchaseOrderRepository.reverseReceipt(
+      { id: movement.id, materialId: movement.materialId!, quantity: movement.quantity, materialBatchId: movement.materialBatchId },
+      purchaseOrder,
+      purchaseOrderItemId,
+      reason,
+      userId
+    )
+
+    await auditService.log({
+      userId,
+      action: 'PATCH',
+      module: 'compras',
+      entityId: purchaseOrder.id,
+      entityName: purchaseOrder.number,
+      details: `Estorno de recebimento no pedido de compra ${purchaseOrder.number} (${movement.quantity} un.)${reason ? ` — motivo: ${reason}` : ''}`,
+      beforeValue: { movementId: movement.id, quantity: movement.quantity },
+      afterValue: { reversalMovementId: reversalMovement.id },
+    })
+
+    return updatedPurchaseOrder
   }
 
   /**

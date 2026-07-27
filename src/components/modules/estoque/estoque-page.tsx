@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Eye, SlidersHorizontal } from 'lucide-react'
+import { Eye, SlidersHorizontal, Undo2 } from 'lucide-react'
 import { PageHeader } from '@/components/platform/page-header'
 import { FilterBar } from '@/components/platform/filter-bar'
 import { DataTable, type DataTableColumn } from '@/components/platform/data-table'
@@ -52,6 +52,12 @@ export function EstoquePage() {
   const [adjustDialogOpen, setAdjustDialogOpen] = useState(false)
   const [adjustForm, setAdjustForm] = useState<StockAdjustForm>({ itemType: '', itemId: '', itemName: '', currentQty: 0, unit: '', newQuantity: 0, reason: '' })
   const [adjustSaving, setAdjustSaving] = useState(false)
+
+  // ADR-023 (Decisão #1, Estorno) — primeiro caso concreto: reverter um recebimento de compra.
+  const [reverseDialogOpen, setReverseDialogOpen] = useState(false)
+  const [reverseMovement, setReverseMovement] = useState<StockMovementRow | null>(null)
+  const [reverseReason, setReverseReason] = useState('')
+  const [reverseSaving, setReverseSaving] = useState(false)
 
   const loadSummary = useCallback(async () => {
     setSummaryLoading(true)
@@ -136,6 +142,39 @@ export function EstoquePage() {
     setView('movimentacoes')
   }
 
+  function isReversible(mv: StockMovementRow): boolean {
+    return mv.type === 'IN' && mv.referenceType === 'purchase_order' && !mv.reversedAt && !mv.reversalOfId
+  }
+
+  function openReverseDialog(mv: StockMovementRow) {
+    setReverseMovement(mv)
+    setReverseReason('')
+    setReverseDialogOpen(true)
+  }
+
+  async function saveReverse() {
+    if (!reverseMovement) return
+    if (!reverseReason.trim()) { toast.error('Informe o motivo do estorno'); return }
+    setReverseSaving(true)
+    try {
+      const r = await fetch(`/api/stock/movements/${reverseMovement.id}/reverse`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reverseReason }),
+      })
+      if (r.ok) {
+        toast.success('Recebimento estornado!')
+        setReverseDialogOpen(false)
+        loadMovements()
+      } else {
+        const err = await r.json()
+        toast.error(err.error || 'Erro ao estornar recebimento')
+      }
+    } catch {
+      toast.error('Erro ao estornar recebimento')
+    } finally {
+      setReverseSaving(false)
+    }
+  }
+
   const summaryColumns: DataTableColumn<StockSummaryItem>[] = [
     { id: 'itemType', header: 'Tipo', cell: (item) => <Badge variant="outline">{item.itemType === 'material' ? 'Matéria-prima' : 'Produto'}</Badge> },
     { id: 'name', header: 'Item', cell: (item) => <span className="font-medium">{item.name}</span> },
@@ -217,12 +256,42 @@ export function EstoquePage() {
             getRowId={(mv) => mv.id}
             loading={movementsLoading}
             emptyMessage="Nenhuma movimentação encontrada"
+            rowActions={[
+              {
+                label: 'Estornar recebimento', icon: <Undo2 />, variant: 'destructive',
+                onClick: openReverseDialog, disabled: (mv) => !isReversible(mv),
+              },
+            ]}
             pagination={{ page: movementPage, pageSize: MOVEMENT_PAGE_SIZE, total: movementTotal, onPageChange: setMovementPage }}
           />
         </>
       )}
 
       {view === 'rastreabilidade' && <BatchTraceabilityTab />}
+
+      <FormDialog
+        open={reverseDialogOpen}
+        onOpenChange={setReverseDialogOpen}
+        title="Estornar Recebimento"
+        onSave={saveReverse}
+        saving={reverseSaving}
+        saveLabel="Confirmar Estorno"
+      >
+        <div className="space-y-4">
+          <div className="flex justify-between text-sm bg-muted/50 rounded p-3">
+            <span>{reverseMovement?.material?.name || reverseMovement?.product?.name}</span>
+            <span className="font-mono font-semibold">{reverseMovement?.quantity}</span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Isso reverte a entrada de estoque deste recebimento. Só é possível enquanto o lote (quando
+            houver) ainda não tiver sido consumido por nenhuma produção.
+          </p>
+          <div className="space-y-1.5">
+            <Label>Motivo do estorno</Label>
+            <Textarea rows={3} value={reverseReason} onChange={(e) => setReverseReason(e.target.value)} placeholder="Ex.: recebimento lançado por engano" />
+          </div>
+        </div>
+      </FormDialog>
 
       <FormDialog
         open={adjustDialogOpen}

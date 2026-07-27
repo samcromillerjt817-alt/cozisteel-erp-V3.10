@@ -902,11 +902,20 @@ model StockMovement {
   materialBatchId String? // lote diretamente originado/afetado por este movimento (Fase 10, ADR-013) — nullable, só preenchido quando o material é lotControlled
   materialBatch   MaterialBatch? @relation(fields: [materialBatchId], references: [id])
 
+  // ADR-023, Decisão #1 (Estorno) — `reversedAt` marca que ESTE movimento já foi estornado (impede
+  // estornar de novo); `reversalOfId` marca que ESTE movimento É o estorno de outro (impede estornar
+  // um estorno). Os dois lados da mesma auto-relação, nunca confundidos.
+  reversedAt   DateTime?
+  reversalOfId String?
+  reversalOf   StockMovement?  @relation("MovementReversal", fields: [reversalOfId], references: [id])
+  reversals    StockMovement[] @relation("MovementReversal")
+
   @@index([materialId])
   @@index([productId])
   @@index([itemType])
   @@index([createdAt])
   @@index([materialBatchId])
+  @@index([reversalOfId])
   @@index([type]) // Fase 11, ADR-017 — volume de movimentação por tipo (IN/OUT/ADJUST/RESERVE/RELEASE)
 }
 

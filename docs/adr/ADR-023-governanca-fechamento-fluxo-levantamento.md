@@ -418,6 +418,42 @@ já registrado, e fatura cancelada libera o saldo do item para refaturar.
 aplicação — o novo componente `invoicing-section.tsx`), 354/354 testes (3 novos), build limpo (as 2
 rotas novas confirmadas no manifesto).
 
+## PARTE 8 — Item 2 da sequência implementado: Estorno seguro (2026-07-27)
+
+Primeiro caso concreto, escolhido por ser o mais simples entre os 4 mapeados na Parte 2 (recebimento
+de compra) — produção fica para uma rodada futura, dado o risco maior já documentado ali.
+
+Schema (aditivo, `db push` autorizado separadamente): `StockMovement` ganha `reversedAt` (marca que
+ESTE lançamento já foi estornado) e `reversalOfId`/`reversals` (auto-relação — marca que ESTE
+lançamento É o estorno de outro). Os dois lados nunca se confundem: um lançamento não pode ser
+estornado duas vezes, e um estorno não pode ser estornado.
+
+`purchaseOrderService.reverseReceipt(movementId, reason, userId)` reverte UM lançamento específico
+(não o pedido inteiro — motivo: "selecionar o lançamento incorreto", nas palavras originais do
+usuário), dentro de uma única transação: decrementa `stockQty`, o `MaterialBatch` (quando
+lotControlled) e `PurchaseOrderItem.quantityReceived`, recalcula o status do pedido pra baixo, marca o
+movimento original como estornado e cria um novo movimento `OUT` ligado a ele — o lançamento original
+nunca é editado ou apagado, continua existindo como registro histórico imutável.
+
+**Bloqueio central da Decisão #1, implementado e testado**: se `MaterialBatch.quantityAvailable` já
+caiu abaixo do que este recebimento contribuiu, produção já consumiu o lote — o estorno é recusado
+com uma mensagem que nomeia o número do lote, a(s) Ordem(ns) de Produção que o consumiram e os
+produtos gerados, apontando para uma futura correção administrativa especializada (Central de
+Administração) em vez de um estorno comum. Sem cascata nesta rodada, exatamente como decidido.
+
+1 rota nova: `POST /api/stock/movements/[id]/reverse` (`estoque:update`, mesma permissão de quem já
+ajusta saldo em `/api/stock/adjust` — motivo obrigatório via schema Zod). UI: ação "Estornar
+recebimento" na aba Movimentações do Estoque, habilitada só para lançamentos de entrada de compra
+ainda não estornados e que não sejam eles mesmos um estorno — abre um diálogo pedindo o motivo
+(campo obrigatório, mesma disciplina de `Ajustar Estoque`).
+
+5 testes novos cobrindo exatamente os casos da decisão: reversão simples, reversão com lote
+(MaterialBatch decrementado), bloqueio quando já consumido por produção (nomeando a OP no erro),
+bloqueio ao tentar estornar de novo, bloqueio ao tentar estornar um estorno.
+
+**Verificação**: tsc limpo, lint 47 (net zero — nenhum hook novo, a UI reaproveita o `loadMovements()`
+já existente), 359/359 testes (5 novos), build limpo (rota nova confirmada no manifesto).
+
 ## Conclusão
 
 Esta rodada mudou uma suposição importante: vários itens que pareciam "faltando" no pedido original já
@@ -425,6 +461,7 @@ têm boa parte da engenharia pronta e só nunca foram conectados — Faturamento
 (existe, testado, zero rota), seguido por MRP (motor sofisticado, zero UI) e BOM formal (quase
 completo). É exatamente por isso que a sequência de implementação real (Parte 6) prioriza esses três
 primeiro, à frente inclusive de itens que apareciam mais cedo na proposta original. As 6 decisões
-pendentes foram todas resolvidas (Parte 5), e o item 1 da sequência (Faturamento) já está implementado
-e testado (Parte 7). Próximo passo: item 2 da Parte 6 — estorno seguro com bloqueio de dependência a
-jusante.
+pendentes foram todas resolvidas (Parte 5), e os itens 1 (Faturamento, Parte 7) e 2 (Estorno de
+recebimento de compra, Parte 8) da sequência já estão implementados e testados. O estorno de produção
+(o caso mais arriscado, mapeado na Parte 2) fica para uma rodada futura dentro do mesmo item 2, dado o
+risco já documentado ali. Próximo passo: item 3 da Parte 6 — completar a exposição do MRP.
