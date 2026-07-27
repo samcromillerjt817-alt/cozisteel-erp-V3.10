@@ -119,7 +119,7 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
         setTotal(json.total || 0)
       }
     } catch {
-      toast.error('Erro ao carregar orçamentos')
+      toast.error('Erro ao carregar orçamentos. Recarregue a página — se persistir, contate o suporte.')
     } finally {
       setLoading(false)
     }
@@ -186,7 +186,7 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
       })
       setDialogOpen(true)
     } catch {
-      toast.error('Erro ao carregar orçamento')
+      toast.error('Erro ao carregar orçamento. Recarregue a página — se persistir, contate o suporte.')
     }
   }
 
@@ -207,7 +207,7 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
         toast.error(err.error || 'Erro ao salvar')
       }
     } catch {
-      toast.error('Erro ao salvar orçamento')
+      toast.error('Erro ao salvar orçamento. Verifique sua conexão e tente novamente — se persistir, contate o suporte.')
     } finally {
       setSaving(false)
     }
@@ -219,7 +219,7 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
       if (r.ok) { toast.success('Orçamento duplicado!'); load() }
       else toast.error('Erro ao duplicar')
     } catch {
-      toast.error('Erro ao duplicar')
+      toast.error('Erro ao duplicar orçamento. Tente novamente — se persistir, contate o suporte.')
     }
   }
 
@@ -255,7 +255,7 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
         load()
         onDataChanged()
       } catch {
-        toast.error('Erro ao alterar status')
+        toast.error('Erro ao alterar status. Tente novamente — se persistir, contate o suporte.')
       }
     })
   }
@@ -281,7 +281,7 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
           toast.error(json.error || 'Erro ao converter orçamento')
         }
       } catch {
-        toast.error('Erro ao converter orçamento')
+        toast.error('Erro ao converter orçamento. Tente novamente — se persistir, contate o suporte.')
       }
     })
   }
@@ -293,10 +293,10 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
       if (r.ok) { toast.success('Orçamento excluído!'); load() }
       else {
         const err = await r.json()
-        toast.error(err.error || 'Erro ao excluir')
+        toast.error(err.error || 'Erro ao excluir orçamento. Tente novamente — se persistir, contate o suporte.')
       }
     } catch {
-      toast.error('Erro ao excluir')
+      toast.error('Erro ao excluir orçamento. Tente novamente — se persistir, contate o suporte.')
     }
   }
 

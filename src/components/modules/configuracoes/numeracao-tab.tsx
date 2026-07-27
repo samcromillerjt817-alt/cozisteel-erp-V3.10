@@ -35,7 +35,7 @@ export function NumeracaoTab() {
         setOriginalNextNumber(Object.fromEntries(data.map((s) => [s.id, s.nextNumber])))
       }
     } catch {
-      toast.error('Erro ao carregar sequências')
+      toast.error('Erro ao carregar sequências. Recarregue a página — se persistir, contate o suporte.')
     } finally {
       setLoading(false)
     }
@@ -61,7 +61,7 @@ export function NumeracaoTab() {
         toast.success('Sequência atualizada!')
         setOriginalNextNumber((prev) => ({ ...prev, [seq.id]: seq.nextNumber }))
       } else {
-        toast.error('Erro ao salvar')
+        toast.error('Erro ao salvar sequência. Verifique os valores e tente novamente — se persistir, contate o suporte.')
       }
     } catch {
       toast.error('Erro ao salvar')

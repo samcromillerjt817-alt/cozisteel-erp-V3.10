@@ -82,7 +82,7 @@ export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initial
         setTotal(json.total || 0)
       }
     } catch {
-      toast.error('Erro ao carregar ordens de produção')
+      toast.error('Erro ao carregar ordens de produção. Recarregue a página — se persistir, contate o suporte.')
     } finally {
       setLoading(false)
     }
@@ -150,7 +150,7 @@ export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initial
         toast.error(err.error || 'Erro ao salvar ordem')
       }
     } catch {
-      toast.error('Erro ao salvar ordem')
+      toast.error('Erro ao salvar ordem de produção. Verifique sua conexão e tente novamente — se persistir, contate o suporte.')
     } finally {
       setSaving(false)
     }
@@ -168,7 +168,7 @@ export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initial
         toast.error(err.error || 'Erro ao excluir')
       }
     } catch {
-      toast.error('Erro ao excluir')
+      toast.error('Erro ao excluir ordem de produção. Tente novamente — se persistir, contate o suporte.')
     }
   }
 
@@ -176,7 +176,7 @@ export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initial
     try {
       const r = await fetch(`/api/production-orders/${id}`)
       if (!r.ok) {
-        toast.error('Erro ao carregar ordem de produção')
+        toast.error('Erro ao carregar ordem de produção. Recarregue a página — se persistir, contate o suporte.')
         return null
       }
       return await r.json()
@@ -216,7 +216,7 @@ export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initial
         toast.error(err.error || 'Erro ao mudar status')
       }
     } catch {
-      toast.error('Erro ao mudar status')
+      toast.error('Erro ao mudar status da OP. Tente novamente — se persistir, contate o suporte.')
     } finally {
       setStatusChanging(false)
     }
@@ -249,7 +249,7 @@ export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initial
         toast.error(err.error || 'Erro ao registrar produção')
       }
     } catch {
-      toast.error('Erro ao registrar produção')
+      toast.error('Erro ao registrar produção. Verifique se o servidor reiniciou e recarregue a página — se persistir, contate o suporte.')
     } finally {
       setProducing(false)
     }

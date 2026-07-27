@@ -1,8 +1,8 @@
 # ADR-022 — Evolução da Experiência Operacional do ERP: Levantamento
 
-**Status**: levantamento aprovado 2026-07-25. Fases UX-1, UX-2, UX-3 e UX-4 implementadas — ver
-Partes 6-9. Fases UX-5 a UX-7 ainda não iniciadas.
-**Data**: 2026-07-25 (Fases UX-1/UX-2), 2026-07-26 (Fases UX-3/UX-4)
+**Status**: levantamento aprovado 2026-07-25. Fases UX-1 a UX-5 implementadas — ver Partes 6-10.
+Fases UX-6 e UX-7 ainda não iniciadas.
+**Data**: 2026-07-25 (Fases UX-1/UX-2), 2026-07-26 (Fases UX-3/UX-4/UX-5)
 **Escopo**: revisão completa da dinâmica de trabalho de quem opera o ERP no dia a dia — não é um
 redesenho visual isolado, é uma auditoria de rotinas operacionais, tratamento de erros, recursos
 autoexplicativos, consistência visual e performance/produtividade, em todos os módulos.
@@ -518,6 +518,32 @@ fetch-em-efeito; a maior parte vem da correção real de bug acima, que adiciona
 testes (nenhum teste novo — mudança é só de UI/composição de componentes já testados
 individualmente, sem lógica de negócio nova), build limpo. Testado manualmente via PM2 reiniciado
 com o build novo.
+
+## PARTE 10 — Fase UX-5 implementada (2026-07-26)
+
+1. **Remoção do toast shadcn morto** — `src/components/ui/toast.tsx`, `toaster.tsx` e
+   `src/hooks/use-toast.ts` excluídos. Confirmado antes de apagar: nenhum import em todo `src/`
+   (`layout.tsx` só monta o `Toaster` do Sonner, que é o sistema real). Achado novo desta rodada
+   (nunca identificado em nenhuma auditoria anterior).
+2. **Rota que vazava mensagem técnica crua** — `PUT /api/quotes/[id]` tinha um catch próprio que caía
+   em `error.message` bruto pra qualquer erro não mapeado explicitamente (incluindo erros do Prisma/
+   JS nativo), diferente de toda outra rota do sistema, que usa `handleRouteError()`. Substituído pelo
+   mesmo padrão do `GET`/`DELETE` do mesmo arquivo — `BadRequestException` (que antes só "funcionava
+   por coincidência" nesse catch) agora passa pelo tratamento correto de `AppError`.
+3. **Mensagens de erro genéricas com causa provável + próxima ação** — antes, o `catch` de erro de
+   rede/inesperado (quando não existe exceção de negócio específica do backend) sempre mostrava só
+   "Erro ao X", sem nenhuma sugestão. 32 ocorrências corrigidas em 6 arquivos (Orçamentos, Produção,
+   Compras, Requisições, Usuários, Numeração de Documentos — os módulos com as transições mais
+   sensíveis, já tratadas na Fase UX-1), cada mensagem agora nomeia a causa provável (rede/instabilidade
+   temporária) e a próxima ação (recarregar/tentar de novo/verificar dados), terminando em "se
+   persistir, contate o suporte". **Deliberadamente não coberto nesta rodada** (permanece com a
+   mensagem genérica antiga): os demais ~17 módulos com o mesmo padrão (Clientes, Produtos, Materiais,
+   Fornecedores, Estoque, Financeiro, Relatórios, Configurações — exceto Numeração) — escopo reduzido
+   de propósito para manter o lote revisável; acompanhamento natural de uma rodada futura se o padrão
+   se mostrar valioso.
+
+**Verificação**: tsc limpo, lint 45 (net zero — mudança é só de texto de string e remoção de arquivo
+morto, nenhum hook novo), 345/345 testes, build limpo.
 
 ## Conclusão
 

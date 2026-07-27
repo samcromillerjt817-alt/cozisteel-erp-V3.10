@@ -58,7 +58,7 @@ export function UsuariosPage() {
         setTotal(json.total || 0)
       }
     } catch {
-      toast.error('Erro ao carregar usuários')
+      toast.error('Erro ao carregar usuários. Recarregue a página — se persistir, contate o suporte.')
     } finally {
       setLoading(false)
     }
@@ -106,7 +106,7 @@ export function UsuariosPage() {
         toast.error(err.error || 'Erro ao salvar')
       }
     } catch {
-      toast.error('Erro ao salvar usuário')
+      toast.error('Erro ao salvar usuário. Verifique os dados e tente novamente — se persistir, contate o suporte.')
     } finally {
       setSaving(false)
     }
@@ -124,7 +124,7 @@ export function UsuariosPage() {
         toast.error(err.error || 'Erro ao excluir')
       }
     } catch {
-      toast.error('Erro ao excluir')
+      toast.error('Erro ao excluir usuário. Tente novamente — se persistir, contate o suporte.')
     }
   }
 

@@ -87,7 +87,7 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
         setTotal(json.total || 0)
       }
     } catch {
-      toast.error('Erro ao carregar requisições')
+      toast.error('Erro ao carregar requisições. Recarregue a página — se persistir, contate o suporte.')
     } finally {
       setLoading(false)
     }
@@ -152,7 +152,7 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
       })
       toast.success('Sugestão calculada a partir da OP!')
     } catch {
-      toast.error('Erro ao calcular sugestão')
+      toast.error('Erro ao calcular sugestão a partir da OP. Tente novamente — se persistir, contate o suporte.')
     }
   }
 
@@ -182,7 +182,7 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
         toast.error(err.error || 'Erro ao criar requisição')
       }
     } catch {
-      toast.error('Erro ao criar requisição')
+      toast.error('Erro ao criar requisição. Verifique sua conexão e tente novamente — se persistir, contate o suporte.')
     } finally {
       setSaving(false)
     }
@@ -200,7 +200,7 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
         toast.error(err.error || 'Erro ao excluir')
       }
     } catch {
-      toast.error('Erro ao excluir')
+      toast.error('Erro ao excluir requisição. Tente novamente — se persistir, contate o suporte.')
     }
   }
 
@@ -208,7 +208,7 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
     try {
       const r = await fetch(`/api/requisitions/${id}`)
       if (!r.ok) {
-        toast.error('Erro ao carregar requisição')
+        toast.error('Erro ao carregar requisição. Recarregue a página — se persistir, contate o suporte.')
         return null
       }
       return await r.json()
@@ -272,7 +272,7 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
         toast.error(err.error || 'Erro ao mudar status')
       }
     } catch {
-      toast.error('Erro ao mudar status')
+      toast.error('Erro ao mudar status da requisição. Tente novamente — se persistir, contate o suporte.')
     } finally {
       setStatusChanging(false)
     }
@@ -298,7 +298,7 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
         toast.error(err.error || 'Erro ao registrar cotação')
       }
     } catch {
-      toast.error('Erro ao registrar cotação')
+      toast.error('Erro ao registrar cotação. Verifique o preço/fornecedor e tente novamente — se persistir, contate o suporte.')
     }
   }
 
@@ -314,7 +314,7 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
         toast.error(err.error || 'Erro ao selecionar cotação')
       }
     } catch {
-      toast.error('Erro ao selecionar cotação')
+      toast.error('Erro ao selecionar cotação vencedora. Tente novamente — se persistir, contate o suporte.')
     }
   }
 

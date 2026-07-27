@@ -73,7 +73,7 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail, onNavigat
         setTotal(json.total || 0)
       }
     } catch {
-      toast.error('Erro ao carregar pedidos de compra')
+      toast.error('Erro ao carregar pedidos de compra. Recarregue a página — se persistir, contate o suporte.')
     } finally {
       setLoading(false)
     }
@@ -103,7 +103,7 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail, onNavigat
     try {
       const r = await fetch(`/api/purchase-orders/${id}`)
       if (!r.ok) {
-        toast.error('Erro ao carregar pedido de compra')
+        toast.error('Erro ao carregar pedido de compra. Recarregue a página — se persistir, contate o suporte.')
         return null
       }
       return await r.json()
@@ -140,7 +140,7 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail, onNavigat
         toast.error(err.error || 'Erro ao mudar status')
       }
     } catch {
-      toast.error('Erro ao mudar status')
+      toast.error('Erro ao mudar status do pedido. Tente novamente — se persistir, contate o suporte.')
     } finally {
       setStatusChanging(false)
     }
@@ -189,7 +189,7 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail, onNavigat
         toast.error(err.error || 'Erro ao registrar recebimento')
       }
     } catch {
-      toast.error('Erro ao registrar recebimento')
+      toast.error('Erro ao registrar recebimento. Verifique se as quantidades foram gravadas antes de tentar de novo — se persistir, contate o suporte.')
     } finally {
       setReceiveSaving(false)
     }
