@@ -234,54 +234,157 @@ própria.
 | 15 | Notificações externas | Nada | Tudo (transporte de e-mail, templates, gatilhos) | G |
 | 10 | BOM formal | Quase tudo (revisão congelada, operações com tempo) | Status "em aprovação", motivo, diff, substitutos | P/M |
 
-## PARTE 4 — Roadmap em 4 fases (sua ordem, sem mudança)
+## PARTE 4 — Roadmap em 4 fases (proposta original do usuário, mantida como referência de agrupamento temático — ver Parte 6 para a ordem real de implementação)
 
 ### Fase 1 — Segurança operacional
-Backup automático antes de correção (item mais barato de todo o levantamento) → bloqueio de
-autoaprovação (também barato) → estorno (o mais arriscado da fase, começar pelo caso mais simples —
-recebimento de compra — antes de produção) → mensagens de erro orientativas nos pontos mais sensíveis
-(reaproveitando o mesmo conjunto de 6 módulos já tratado nas Fases UX-1/UX-5) → alçada por valor como
-última subetapa da fase, já que exige schema novo.
+Backup automático antes de correção, bloqueio de autoaprovação, estorno, mensagens de erro
+orientativas, alçada por valor.
 
 ### Fase 2 — Fechar o fluxo ponta a ponta
-Faturamento (reaproveita infraestrutura já pronta, é o item de maior alavancagem da fase) → status
-automáticos (os 3 wirings que faltam) → Expedição (a mais estrutural, depende de decidir o novo status
-de Pedido de Venda) → revisão formal de Orçamento → fechamento mensal.
+Faturamento, status automáticos, Expedição, revisão formal de Orçamento, fechamento mensal.
 
 ### Fase 3 — Inteligência operacional
-"Meu trabalho hoje" (reaproveita `getAllAlerts()`) → linha do tempo cruzada → MRP automático (completar
-as 3 lacunas de cálculo do motor já existente + expor) → notificações externas (a mais isolada, pode
-andar em paralelo).
+"Meu trabalho hoje", linha do tempo cruzada, MRP automático, notificações externas.
 
 ### Fase 4 — Engenharia industrial
-BOM formal (menor esforço da fase, já que a base já existe) → roteiros/capacidade de máquina →
-apontamento de mão de obra real → custeio real vs. previsto (comparação nova sobre o que
-`CostingService` já calcula).
+BOM formal, roteiros/capacidade de máquina, apontamento de mão de obra real, custeio real vs.
+previsto.
 
-## PARTE 5 — Decisões pendentes (precisam da sua resposta antes de cada fase começar a codar)
+## PARTE 5 — Decisões (RESOLVIDAS pelo usuário em 2026-07-27)
 
-1. **Estorno**: quando um lote/produção já foi consumido a jusante, o sistema deve **recusar** o
-   estorno (erro claro) ou permitir um **estorno parcial/em cascata** (reverter também o que consumiu)?
-   Recusar é mais simples e mais seguro; cascata é mais poderoso e mais arriscado.
-2. **Faturamento**: total ou parcial por padrão? E a NF-e/integração fiscal — fica fora de escopo desta
-   rodada (só o registro interno da fatura) ou você já quer desenhar o ponto de integração agora?
-3. **Expedição**: qual o novo status intermediário exato do Pedido de Venda — "Pronto para expedição"
-   como você sugeriu, ou aproveitar para desenhar o modelo de status mais completo de uma vez (aberto →
-   em produção → pronto para expedição → expedido parcial → expedido total → concluído)?
-4. **Alçada por valor**: a tabela de exemplo que você deu (Comprador até 5k, Gerente até 20k, Diretoria
-   acima) é a regra real da empresa hoje, ou é ilustrativa? Preciso dos valores/papéis reais antes de
-   desenhar `ApprovalRule`.
-5. **Fechamento mensal**: pode haver lançamento com `dueDate` de um mês mas pago em outro — o período
-   de competência é definido pela data de vencimento, pela data do pagamento/recebimento, ou por um
-   campo novo que o usuário escolhe manualmente ao lançar?
-6. **Notificações externas**: e-mail via SMTP da própria empresa (precisa das credenciais) ou um
-   serviço terceirizado (SendGrid/SES/etc, mais simples de operar mas com custo recorrente)?
+### 1. Estorno de produção com consumo a jusante
+
+- **Decisão tomada**: recusar o estorno nesta fase quando o lote/produção já foi consumido a jusante.
+  Não haverá estorno em cascata.
+- **Justificativa**: o impacto de uma cascata atravessa várias OPs, lotes, custos e produtos acabados
+  ao mesmo tempo — risco desproporcional ao ganho, numa primeira versão do mecanismo.
+- **Consequência**: ao bloquear, o sistema deve informar explicitamente (1) qual lote foi consumido,
+  (2) em quais OPs ele foi utilizado, (3) quais produtos foram gerados a partir dele, e (4) qual
+  administrador pode analisar o caso — o bloqueio não pode ser um beco sem saída silencioso.
+- **Fora de escopo agora**: reversão automática em cascata através de múltiplos níveis de consumo.
+- **Evolução futura**: para os casos excepcionais que precisarem mesmo assim de reversão, criar uma
+  **correção administrativa especializada** (Central de Administração — prévia, backup automático e
+  auditoria, mesmo padrão já usado pelas receitas de `AdminRecipesService`) — nunca um "estorno comum".
+
+### 2. Faturamento
+
+- **Decisão tomada**: faturamento **total por padrão**, parcial permitido. A tela abre com todo o saldo
+  faturável do Pedido pré-selecionado, mas as quantidades podem ser alteradas antes de confirmar. NF-e/
+  integração fiscal fica fora do escopo — "Fatura" é, por enquanto, só o documento financeiro interno.
+- **Justificativa**: cobre o caso comum (faturar tudo) sem exigir cliques extras, mas não impede o caso
+  real de faturamento parcial que a Invoice já foi desenhada para suportar (`SalesOrder.invoices
+  Invoice[]`, comentário original já previa "N faturas, faturamento parcial").
+- **Consequência / regras mínimas obrigatórias**:
+  - Nunca faturar quantidade acima do saldo restante do item.
+  - Permitir várias faturas por Pedido de Venda (já é o desenho do schema).
+  - A tela sempre mostra quantidade pedida, já faturada e restante, por item.
+  - Impedir duplicidade por duplo clique ou reenvio de requisição (idempotência na criação).
+  - A Conta a Receber continua sendo criada pelo handler de domínio já existente
+    (`FATURA_EMITIDA` → `createReceivableFromInvoice`) — nenhuma mudança nessa ponta.
+  - Exibir o vínculo Pedido → Fatura → Conta a Receber em todas as telas relevantes.
+  - Cancelamento de fatura só é permitido enquanto não houver nenhum recebimento financeiro
+    registrado contra ela; depois disso, cancelar exige passar pelo estorno financeiro (não pelo
+    cancelamento simples).
+- **Fora de escopo agora**: emissão de NF-e, qualquer integração fiscal.
+- **Evolução futura**: anexar NF-e / integrar com emissor fiscal quando essa necessidade for real.
+
+### 3. Expedição
+
+- **Decisão tomada**: desenhar o modelo completo agora, mas **como duas máquinas de estado
+  separadas** — o Pedido de Venda não ganha todos os status de expedição diretamente.
+  - `SalesOrder.status`: `Aberto → Em produção → Pronto para expedição → Atendimento parcial →
+    Concluído` (+ `Cancelado`).
+  - Nova entidade **Expedição** (1:N com o Pedido — várias expedições por pedido): `Rascunho → Em
+    separação → Pronta → Expedida → Entregue` (+ `Cancelada`).
+- **Justificativa**: produção e expedição são processos diferentes, com ritmos e responsáveis
+  diferentes — misturar os dois num único enum forçaria estados artificiais (ex.: "expedido parcial")
+  no lugar errado.
+- **Consequência**: quem determina se o Pedido está parcial ou totalmente atendido são as
+  **quantidades** somadas de todas as Expedições ligadas a ele, nunca um status escolhido manualmente
+  — isso permite várias expedições parciais para o mesmo pedido sem inventar um estado novo a cada
+  combinação. O schema (`Shipment`/`Expedicao` + itens com quantidade expedida, transportadora,
+  veículo, motorista, datas prevista/efetiva, comprovante) já nasce completo mesmo que a primeira
+  entrega implemente só até "Pronto para expedição".
+- **Fora de escopo agora**: nenhum item da lista original foi cortado — só a ORDEM de entrega (ver
+  Parte 6) empurra Expedição pro fim da sequência, por ser domínio genuinamente novo.
+- **Evolução futura**: nenhuma — o modelo já nasce no formato final pretendido.
+
+### 4. Alçada por valor
+
+- **Decisão tomada**: os valores R$5k/R$20k eram **ilustrativos**, não a regra real da empresa — não
+  devem virar valor hardcoded em lugar nenhum.
+- **Justificativa**: inventar uma regra de negócio real sem os números verdadeiros seria pior do que
+  não ter a funcionalidade.
+- **Consequência**: construir um motor de alçada genuinamente configurável — tipo de documento, valor
+  mínimo/máximo, perfil ou usuário aprovador, quantidade de aprovações necessárias, permitir ou não
+  autoaprovação, vigência da regra, ordem das etapas. Enquanto os valores reais não forem definidos,
+  ativar uma **política inicial simples que preserva o comportamento atual** (qualquer aprovador com
+  permissão de módulo aprova, sem faixa de valor) — mas já passando pelo motor novo, não por um atalho
+  paralelo. Isso valida o schema e a arquitetura sem inventar regra de negócio.
+- **Fora de escopo agora**: qualquer valor de corte real — depende de dado que só a empresa tem.
+- **Evolução futura**: quando os valores reais chegarem, é só cadastrar `ApprovalRule`s novas — nenhuma
+  mudança de código deveria ser necessária nesse momento, se o motor for desenhado certo agora.
+
+### 5. Fechamento mensal — competência
+
+- **Decisão tomada**: criar um campo próprio de competência (`competenceDate`/`competencePeriod`) —
+  não reaproveitar vencimento nem pagamento para isso.
+- **Justificativa**: os três conceitos são diferentes e não podem ser confundidos — vencimento é
+  obrigação prevista, pagamento é caixa realizado, competência é o período econômico/contábil do
+  lançamento em si.
+- **Consequência**: preenchimento automático pela origem do documento (Conta a Receber usa a data da
+  fatura; Conta a Pagar usa a data do recebimento/documento do fornecedor); alteração manual só com
+  permissão especial e justificativa obrigatória; o fechamento passa a bloquear inclusões, alterações,
+  cancelamentos e baixas retroativas dentro daquela competência. O Fluxo de Caixa (já existente,
+  `getProjectedCashFlow`) **continua usando vencimento/pagamento normalmente** — competência é um
+  conceito contábil à parte, não substitui a visão de caixa.
+- **Fora de escopo agora**: conciliação bancária (mencionada na proposta original como "futura").
+- **Evolução futura**: conciliação bancária, quando isso virar prioridade.
+
+### 6. Notificações externas
+
+- **Decisão tomada**: SMTP da própria empresa como primeira implementação, mas por trás de uma
+  interface desacoplada (`NotificationProvider` ou equivalente) desde o primeiro dia.
+- **Justificativa**: trocar depois por SES/SendGrid/outro provedor não deve exigir alterar nenhuma
+  regra de módulo — só trocar a implementação por trás da interface.
+- **Consequência / desde o início**: fila/outbox de notificações, tentativas com reprocessamento,
+  status (`enviado`/`falhou`/`pendente`) por envio, histórico registrado no próprio documento de
+  origem, templates configuráveis por tipo de notificação. **Regra permanente**: uma falha de envio de
+  e-mail nunca desfaz nem bloqueia a operação de negócio do ERP que a originou — o envio é sempre um
+  efeito colateral registrado, nunca uma dependência crítica do fluxo principal.
+- **Fora de escopo agora**: WhatsApp e qualquer canal além de e-mail, nesta primeira leva.
+- **Evolução futura**: novos canais entram como novos `NotificationProvider`s, sem tocar na fila/outbox
+  nem nas regras de disparo já existentes.
+
+## PARTE 6 — Sequência de implementação (definida pelo usuário em 2026-07-27, após o levantamento)
+
+Esta ordem **substitui** a leitura literal das 4 fases da Parte 4 — o agrupamento temático continua
+válido como referência, mas a sequência real de entrega é esta, definida depois de ver o que já existe
+pronto no código:
+
+1. **Conectar o Faturamento já existente** — maior retorno pelo menor esforço de todo o levantamento
+   (`Invoice`/`InvoiceService`/handler já prontos e testados; só falta `InvoiceItem` + status +
+   primeira rota/tela).
+2. **Estorno seguro com bloqueio de dependência a jusante** — a peça de segurança operacional mais
+   importante, decisão #1 acima já fecha o comportamento esperado.
+3. **Completar a exposição do MRP** — motor já pronto, só faltam as 3 lacunas de cálculo + rota/UI.
+4. **Completar a BOM formal** — também já majoritariamente pronta.
+5. **Criar o novo motor configurável de alçadas** — com a política inicial neutra da decisão #4 acima.
+6. **Só então iniciar Expedição e Fechamento Mensal** — os dois domínios genuinamente novos, sem
+   nenhuma engenharia prévia para reaproveitar, ficam por último de propósito.
+
+Os itens restantes do levantamento original (mensagens de erro orientativas, "Meu trabalho hoje",
+linha do tempo cruzada, revisão formal de Orçamento, notificações externas, roteiros/capacidade de
+máquina, apontamento de mão de obra, custeio real vs. previsto) continuam no roadmap, sem uma posição
+fixa ainda atribuída na sequência acima — a definir quando os 6 itens priorizados estiverem
+encaminhados.
 
 ## Conclusão
 
-Esta rodada mudou uma suposição importante: vários itens que pareciam "faltando" no seu pedido original
-já têm boa parte da engenharia pronta e só nunca foram conectados — Faturamento é o caso mais gritante
+Esta rodada mudou uma suposição importante: vários itens que pareciam "faltando" no pedido original já
+têm boa parte da engenharia pronta e só nunca foram conectados — Faturamento é o caso mais gritante
 (existe, testado, zero rota), seguido por MRP (motor sofisticado, zero UI) e BOM formal (quase
-completo). Isso muda a ordem de esforço real dentro de cada fase: dentro da Fase 2, por exemplo,
-Faturamento é bem mais barato que Expedição, mesmo os dois aparecendo juntos na sua proposta. Nenhuma
-implementação foi feita. Aguardando sua aprovação para começar pela Fase 1.
+completo). É exatamente por isso que a sequência de implementação real (Parte 6) prioriza esses três
+primeiro, à frente inclusive de itens que apareciam mais cedo na proposta original. As 6 decisões
+pendentes foram todas resolvidas (Parte 5) — nenhuma implementação foi feita ainda. Próximo passo:
+começar pelo item 1 da Parte 6 (conectar o Faturamento), mediante aprovação explícita para iniciar.
