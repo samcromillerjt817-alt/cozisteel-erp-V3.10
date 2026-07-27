@@ -37,6 +37,7 @@ export type StatusDomain =
   | 'userStatus'
   | 'bom'
   | 'financeiro'
+  | 'invoice'
 
 export const domainStatusCategory: Record<StatusDomain, Record<string, StatusCategory>> = {
   quote: {
@@ -79,6 +80,10 @@ export const domainStatusCategory: Record<StatusDomain, Record<string, StatusCat
   // (os dois modelos usam exatamente o mesmo vocabulário, `financial-account.service.ts`).
   financeiro: {
     open: 'pending', partially_paid: 'warning', paid: 'success', cancelled: 'cancelled',
+  },
+  // ADR-023 (Decisão #2, Faturamento) — só 2 estados: fatura nasce sempre emitida, sem rascunho.
+  invoice: {
+    issued: 'success', cancelled: 'cancelled',
   },
 }
 

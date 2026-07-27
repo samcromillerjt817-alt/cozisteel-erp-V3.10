@@ -9,6 +9,7 @@ import { DataTable, type DataTableColumn } from '@/components/platform/data-tabl
 import { DetailDrawer } from '@/components/platform/detail-drawer'
 import { StatusBadge } from '@/components/domain/status-badge'
 import { StatusTimeline } from '@/components/domain/status-timeline'
+import { InvoicingSection } from './invoicing-section'
 import { SearchInput } from '@/components/domain/search-input'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
@@ -248,6 +249,11 @@ export function PedidosPage({ initialDetailId, onConsumeInitialDetail, onNavigat
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs">Faturamento</Label>
+              <InvoicingSection salesOrderId={detail.id} salesOrderStatus={detail.status} />
             </div>
 
             {detail.productionOrders.length > 0 && (

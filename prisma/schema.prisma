@@ -733,6 +733,8 @@ model SalesOrderItem {
   total        Float      @default(0)
   order        Int        @default(0)
 
+  invoiceItems InvoiceItem[]
+
   @@index([salesOrderId])
   @@index([productId])
 }
@@ -1116,16 +1118,42 @@ model Invoice {
   number       String   @unique // via NumberingService "nota_fiscal"
   salesOrderId String
   salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id])
+  // ADR-023, Decisão #2 (ligar o Faturamento já existente) — fatura nasce sempre emitida (sem estado
+  // de rascunho, não pedido pelo usuário); "cancelled" só é permitido enquanto a Conta a Receber ainda
+  // não teve nenhum recebimento (reaproveita a mesma guarda de `cancelReceivable`), depois disso exige
+  // estorno financeiro (fora de escopo desta rodada).
+  status       String   @default("issued") // issued, cancelled
   total        Float
   issuedAt     DateTime
+  cancelledAt  DateTime?
   notes        String   @default("")
   createdAt    DateTime @default(now())
   userId       String
   user         User     @relation(fields: [userId], references: [id])
 
+  items             InvoiceItem[]
   accountReceivable AccountReceivable?
 
   @@index([salesOrderId])
+  @@index([status])
+}
+
+// ADR-023, Decisão #2 — antes só existia `Invoice.total` agregado, sem linhas; sem isso, faturamento
+// parcial de verdade (quantidade por item) era impossível de rastrear. Uma linha por
+// `SalesOrderItem` faturado, com a quantidade e o preço unitário CONGELADOS no momento da emissão
+// (preço nunca editável nesta tela — só a quantidade, por decisão do usuário).
+model InvoiceItem {
+  id               String         @id @default(cuid())
+  invoiceId        String
+  invoice          Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  salesOrderItemId String
+  salesOrderItem   SalesOrderItem @relation(fields: [salesOrderItemId], references: [id])
+  quantity         Float
+  unitPrice        Float
+  total            Float
+
+  @@index([invoiceId])
+  @@index([salesOrderItemId])
 }
 
 model AccountReceivable {

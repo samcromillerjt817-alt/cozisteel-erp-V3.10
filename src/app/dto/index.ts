@@ -217,6 +217,18 @@ export const produceProductionOrderSchema = z.object({
   clientRequestId: z.string().optional(),
 })
 
+// ADR-023 (Decisão #2, Faturamento) — só a quantidade é informada pela tela; preço unitário é sempre
+// o do próprio `SalesOrderItem`, nunca editável na emissão da fatura.
+export const createInvoiceItemSchema = z.object({
+  salesOrderItemId: z.string(),
+  quantity: z.number().min(0),
+})
+
+export const createInvoiceSchema = z.object({
+  items: z.array(createInvoiceItemSchema).min(1, 'Informe ao menos um item a faturar'),
+  notes: z.string().default(''),
+})
+
 export const updatePurchaseOrderSchema = z.object({
   expectedDate: z.string().optional(),
   paymentTerms: z.string().optional(),
@@ -301,6 +313,7 @@ export type CreateBomRevisionDto = z.infer<typeof createBomRevisionSchema>
 export type BomLineDto = z.infer<typeof bomLineSchema>
 export type CreateOperationTypeDto = z.infer<typeof createOperationTypeSchema>
 export type ProductOperationDto = z.infer<typeof productOperationSchema>
+export type CreateInvoiceDto = z.infer<typeof createInvoiceSchema>
 
 export function validateDto<T>(schema: z.ZodType<T>, data: unknown): T {
   const result = schema.safeParse(data)

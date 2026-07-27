@@ -379,6 +379,45 @@ máquina, apontamento de mão de obra, custeio real vs. previsto) continuam no r
 fixa ainda atribuída na sequência acima — a definir quando os 6 itens priorizados estiverem
 encaminhados.
 
+## PARTE 7 — Item 1 da sequência implementado: Faturamento ligado (2026-07-27)
+
+Schema (aditivo, `db push` autorizado separadamente pelo usuário, distinto da aprovação do
+levantamento — mesma disciplina permanente do projeto): `Invoice` ganhou `status`
+(`issued`/`cancelled`, default `issued`) e `cancelledAt`; novo modelo `InvoiceItem` (quantidade + preço
+unitário **congelados** no momento da emissão — preço nunca editável na tela, só a quantidade,
+conforme a Decisão #2).
+
+`InvoiceService.createFromSalesOrder()` deixou de receber um `amount` agregado e passou a receber
+`items: {salesOrderItemId, quantity}[]` — a checagem de saldo por item ("nunca faturar acima do saldo
+restante") e a criação da fatura acontecem dentro da MESMA transação (`db.$transaction`), fechando a
+janela de corrida que permitiria um clique duplo ou uma requisição repetida faturar mais do que o
+pedido realmente tem disponível. `getInvoiceableBalance()` (nova) calcula pedido/faturado/restante por
+item, somando só `InvoiceItem` de faturas **não canceladas** — uma fatura cancelada libera o saldo de
+volta automaticamente para refaturamento, sem precisar de nenhum código extra (testado). `cancel()`
+(nova) reaproveita a MESMA guarda que `financialAccountService.cancelReceivable()` já aplicava (só
+permite cancelar enquanto a Conta a Receber está em `'open'`, sem nenhum recebimento) — em vez de
+duplicar a regra, chama o método existente e propaga o mesmo erro de negócio, cumprindo a Decisão #1
+("depois de um recebimento, exige estorno financeiro") com zero lógica nova de verificação.
+
+2 rotas novas: `GET/POST /api/sales-orders/[id]/invoices` (GET sob `orcamentos:read` — mesma permissão
+de quem já vê o Pedido; POST sob `financeiro:create`, já que fatura é documento financeiro, conforme a
+Decisão #2) e `POST /api/invoices/[id]/cancel` (`financeiro:update`, mesmo padrão já usado pelo
+cancelamento de Conta a Receber). UI: nova seção "Faturamento" dentro do `DetailDrawer` de Pedidos de
+Venda (`invoicing-section.tsx`) — abre com o saldo restante de cada item já pré-preenchido por inteiro
+(Decisão #2: "todo o saldo faturável selecionado, mas permitir alterar quantidades"), confirmação antes
+de emitir (citando se é fatura total ou parcial), lista de faturas já emitidas com o vínculo explícito
+para a Conta a Receber gerada, e ação de cancelar quando ainda `issued`.
+
+4 testes de `Invoice` existentes precisaram de migração (assinatura mudou de `amount: number` para
+`items: [...]`) — todos os casos antigos continuam cobertos, com o mesmo valor total resultante (ex.:
+faturamento parcial 400+600 de um pedido de 1000 vira quantidade 0.4+0.6 do mesmo item, matematicamente
+idêntico). 3 testes novos: quantidade acima do saldo é rejeitada, cancelar fatura sem/com recebimento
+já registrado, e fatura cancelada libera o saldo do item para refaturar.
+
+**Verificação**: tsc limpo, lint 47 (+1 real, mesmo padrão de fetch-em-efeito já aceito em toda a
+aplicação — o novo componente `invoicing-section.tsx`), 354/354 testes (3 novos), build limpo (as 2
+rotas novas confirmadas no manifesto).
+
 ## Conclusão
 
 Esta rodada mudou uma suposição importante: vários itens que pareciam "faltando" no pedido original já
@@ -386,5 +425,6 @@ têm boa parte da engenharia pronta e só nunca foram conectados — Faturamento
 (existe, testado, zero rota), seguido por MRP (motor sofisticado, zero UI) e BOM formal (quase
 completo). É exatamente por isso que a sequência de implementação real (Parte 6) prioriza esses três
 primeiro, à frente inclusive de itens que apareciam mais cedo na proposta original. As 6 decisões
-pendentes foram todas resolvidas (Parte 5) — nenhuma implementação foi feita ainda. Próximo passo:
-começar pelo item 1 da Parte 6 (conectar o Faturamento), mediante aprovação explícita para iniciar.
+pendentes foram todas resolvidas (Parte 5), e o item 1 da sequência (Faturamento) já está implementado
+e testado (Parte 7). Próximo passo: item 2 da Parte 6 — estorno seguro com bloqueio de dependência a
+jusante.

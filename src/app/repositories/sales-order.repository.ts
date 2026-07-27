@@ -44,6 +44,21 @@ class SalesOrderRepository extends BaseRepository<typeof db.salesOrder> {
     })
   }
 
+  // ADR-023 (Decisão #2, Faturamento) — saldo faturável por item: soma só as `InvoiceItem` de faturas
+  // NÃO canceladas, para "quantidade já faturada" nunca contar uma fatura cancelada.
+  findByIdWithInvoiceableItems(id: string) {
+    return this.delegate.findUnique({
+      where: { id },
+      include: {
+        items: {
+          include: {
+            invoiceItems: { where: { invoice: { status: { not: 'cancelled' } } }, select: { quantity: true } },
+          },
+        },
+      },
+    })
+  }
+
   createWithItems(data: Record<string, unknown>) {
      
     return this.delegate.create({ data: data as any, include: MUTATION_INCLUDE })

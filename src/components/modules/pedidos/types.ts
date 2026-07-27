@@ -57,3 +57,31 @@ export interface SalesOrderRecord extends Omit<SalesOrderListRow, 'client' | 'qu
   deliveryTime: string
   notes: string
 }
+
+// ADR-023 (Decisão #2, Faturamento) — Faturamento ligado à UI pela primeira vez.
+
+export const INVOICE_STATUS_LABELS: Record<string, string> = {
+  issued: 'Emitida', cancelled: 'Cancelada',
+}
+
+export interface InvoiceableItemBalance {
+  salesOrderItemId: string
+  description: string
+  unitPrice: number
+  quantityOrdered: number
+  quantityInvoiced: number
+  quantityRemaining: number
+}
+
+export interface InvoiceRecord {
+  id: string
+  number: string
+  status: string
+  total: number
+  issuedAt: string
+  cancelledAt: string | null
+  notes: string
+  user?: { id: string; name: string } | null
+  accountReceivable?: { id: string; number: string; status: string } | null
+  items: { id: string; salesOrderItemId: string; quantity: number; unitPrice: number; total: number }[]
+}

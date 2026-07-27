@@ -59,7 +59,8 @@ describe('Financeiro — listagem/detalhe de Contas a Pagar/Receber (Fase 12, Su
     await quoteService.changeStatus(quote.id, 'approved', user.id)
     const salesOrder = (await quoteService.convertToSalesOrder(quote.id, user.id)) as { id: string }
     createdSalesOrderIds.push(salesOrder.id)
-    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, total, user.id)) as { id: string }
+    const item = await db.salesOrderItem.findFirstOrThrow({ where: { salesOrderId: salesOrder.id } })
+    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: item.id, quantity: 1 }], '', user.id)) as { id: string }
     createdInvoiceIds.push(invoice.id)
     const receivable = (await db.accountReceivable.findUnique({ where: { invoiceId: invoice.id } }))!
     return { user, receivable }
