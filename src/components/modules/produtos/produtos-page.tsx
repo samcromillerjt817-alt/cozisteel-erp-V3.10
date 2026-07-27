@@ -291,7 +291,7 @@ export function ProdutosPage({ categories, materials, materialsFull, onCatalogCh
         emptyMessage="Nenhum produto encontrado"
         emptyAction={{ label: 'Cadastrar o primeiro produto', onClick: openNew }}
         rowActions={[
-          { label: 'Editar', icon: <Pencil />, onClick: (p) => openEdit(p) },
+          { label: 'Editar', icon: <Pencil />, onClick: (p) => openEdit(p), primary: true },
           { label: 'Desativar', icon: <Ban />, onClick: (p) => remove(p.id) },
         ]}
         pagination={{ page, pageSize: PAGE_SIZE, total, onPageChange: setPage }}

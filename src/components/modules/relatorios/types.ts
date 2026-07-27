@@ -2,10 +2,13 @@
 
 export type ReportType = 'sales' | 'production' | 'purchases' | 'stock'
 
+// ADR-022 (Fase UX-7, achado #26) — "Compras (Requisições)" era ambíguo (parecia incluir Pedido de
+// Compra); o relatório sempre consultou só `Requisition` (ver nota em `RelatoriosPage`), então o
+// rótulo passou a nomear isso direto, sem parêntese explicativo.
 export const REPORT_TYPE_LABELS: Record<ReportType, string> = {
   sales: 'Vendas (Orçamentos)',
   production: 'Produção',
-  purchases: 'Compras (Requisições)',
+  purchases: 'Requisições de Compra',
   stock: 'Estoque',
 }
 

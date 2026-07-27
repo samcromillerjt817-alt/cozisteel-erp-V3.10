@@ -157,7 +157,7 @@ export function UsuariosPage() {
         emptyMessage="Nenhum usuário encontrado"
         emptyAction={{ label: 'Cadastrar o primeiro usuário', onClick: openNew }}
         rowActions={[
-          { label: 'Editar', icon: <Pencil />, onClick: (u) => openEdit(u) },
+          { label: 'Editar', icon: <Pencil />, onClick: (u) => openEdit(u), primary: true },
           { label: 'Excluir', icon: <Trash2 />, variant: 'destructive', onClick: (u) => remove(u.id) },
         ]}
         pagination={{ page, pageSize: PAGE_SIZE, total, onPageChange: setPage }}

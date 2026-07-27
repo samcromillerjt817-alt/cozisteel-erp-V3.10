@@ -54,6 +54,10 @@ export interface DataTableRowAction<T> {
   onClick: (row: T) => void
   disabled?: (row: T) => boolean
   variant?: 'default' | 'destructive'
+  /** ADR-022 (Fase UX-7, achado #9) — promove esta ação pra um botão-ícone visível ao lado do menu
+   * "⋮", em vez de escondida dentro dele. Reservado pra 1-2 ações realmente mais frequentes por
+   * módulo (ex.: Editar num catálogo simples) — o resto continua no menu. */
+  primary?: boolean
 }
 
 export interface DataTableBulkAction<T> {
@@ -139,6 +143,9 @@ export function DataTable<T>({
   const selected = selectedIds ?? uncontrolledSelected
   const setSelected = onSelectionChange ?? setUncontrolledSelected
 
+  const promotedActions = rowActions?.filter((a) => a.primary) ?? []
+  const menuActions = rowActions?.filter((a) => !a.primary) ?? []
+
   const extraCols = (selectable ? 1 : 0) + (rowActions?.length ? 1 : 0)
   const colSpan = columns.length + extraCols
 
@@ -221,7 +228,7 @@ export function DataTable<T>({
                   )}
                 </TableHead>
               ))}
-              {rowActions && rowActions.length > 0 && <TableHead className="w-10" />}
+              {rowActions && rowActions.length > 0 && <TableHead className={promotedActions.length > 0 ? 'w-auto' : 'w-10'} />}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -259,31 +266,55 @@ export function DataTable<T>({
                     ))}
                     {rowActions && rowActions.length > 0 && (
                       <TableCell>
-                        <DropdownMenu>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Ações">
-                                  <MoreHorizontal className="w-4 h-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                            </TooltipTrigger>
-                            <TooltipContent>Ações</TooltipContent>
-                          </Tooltip>
-                          <DropdownMenuContent align="end">
-                            {rowActions.map((action, actionIndex) => (
-                              <DropdownMenuItem
-                                key={actionIndex}
-                                disabled={action.disabled?.(row)}
-                                variant={action.variant === 'destructive' ? 'destructive' : 'default'}
-                                onClick={() => action.onClick(row)}
-                              >
-                                {action.icon}
-                                {typeof action.label === 'function' ? action.label(row) : action.label}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div className="flex items-center justify-end gap-1">
+                          {promotedActions.map((action, actionIndex) => {
+                            const resolvedLabel = typeof action.label === 'function' ? action.label(row) : action.label
+                            return (
+                              <Tooltip key={actionIndex}>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={`h-8 w-8 ${action.variant === 'destructive' ? 'text-destructive hover:text-destructive' : ''}`}
+                                    aria-label={resolvedLabel}
+                                    disabled={action.disabled?.(row)}
+                                    onClick={() => action.onClick(row)}
+                                  >
+                                    {action.icon}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>{resolvedLabel}</TooltipContent>
+                              </Tooltip>
+                            )
+                          })}
+                          {menuActions.length > 0 && (
+                            <DropdownMenu>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Ações">
+                                      <MoreHorizontal className="w-4 h-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                </TooltipTrigger>
+                                <TooltipContent>Ações</TooltipContent>
+                              </Tooltip>
+                              <DropdownMenuContent align="end">
+                                {menuActions.map((action, actionIndex) => (
+                                  <DropdownMenuItem
+                                    key={actionIndex}
+                                    disabled={action.disabled?.(row)}
+                                    variant={action.variant === 'destructive' ? 'destructive' : 'default'}
+                                    onClick={() => action.onClick(row)}
+                                  >
+                                    {action.icon}
+                                    {typeof action.label === 'function' ? action.label(row) : action.label}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
                       </TableCell>
                     )}
                   </TableRow>

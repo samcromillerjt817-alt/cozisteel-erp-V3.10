@@ -210,7 +210,7 @@ export function ClientesPage({ onCatalogChanged }: ClientesPageProps) {
         emptyMessage="Nenhum cliente encontrado"
         emptyAction={{ label: 'Cadastrar o primeiro cliente', onClick: openNew }}
         rowActions={[
-          { label: 'Editar', icon: <Pencil />, onClick: (c) => openEdit(c.id) },
+          { label: 'Editar', icon: <Pencil />, onClick: (c) => openEdit(c.id), primary: true },
           { label: (c) => (c.active ? 'Inativar' : 'Reativar'), icon: <Power />, onClick: (c) => toggleActive(c) },
           { label: 'Excluir', icon: <Trash2 />, variant: 'destructive', onClick: (c) => remove(c.id) },
         ]}

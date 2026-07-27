@@ -600,6 +600,50 @@ pré-existente deslocado pelas linhas inseridas acima dele, não warnings novos;
 efeito de busca debounced do `CommandPalette` em `page.tsx`, mesmo padrão sistêmico de fetch-em-efeito
 já aceito em todo o resto do app), 345/345 testes, build limpo.
 
+## PARTE 12 — Fase UX-7 implementada (2026-07-27)
+
+Última fase do roadmap original (itens #9, #13, #16, #17, #26 — polimento e organização visual).
+
+1. **Ação primária promovida pra fora do menu "⋮"** — `DataTable` ganhou `DataTableRowAction.primary`:
+   a ação marcada renderiza como botão-ícone visível (com tooltip) ao lado do kebab, que passa a
+   conter só o resto. Aplicado a "Editar" nos 5 catálogos sem transição de estado (Clientes, Produtos,
+   Materiais, Fornecedores, Usuários) — **deliberadamente fora**: módulos com fluxo de aprovação/status
+   (Orçamentos, Produção, Compras, Requisições), onde a ação mais frequente depende do estado do
+   documento, não é sempre a mesma — promover "Editar" ali seria uma escolha arbitrária, não a real
+   ação mais usada.
+2. **Filtro de data de Relatórios movido pra query + resultado paginado** — o achado tinha dois
+   problemas: (a) `report.service.ts` carregava a tabela INTEIRA (`findMany` sem `where` de data) e
+   filtrava em JS depois; (b) o resultado completo ia pro `DataTable` sem paginação. Corrigido: (a)
+   `date` é `String` dd/mm/aaaa no schema (nunca `DateTime`), então uma comparação `>=`/`<=` direto na
+   string original dá ordem errada — a query agora reordena os dígitos via `substr()` SQL (mesma
+   transformação aplicada aos limites do filtro em JS) antes de comparar, primeiro filtrando só os
+   `id`s que batem (raw query parametrizada, nunca concatenação de string) e só então buscando os
+   registros completos via Prisma tipado normal (`findMany` com `include`) — o `SELECT` cru nunca
+   monta a linha inteira, só resolve quais ids entram; (b) `RelatoriosPage` pagina o resultado exibido
+   client-side (`REPORT_PAGE_SIZE = 20`), sem endpoint novo, já que o conjunto que chega agora é só o
+   do período pedido. **Precedente novo, tratado com cautela deliberada**: primeira vez que uma rota
+   "normal" (não a Central de Administração) usa SQL bruto — por isso ganhou cobertura de teste
+   dedicada (`tests/report-service-date-filter.test.ts`, 4 casos: limites inclusive, cruzando virada de
+   ano, combinação com filtro de status, e os 3 tipos de relatório que têm campo de data), já que
+   `report.service.ts` não tinha nenhum teste antes desta mudança.
+3. **Central de Administração com hierarquia visual em Configurações** — o menu lateral de
+   Configurações agora separa as sub-abas de negócio (Empresa/Numeração/PDF/Custeio/Sistema/
+   Atualizações) de um segundo grupo rotulado "CENTRAL DE ADMINISTRAÇÃO" (Diagnóstico/Console SQL/
+   Correções — mesmo escopo do ADR-021), mesmo padrão visual dos rótulos de grupo já usados no menu
+   principal (COMERCIAL/GESTÃO/ADMINISTRAÇÃO).
+4. **Menu filtra por RBAC antes de navegar** — Console SQL e Correções (ambos já restritos a admin no
+   CONTEÚDO, `ConfiguracoesPage`) apareciam no menu pra qualquer perfil, só bloqueando depois do clique
+   com "Acesso restrito a administradores". Agora somem da lista pra quem não é admin. Diagnóstico
+   fica de fora do filtro de propósito — a rota só exige permissão de leitura de `sistema`
+   (`requireModulePermission('sistema', 'read')`), nunca foi admin-only.
+5. **Rótulo ambíguo corrigido** — "Compras (Requisições)" virou "Requisições de Compra" em
+   `REPORT_TYPE_LABELS` e no título do PDF (`RELATÓRIO DE COMPRAS` → `RELATÓRIO DE REQUISIÇÕES DE
+   COMPRA`); o comentário no código que documentava a decisão original (o relatório consulta
+   `Requisition`, não `PurchaseOrder`) foi atualizado, não apagado.
+
+**Verificação**: tsc limpo, lint 46 (net zero sobre a Fase UX-6 — nenhum hook novo introduzido),
+349/349 testes (4 novos, cobrindo especificamente o item 2 acima), build limpo.
+
 ## Conclusão
 
 O sistema tem uma base de design system e componentes reutilizáveis genuinamente madura (ADR-014/015/

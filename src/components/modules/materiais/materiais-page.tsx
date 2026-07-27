@@ -218,7 +218,7 @@ export function MateriaisPage({ categories, onCatalogChanged }: MateriaisPagePro
         emptyMessage="Nenhuma matéria-prima cadastrada"
         emptyAction={{ label: 'Cadastrar a primeira matéria-prima', onClick: openNew }}
         rowActions={[
-          { label: 'Editar', icon: <Pencil />, onClick: (m) => openEdit(m.id) },
+          { label: 'Editar', icon: <Pencil />, onClick: (m) => openEdit(m.id), primary: true },
           { label: 'Excluir', icon: <Trash2 />, variant: 'destructive', onClick: (m) => remove(m.id) },
         ]}
         selectable

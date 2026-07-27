@@ -198,7 +198,7 @@ export function FornecedoresPage({ materialsFull, onCatalogChanged }: Fornecedor
         emptyMessage="Nenhum fornecedor cadastrado"
         emptyAction={{ label: 'Cadastrar o primeiro fornecedor', onClick: openNew }}
         rowActions={[
-          { label: 'Editar', icon: <Pencil />, onClick: (s) => openEdit(s.id) },
+          { label: 'Editar', icon: <Pencil />, onClick: (s) => openEdit(s.id), primary: true },
           { label: 'Excluir', icon: <Trash2 />, variant: 'destructive', onClick: (s) => remove(s.id) },
         ]}
         pagination={{ page, pageSize: PAGE_SIZE, total, onPageChange: setPage }}

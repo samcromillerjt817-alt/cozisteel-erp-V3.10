@@ -417,6 +417,9 @@ export default function ERPPage() {
     },
   ]
 
+  // ADR-022 (Fase UX-7, achado #16) — Central de Administração (ADR-021: Diagnóstico/Console SQL/
+  // Correções) ganha hierarquia visual própria dentro de Configurações, separada das abas de negócio,
+  // em vez de aparecer misturada na mesma lista plana.
   const configSubItems: { key: ConfigSubModule; icon: React.ReactNode; label: string }[] = [
     { key: 'empresa', icon: <Building2 className="w-4 h-4" />, label: 'Empresa' },
     { key: 'numeracao', icon: <Hash className="w-4 h-4" />, label: 'Numeracao' },
@@ -424,9 +427,18 @@ export default function ERPPage() {
     { key: 'custeio', icon: <Calculator className="w-4 h-4" />, label: 'Custeio' },
     { key: 'sistema', icon: <ShieldCheck className="w-4 h-4" />, label: 'Sistema' },
     { key: 'atualizacoes', icon: <RefreshCw className="w-4 h-4" />, label: 'Atualizações' },
+  ]
+
+  // Achado #17 — o menu não filtrava por RBAC antes de navegar: Console SQL/Correções apareciam pra
+  // qualquer perfil, só bloqueando o CONTEÚDO depois de clicar (`ConfiguracoesPage` já restringia via
+  // `isAdmin`). Diagnóstico fica de fora do filtro de propósito — a rota só exige permissão de leitura
+  // de `sistema` (`requireModulePermission('sistema', 'read')`), nunca foi admin-only.
+  const adminCenterItems: { key: ConfigSubModule; icon: React.ReactNode; label: string }[] = [
     { key: 'diagnostico', icon: <Activity className="w-4 h-4" />, label: 'Diagnóstico' },
-    { key: 'console', icon: <Terminal className="w-4 h-4" />, label: 'Console SQL' },
-    { key: 'correcoes', icon: <Wrench className="w-4 h-4" />, label: 'Correções' },
+    ...(userRole === 'admin' ? [
+      { key: 'console' as ConfigSubModule, icon: <Terminal className="w-4 h-4" />, label: 'Console SQL' },
+      { key: 'correcoes' as ConfigSubModule, icon: <Wrench className="w-4 h-4" />, label: 'Correções' },
+    ] : []),
   ]
 
   const handleNavClick = (key: ModuleKey) => {
@@ -565,6 +577,20 @@ export default function ERPPage() {
           {!collapsed && activeModule === 'configuracoes' && (
             <div className="ml-7 mt-1 space-y-1 border-l-2 border-primary/20 pl-3">
               {configSubItems.map(sub => (
+                <button
+                  key={sub.key}
+                  onClick={() => setConfigSub(sub.key)}
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors text-left ${
+                    configSub === sub.key ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  {sub.icon} {sub.label}
+                </button>
+              ))}
+              <p className="px-3 pt-2 text-[10px] font-semibold tracking-wider text-muted-foreground/70">
+                CENTRAL DE ADMINISTRAÇÃO
+              </p>
+              {adminCenterItems.map(sub => (
                 <button
                   key={sub.key}
                   onClick={() => setConfigSub(sub.key)}
