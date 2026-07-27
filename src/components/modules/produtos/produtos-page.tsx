@@ -289,6 +289,7 @@ export function ProdutosPage({ categories, materials, materialsFull, onCatalogCh
         getRowId={(p) => p.id}
         loading={loading}
         emptyMessage="Nenhum produto encontrado"
+        emptyAction={{ label: 'Cadastrar o primeiro produto', onClick: openNew }}
         rowActions={[
           { label: 'Editar', icon: <Pencil />, onClick: (p) => openEdit(p) },
           { label: 'Desativar', icon: <Ban />, onClick: (p) => remove(p.id) },

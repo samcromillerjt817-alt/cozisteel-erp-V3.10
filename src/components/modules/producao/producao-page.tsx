@@ -278,6 +278,7 @@ export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initial
         getRowId={(o) => o.id}
         loading={loading}
         emptyMessage="Nenhuma ordem de produção encontrada"
+        emptyAction={{ label: 'Criar a primeira Ordem de Produção', onClick: openNew }}
         rowActions={[
           { label: 'Ver detalhes', icon: <Eye />, onClick: (o) => openDetail(o) },
           { label: 'PDF', icon: <FileOutput />, onClick: (o) => window.open(`/api/production-orders/${o.id}/pdf`, '_blank') },

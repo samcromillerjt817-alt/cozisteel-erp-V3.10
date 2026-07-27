@@ -47,6 +47,10 @@ export function MateriaisPage({ categories, onCatalogChanged }: MateriaisPagePro
   const [detailSuppliers, setDetailSuppliers] = useState<MaterialSupplierLink[]>([])
   const [detailProducts, setDetailProducts] = useState<MaterialProductLink[]>([])
   const [saving, setSaving] = useState(false)
+  // ADR-022 (Fase UX-6, achado #23) — primeiro consumidor real de `bulkActions`, já implementado na
+  // `DataTable` desde o ADR-018 sem nenhum módulo usar. Controlado (não uncontrolled) só pra poder
+  // limpar a seleção depois que os itens excluídos somem da lista.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -157,6 +161,26 @@ export function MateriaisPage({ categories, onCatalogChanged }: MateriaisPagePro
     }
   }
 
+  /** Exclui em lote — cada item mantém sua própria guarda de negócio no backend (não pode excluir
+   * material vinculado a produto/lote), então o resultado é parcial por natureza: relata quantos
+   * foram excluídos e quantos falharam, nunca finge que foi tudo-ou-nada. */
+  async function bulkDelete(selected: MaterialListRow[]) {
+    if (!(await confirmAction({
+      description: `Excluir ${selected.length} matéria(s)-prima(s) selecionada(s)? Itens vinculados a produtos ou com lotes recebidos não serão excluídos.`,
+      destructive: true,
+    }))) return
+    const results = await Promise.allSettled(
+      selected.map((m) => fetch(`/api/materials/${m.id}`, { method: 'DELETE' }).then((r) => { if (!r.ok) throw new Error(); return m.id }))
+    )
+    const succeeded = results.filter((r) => r.status === 'fulfilled').length
+    const failed = results.length - succeeded
+    if (failed === 0) toast.success(`${succeeded} matéria(s)-prima(s) excluída(s)!`)
+    else toast.error(`${succeeded} excluída(s), ${failed} não puderam ser excluídas (vinculadas a produtos ou lotes).`)
+    setSelectedIds(new Set())
+    load()
+    onCatalogChanged?.()
+  }
+
   const columns: DataTableColumn<MaterialListRow>[] = [
     { id: 'internalCode', header: 'Código', cell: (m) => m.internalCode || '-', hideBelow: 'sm' },
     { id: 'name', header: 'Nome', cell: (m) => m.name },
@@ -192,9 +216,16 @@ export function MateriaisPage({ categories, onCatalogChanged }: MateriaisPagePro
         getRowId={(m) => m.id}
         loading={loading}
         emptyMessage="Nenhuma matéria-prima cadastrada"
+        emptyAction={{ label: 'Cadastrar a primeira matéria-prima', onClick: openNew }}
         rowActions={[
           { label: 'Editar', icon: <Pencil />, onClick: (m) => openEdit(m.id) },
           { label: 'Excluir', icon: <Trash2 />, variant: 'destructive', onClick: (m) => remove(m.id) },
+        ]}
+        selectable
+        selectedIds={selectedIds}
+        onSelectionChange={setSelectedIds}
+        bulkActions={[
+          { label: 'Excluir selecionadas', icon: <Trash2 />, variant: 'destructive', onClick: bulkDelete },
         ]}
         pagination={{ page, pageSize: PAGE_SIZE, total, onPageChange: setPage }}
       />

@@ -6,6 +6,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { TableSkeleton } from '@/components/domain/table-skeleton'
 import { EmptyTableRow } from '@/components/domain/empty-table-row'
 import { PaginationBar } from '@/components/domain/pagination-bar'
@@ -46,7 +47,9 @@ export interface DataTableColumn<T> {
 }
 
 export interface DataTableRowAction<T> {
-  label: string
+  /** String fixa ou função do row — função para ações cujo texto muda conforme o estado da linha
+   * (ex.: "Inativar"/"Reativar" em Clientes, ADR-022 Fase UX-6 achado #24). */
+  label: string | ((row: T) => string)
   icon?: ReactNode
   onClick: (row: T) => void
   disabled?: (row: T) => boolean
@@ -81,6 +84,8 @@ export interface DataTableProps<T> {
   loading?: boolean
   error?: string | null
   emptyMessage?: string
+  /** ADR-022 (Fase UX-6, achado #22) — CTA opcional no estado vazio ("Criar o primeiro X"). */
+  emptyAction?: { label: string; onClick: () => void }
 
   sort?: DataTableSort | null
   onSortChange?: (sort: DataTableSort | null) => void
@@ -117,6 +122,7 @@ export function DataTable<T>({
   loading = false,
   error = null,
   emptyMessage = 'Nenhum registro encontrado',
+  emptyAction,
   sort = null,
   onSortChange,
   selectable = false,
@@ -235,7 +241,7 @@ export function DataTable<T>({
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
-              <EmptyTableRow colSpan={colSpan} message={emptyMessage} />
+              <EmptyTableRow colSpan={colSpan} message={emptyMessage} action={emptyAction} />
             ) : (
               rows.map((row) => {
                 const id = getRowId(row)
@@ -254,21 +260,26 @@ export function DataTable<T>({
                     {rowActions && rowActions.length > 0 && (
                       <TableCell>
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Ações">
+                                  <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent>Ações</TooltipContent>
+                          </Tooltip>
                           <DropdownMenuContent align="end">
-                            {rowActions.map((action) => (
+                            {rowActions.map((action, actionIndex) => (
                               <DropdownMenuItem
-                                key={action.label}
+                                key={actionIndex}
                                 disabled={action.disabled?.(row)}
                                 variant={action.variant === 'destructive' ? 'destructive' : 'default'}
                                 onClick={() => action.onClick(row)}
                               >
                                 {action.icon}
-                                {action.label}
+                                {typeof action.label === 'function' ? action.label(row) : action.label}
                               </DropdownMenuItem>
                             ))}
                           </DropdownMenuContent>

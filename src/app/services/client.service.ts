@@ -7,6 +7,10 @@ export interface ListClientsInput {
   search?: string
   page: number
   limit: number
+  // Default (undefined/false) esconde clientes inativados — ADR-022 (Fase UX-6, achado #24): a lista
+  // não deve poluir o dia a dia com clientes que o usuário já marcou como inativo, mas o filtro
+  // "Mostrar inativos" no frontend permite trazê-los de volta quando necessário.
+  includeInactive?: boolean
 }
 
 class ClientService {
@@ -26,8 +30,9 @@ class ClientService {
     throw error
   }
 
-  async list({ search, page, limit }: ListClientsInput) {
+  async list({ search, page, limit, includeInactive }: ListClientsInput) {
     const where: Record<string, unknown> = {}
+    if (!includeInactive) where.active = true
     if (search) {
       where.OR = [
         { corporateName: { contains: search } },

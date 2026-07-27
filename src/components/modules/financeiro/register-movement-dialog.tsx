@@ -1,6 +1,7 @@
 'use client'
 
 import { toast } from 'sonner'
+import { CheckCircle2 } from 'lucide-react'
 import { FormDialog } from '@/components/domain/form-dialog'
 import { CurrencyInput } from '@/components/form/currency-input'
 import { DateInput, isValidDate } from '@/components/form/date-input'
@@ -46,6 +47,12 @@ export function RegisterMovementDialog({
   onConfirm, saving,
 }: RegisterMovementDialogProps) {
   const label = kind === 'pagamento' ? 'Pagamento' : 'Recebimento'
+  // ADR-022 (Fase UX-6, achado #25) — o campo abre pré-preenchido com o saldo total (baixa integral é
+  // o caso comum), então um usuário que queira registrar só uma baixa PARCIAL e esquecer de mudar o
+  // valor quita o título inteiro sem perceber. Este aviso só existe para tornar essa consequência
+  // visível antes de confirmar — não bloqueia nem muda o comportamento (o backend já permite baixa
+  // integral de propósito).
+  const isFullSettlement = amount > 0 && amount === outstanding
 
   async function handleSave() {
     if (amount <= 0) {
@@ -78,6 +85,12 @@ export function RegisterMovementDialog({
           <Label>Valor do {label.toLowerCase()}</Label>
           <CurrencyInput value={amount} onChange={onAmountChange} />
         </div>
+        {isFullSettlement && (
+          <div className="flex items-start gap-2 text-sm bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 rounded p-3">
+            <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>Este valor quita o saldo total — o título será marcado como Pago. Se a intenção era uma baixa parcial, ajuste o valor acima.</span>
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label>Data</Label>
           <DateInput value={dateText} onChange={onDateChange} />

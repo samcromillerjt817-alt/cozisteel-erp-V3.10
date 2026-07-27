@@ -545,6 +545,61 @@ com o build novo.
 **Verificação**: tsc limpo, lint 45 (net zero — mudança é só de texto de string e remoção de arquivo
 morto, nenhum hook novo), 345/345 testes, build limpo.
 
+## PARTE 11 — Fase UX-6 implementada (2026-07-27)
+
+1. **Tooltip em ícone ambíguo + CommandPalette integrada de verdade** — o botão-de-ícone de "mais
+   ações" (kebab menu) do `DataTable` ganhou `Tooltip`+`aria-label="Ações"` (única ação icon-only sem
+   rótulo textual encontrada na auditoria). **Achado novo, mais relevante que o item original**: ao
+   mexer na busca do cabeçalho para adicionar o tooltip, foi descoberto que o `CommandPalette`
+   (Ctrl/Cmd+K) e a busca global (`/api/search`) — que o próprio ADR-018 registra como "concluídos" na
+   Subetapa 11.5.10 — nunca chegaram a ser montados em `page.tsx`: existiam prontos e funcionais desde
+   a Fase 11.5, mas só validados numa página `/dev/command-palette` isolada; o campo de busca visível no
+   cabeçalho do app real era puramente decorativo (`<Input placeholder="Buscar...">`sem `value`/
+   `onChange`). Corrigido: `page.tsx` agora importa `CommandPalette`, monta um grupo "Navegação"
+   (derivado de `navGroups`+`canAccess()`) e um grupo de resultados de busca (debounce 300ms sobre
+   `/api/search`), o botão do cabeçalho abre a paleta em vez de não fazer nada. Este é exatamente o tipo
+   de divergência entre "registrado como pronto" e "realmente ligado" que a Regra de ouro de memória
+   (verificar antes de recomendar) existe para pegar — mas aqui apareceu no código, não numa memória.
+2. **Estados vazios com CTA** — `EmptyTableRow` ganhou prop opcional `action` (renderiza um `Button`);
+   `DataTable` repassa via novo prop `emptyAction`. Aplicado a 8 módulos (Orçamentos, Produção,
+   Clientes, Produtos, Materiais, Fornecedores, Usuários, Requisições) — cada um com o próprio verbo
+   ("Cadastrar o primeiro X" / "Criar o primeiro X"), sem generalizar o texto.
+3. **Ações em lote em 1 módulo real** — `DataTable.bulkActions` existia desde o ADR-018 (Subetapa
+   11.5.2) sem nenhum consumidor real. Primeiro consumidor: Materiais, com "Excluir selecionadas"
+   (`bulkDelete`) — cada exclusão mantém sua própria guarda de negócio no backend (não exclui material
+   vinculado a produto/lote), então o resultado é reportado como parcial por natureza (`Promise.
+   allSettled` + toast "N excluídas, M não puderam"), nunca fingindo tudo-ou-nada. Escopo deliberadamente
+   limitado a 1 módulo (a faixa aprovada era "1-2") — Materiais é o caso mais claro de exclusão em massa
+   recorrente encontrado na auditoria; os demais catálogos (Clientes, Fornecedores, Produtos) não
+   mostraram o mesmo padrão de uso.
+4. **Inativação de Cliente (soft-delete) exposta na UI** — o campo `active` já existia no schema/DTO
+   desde sempre, nunca exposto no formulário nem na listagem. Adicionado: switch "Cliente ativo" no
+   formulário (default `true` para clientes novos); coluna "Status" na tabela (reusa o domínio de cor
+   `userStatus` do `status-tokens.ts` — mesmo par active/inactive → success/cancelled, sem duplicar a
+   entrada para um segundo domínio idêntico); ação rápida "Inativar"/"Reativar" na linha (`PUT` parcial
+   só com `{ active }`, sem abrir o formulário inteiro); filtro "Mostrar inativos" na `FilterBar`.
+   Mudança de contrato mínima e deliberada no backend: `client.service.ts#list` agora filtra
+   `active: true` por padrão (a lista não deve poluir o dia a dia com clientes já inativados) — só
+   inclui inativos quando o novo parâmetro `includeInactive=true` é passado; `DELETE` (exclusão real,
+   já bloqueada por orçamento vinculado) continua existindo lado a lado, sem remoção de capacidade.
+   Efeito de plataforma: `DataTableRowAction.label` passou a aceitar `string | ((row: T) => string)`
+   (mesmo padrão já usado por `disabled?: (row: T) => boolean`) — necessário porque o texto do botão
+   muda conforme o estado da própria linha; nenhum outro módulo precisou mudar.
+5. **Alerta de quitação total no pagamento/recebimento** — `RegisterMovementDialog` abre com o valor
+   pré-preenchido no saldo total (baixa integral é o caso comum), então uma baixa PARCIAL pretendida,
+   mas onde o usuário esqueceu de editar o campo, quitava o título inteiro sem nenhum aviso. Adicionado
+   banner (só aparece quando `amount > 0 && amount === outstanding`): "Este valor quita o saldo total —
+   o título será marcado como Pago. Se a intenção era uma baixa parcial, ajuste o valor acima." Não
+   bloqueia nem muda comportamento — o backend já permite baixa integral de propósito (`financial-
+   account.service.ts` já barra valores acima do saldo); só torna a consequência visível antes de
+   confirmar.
+
+**Verificação**: tsc limpo, lint 46 (+1 real sobre a baseline de 45 — comparado por diff de posição
+exata, não só contagem: os outros 5 warnings que mudaram de linha nesta rodada são o MESMO warning
+pré-existente deslocado pelas linhas inseridas acima dele, não warnings novos; o único net-new é o
+efeito de busca debounced do `CommandPalette` em `page.tsx`, mesmo padrão sistêmico de fetch-em-efeito
+já aceito em todo o resto do app), 345/345 testes, build limpo.
+
 ## Conclusão
 
 O sistema tem uma base de design system e componentes reutilizáveis genuinamente madura (ADR-014/015/

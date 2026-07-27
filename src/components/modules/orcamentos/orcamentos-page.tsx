@@ -392,6 +392,7 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
         getRowId={(q) => q.id}
         loading={loading}
         emptyMessage="Nenhum orçamento encontrado"
+        emptyAction={{ label: 'Criar o primeiro orçamento', onClick: openNew }}
         rowActions={[
           {
             label: 'Converter em Pedido de Venda', icon: <ShoppingCart />, onClick: (q) => convertToOrder(q.id),
@@ -500,7 +501,7 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
                     <QuantityInput className="text-right" value={item.quantity} onChange={(v) => updateItem(idx, 'quantity', v)} />
                     <CurrencyInput value={item.unitPrice} onChange={(v) => updateItem(idx, 'unitPrice', v)} />
                     <span className="text-right font-mono text-sm">{formatCurrency(item.quantity * item.unitPrice)}</span>
-                    <Button variant="ghost" size="icon" onClick={() => removeItem(idx)}><X className="w-4 h-4 text-destructive" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => removeItem(idx)} title="Remover item"><X className="w-4 h-4 text-destructive" /></Button>
                   </div>
                 ))}
               </div>

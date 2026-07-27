@@ -21,6 +21,8 @@ import { EstoquePage } from '@/components/modules/estoque/estoque-page'
 import { OrcamentosPage } from '@/components/modules/orcamentos/orcamentos-page'
 import { FinanceiroPage } from '@/components/modules/financeiro/financeiro-page'
 import { NotificationCenter } from '@/components/layout/notification-center'
+import { CommandPalette, type CommandPaletteGroup } from '@/components/platform/command-palette'
+import type { GlobalSearchResult } from '@/app/api/search/route'
 import { ROLE_LABELS as roleLabels } from '@/lib/role-labels'
 import { SearchInput } from '@/components/domain/search-input'
 import {
@@ -104,6 +106,27 @@ export default function ERPPage() {
   useEffect(() => {
     setVisitedModules((prev) => (prev.has(activeModule) ? prev : new Set(prev).add(activeModule)))
   }, [activeModule])
+
+  // ADR-022 (Fase UX-6) — achado novo desta rodada: `CommandPalette` (Ctrl/Cmd+K) e a busca global
+  // (`/api/search`, 7 entidades, RBAC no backend) já existiam prontos desde a Fase 11.5 (Subetapas
+  // 11.5.4/11.5.5), validados só numa página `/dev` isolada — a integração real com o app-shell
+  // (Subetapa 11.5.10, registrada como concluída) nunca chegou a existir neste arquivo. O campo de
+  // busca do header também era só decorativo (`&lt;Input placeholder="Buscar..." /&gt;` sem `value`/
+  // `onChange`, não fazia nada). Ambos corrigidos juntos aqui.
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [paletteQuery, setPaletteQuery] = useState('')
+  const debouncedPaletteQuery = useDebouncedValue(paletteQuery, 300)
+  const [paletteResults, setPaletteResults] = useState<GlobalSearchResult[]>([])
+
+  useEffect(() => {
+    if (debouncedPaletteQuery.trim().length < 2) { setPaletteResults([]); return }
+    let cancelled = false
+    fetch(`/api/search?q=${encodeURIComponent(debouncedPaletteQuery)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: GlobalSearchResult[]) => { if (!cancelled) setPaletteResults(data) })
+      .catch(() => { if (!cancelled) setPaletteResults([]) })
+    return () => { cancelled = true }
+  }, [debouncedPaletteQuery])
   function keepAliveVisible(key: ModuleKey): boolean {
     return visitedModules.has(key)
   }
@@ -412,6 +435,34 @@ export default function ERPPage() {
     if (key === 'configuracoes') setConfigSub('empresa')
   }
 
+  // ADR-022 (Fase UX-6) — grupos do CommandPalette: "Navegação" reaproveita o mesmo `navGroups` do
+  // menu lateral (nunca duplica a lista de módulos), filtrado pela mesma `canAccess()` já usada pra
+  // decidir o que aparece no menu. "Resultados da busca" só aparece quando a busca em `/api/search`
+  // devolve algo — `moduleKey` já vem resolvido do backend, então navegar é só `handleNavClick`.
+  const SEARCH_TYPE_LABELS: Record<GlobalSearchResult['type'], string> = {
+    client: 'Cliente', product: 'Produto', material: 'Material', supplier: 'Fornecedor',
+    quote: 'Orçamento', salesOrder: 'Pedido de Venda', productionOrder: 'Ordem de Produção',
+  }
+  const paletteGroups: CommandPaletteGroup[] = [
+    {
+      heading: 'Navegação',
+      items: navGroups
+        .flatMap((g) => g.items)
+        .filter((item) => canAccess(item.key))
+        .map((item) => ({ id: item.key, label: item.label, icon: item.icon, onSelect: () => handleNavClick(item.key) })),
+    },
+    ...(paletteResults.length > 0
+      ? [{
+          heading: 'Resultados da busca',
+          items: paletteResults.map((r) => ({
+            id: `${r.type}-${r.id}`,
+            label: `${r.label}${r.sublabel ? ` — ${r.sublabel}` : ''} (${SEARCH_TYPE_LABELS[r.type]})`,
+            onSelect: () => handleNavClick(r.moduleKey as ModuleKey),
+          })),
+        }]
+      : []),
+  ]
+
   /* ══════════════════════════════════════════════════════════════
      RENDER: LOGIN
      ══════════════════════════════════════════════════════════════ */
@@ -567,10 +618,15 @@ export default function ERPPage() {
         </Sheet>
         <span className="font-bold text-lg text-primary">COZISTEEL</span>
         <div className="hidden md:flex flex-1 max-w-md mx-auto">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Buscar..." className="pl-9" />
-          </div>
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="relative w-full flex items-center h-9 rounded-md border border-input bg-transparent px-3 text-sm text-muted-foreground hover:bg-accent transition-colors"
+          >
+            <Search className="w-4 h-4 mr-2 shrink-0" />
+            <span className="flex-1 text-left">Buscar...</span>
+            <kbd className="pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">Ctrl+K</kbd>
+          </button>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <NotificationCenter onNavigate={(m) => setActiveModule(m as ModuleKey)} />
@@ -782,6 +838,13 @@ export default function ERPPage() {
           )}
         </main>
       </div>
+
+      <CommandPalette
+        groups={paletteGroups}
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        onQueryChange={setPaletteQuery}
+      />
     </div>
   )
 }

@@ -348,6 +348,7 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
         getRowId={(req) => req.id}
         loading={loading}
         emptyMessage="Nenhuma requisição encontrada"
+        emptyAction={{ label: 'Criar a primeira requisição', onClick: openNew }}
         rowActions={[
           { label: 'Cotar fornecedores', icon: <Users />, onClick: (req) => openDetail(req) },
           { label: 'PDF', icon: <FileOutput />, onClick: (req) => window.open(`/api/requisitions/${req.id}/pdf`, '_blank') },

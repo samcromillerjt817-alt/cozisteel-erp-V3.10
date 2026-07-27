@@ -196,6 +196,7 @@ export function FornecedoresPage({ materialsFull, onCatalogChanged }: Fornecedor
         getRowId={(s) => s.id}
         loading={loading}
         emptyMessage="Nenhum fornecedor cadastrado"
+        emptyAction={{ label: 'Cadastrar o primeiro fornecedor', onClick: openNew }}
         rowActions={[
           { label: 'Editar', icon: <Pencil />, onClick: (s) => openEdit(s.id) },
           { label: 'Excluir', icon: <Trash2 />, variant: 'destructive', onClick: (s) => remove(s.id) },
