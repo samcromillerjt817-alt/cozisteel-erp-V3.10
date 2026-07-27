@@ -367,18 +367,19 @@ Nenhuma fase começa sem aprovação explícita da anterior.
    nunca foi definido — não há pedido operacional concreto hoje que justifique escolher entre eles
    especulativamente. Se surgir uma necessidade real, vira uma fase nova com levantamento próprio, não
    uma extensão apressada deste ADR.
-4. **Alçada de aprovação** (Requisições, Compras): quer segunda pessoa obrigatória, limite de valor, ou
-   só reforçar a confirmação visual sem mudar a regra de quem pode aprovar? **Ainda em aberto** — a
-   versão mínima (confirmação reforçada, sem nova regra de RBAC) já foi implementada na Fase UX-1 (ver
-   Parte 6, item 6); esta pergunta só importa se uma regra real de alçada for desejada no futuro.
+4. ~~**Alçada de aprovação** (Requisições, Compras)~~ — **Respondida em 2026-07-27**: manter como está.
+   Só a confirmação visual reforçada, já implementada na Fase UX-1 (ver Parte 6, item 6) — nenhuma nova
+   regra de RBAC (segundo aprovador obrigatório ou alçada por valor). Decisão consciente, não uma
+   omissão: qualquer usuário com permissão de aprovar continua podendo aprovar sozinho, agora sempre
+   com confirmação explícita citando o efeito da transição.
 5. ~~**Escopo inicial de MRP/Reserva/Lote (Fase UX-3)**~~ — **Respondida em 2026-07-26**: começar só
    com telas de consulta (menor risco), nenhuma ação nova (aprovar sugestão, disparar cálculo de MRP).
    Implementado para Reserva de Material e Rastreabilidade por Lote — ver Parte 8. Exposição de MRP
    em si (sugestões + gatilho de execução) fica para uma fase futura, fora do escopo desta rodada.
 
-**Status final (2026-07-27): das 5 decisões originais, só a #4 (alçada de aprovação) segue
-genuinamente em aberto — e não bloqueia nenhuma fase do roadmap já implementado (UX-1 a UX-7), só uma
-eventual regra de RBAC mais rígida no futuro.**
+**Status final (2026-07-27): as 5 decisões originais estão todas resolvidas. Roadmap ADR-022 (Fases
+UX-1 a UX-7) formalmente encerrado — nenhuma decisão pendente bloqueando qualquer parte do que foi
+implementado.**
 
 ---
 
