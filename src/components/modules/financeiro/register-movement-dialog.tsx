@@ -52,7 +52,11 @@ export function RegisterMovementDialog({
   // valor quita o título inteiro sem perceber. Este aviso só existe para tornar essa consequência
   // visível antes de confirmar — não bloqueia nem muda o comportamento (o backend já permite baixa
   // integral de propósito).
-  const isFullSettlement = amount > 0 && amount === outstanding
+  // Comparação com tolerância de meio centavo, não igualdade estrita — `outstanding` vem de uma
+  // subtração de `Float` (nunca `Decimal`, decisão de schema da Fase 1) e pode carregar erro de ponto
+  // flutuante; `amount === outstanding` deixava de disparar o aviso em casos reais de baixa integral
+  // digitada manualmente (achado do /codex review antes do fechamento).
+  const isFullSettlement = amount > 0 && Math.abs(amount - outstanding) < 0.005
 
   async function handleSave() {
     if (amount <= 0) {

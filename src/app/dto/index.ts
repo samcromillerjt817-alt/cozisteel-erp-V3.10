@@ -94,6 +94,10 @@ export const createClientSchema = z.object({
   situacaoCadastral: z.string().default(''),
   cnaeCode: z.string().default(''),
   cnaeDescription: z.string().default(''),
+  // ADR-022 (Fase UX-6/7) — sem isso, o switch "Cliente ativo" do formulário de criação era ignorado
+  // silenciosamente: Zod descarta campos não declarados no schema, então `active: false` nunca chegava
+  // ao Prisma, que aplica seu próprio default `true` (achado do /codex review antes do fechamento).
+  active: z.boolean().default(true),
 })
 
 export const createMaterialSchema = z.object({

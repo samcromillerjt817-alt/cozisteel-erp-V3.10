@@ -127,6 +127,16 @@ export default function ERPPage() {
       .catch(() => { if (!cancelled) setPaletteResults([]) })
     return () => { cancelled = true }
   }, [debouncedPaletteQuery])
+
+  // Sem isso, fechar a paleta com resultado na tela e reabrir mostrava o grupo "Resultados da busca"
+  // antigo até o novo debounce assentar (achado do /codex review antes do fechamento).
+  function handlePaletteOpenChange(open: boolean) {
+    setPaletteOpen(open)
+    if (!open) {
+      setPaletteQuery('')
+      setPaletteResults([])
+    }
+  }
   function keepAliveVisible(key: ModuleKey): boolean {
     return visitedModules.has(key)
   }
@@ -469,6 +479,12 @@ export default function ERPPage() {
           items: paletteResults.map((r) => ({
             id: `${r.type}-${r.id}`,
             label: `${r.label}${r.sublabel ? ` — ${r.sublabel}` : ''} (${SEARCH_TYPE_LABELS[r.type]})`,
+            // Sem isso, o cmdk reaplica seu próprio filtro fuzzy client-side sobre `label` — um
+            // resultado que o `/api/search` achou por um campo ausente do label (CNPJ, código interno,
+            // descrição) some da lista mesmo tendo vindo certo do servidor. Incluir a query já digitada
+            // como keyword garante que todo resultado que o servidor devolveu sempre bate no filtro do
+            // cmdk (achado do /codex review antes do fechamento).
+            keywords: [debouncedPaletteQuery],
             onSelect: () => handleNavClick(r.moduleKey as ModuleKey),
           })),
         }]
@@ -868,7 +884,7 @@ export default function ERPPage() {
       <CommandPalette
         groups={paletteGroups}
         open={paletteOpen}
-        onOpenChange={setPaletteOpen}
+        onOpenChange={handlePaletteOpenChange}
         onQueryChange={setPaletteQuery}
       />
     </div>

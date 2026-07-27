@@ -669,6 +669,50 @@ já aceito em todo o resto do app), 345/345 testes, build limpo.
 **Verificação**: tsc limpo, lint 46 (net zero sobre a Fase UX-6 — nenhum hook novo introduzido),
 349/349 testes (4 novos, cobrindo especificamente o item 2 acima), build limpo.
 
+## PARTE 13 — Segunda opinião independente via `/codex review` antes do fechamento (2026-07-27)
+
+Antes de declarar o roadmap encerrado, rodado `codex review` (gstack, modelo diferente do Claude)
+contra o diff completo `origin/master...HEAD` (22 arquivos, Fases UX-6/UX-7 + resolução de decisões).
+Achado o binário instalado só tinha o pacote nativo do Windows (faltava `@openai/codex-linux-x64` no
+WSL) — contornado com `npx --yes @openai/codex@latest`; autenticação (`codex login`, OAuth via
+ChatGPT) feita pelo usuário na mesma sessão.
+
+**5 achados, todos [P2], todos confirmados reais ao verificar contra o código (nenhum falso-positivo)
+e corrigidos antes do fechamento**:
+
+1. **`active` ignorado na criação de Cliente** — `createClientSchema` não declarava `active`; `Zod`
+   descarta campos não declarados no `.parse()`, então o switch "Cliente ativo" do formulário de
+   criação (Fase UX-7) nunca chegava ao Prisma, que aplicava seu próprio default `true` independente
+   do que a UI enviasse — um cliente criado com o switch desligado ficava ativo mesmo assim, sem
+   nenhum erro visível. Corrigido adicionando `active: z.boolean().default(true)` ao schema. 2 testes
+   novos (`tests/client-active-create.test.ts`).
+2. **Resultados de busca sumindo da `CommandPalette`** — o `cmdk` reaplica seu próprio filtro fuzzy
+   client-side sobre `value`/`keywords` do `CommandItem`; um resultado que `/api/search` achou por um
+   campo ausente do rótulo exibido (CNPJ, código interno, descrição) desaparecia da lista mesmo tendo
+   vindo certo do servidor. Corrigido incluindo a query já digitada como `keywords` de cada item do
+   grupo "Resultados da busca" — garante que todo resultado devolvido pelo servidor sempre bate no
+   filtro do cliente.
+3. **Estado da paleta não limpava ao fechar** — fechar o Ctrl/Cmd+K com resultado na tela e reabrir
+   mostrava o grupo antigo até o novo debounce assentar. Corrigido: `handlePaletteOpenChange` limpa
+   `paletteQuery`/`paletteResults` ao fechar.
+4. **Seleção em lote perdida ao trocar de página** — `selectedIds` (Materiais) persistia entre páginas,
+   mas `DataTable.selectedRows` deriva só das linhas da página atual — selecionar na página 1, ir pra
+   página 2 e confirmar "Excluir selecionadas" descartava silenciosamente os ids da página 1 (a barra
+   de ação em lote nem mostrava a contagem certa). Corrigido limpando `selectedIds` em toda mudança de
+   página/filtro (`goToPage`, os 3 handlers de filtro, `onClear`) — seleção agora é sempre escopada à
+   view atual, sem ambiguidade.
+5. **Alerta de quitação total com igualdade estrita em `Float`** — `amount === outstanding` podia
+   deixar de disparar em casos reais de baixa integral digitada manualmente, já que `outstanding` vem
+   de uma subtração de `Float` (nunca `Decimal`, decisão de schema da Fase 1) e carrega erro de ponto
+   flutuante. Corrigido para `Math.abs(amount - outstanding) < 0.005` (tolerância de meio centavo).
+
+**Achados 2-5 não ganharam teste dedicado** — nenhum componente React tem cobertura de teste neste
+projeto (convenção já registrada no histórico do ADR-001: cobertura dessa camada é validação
+visual/funcional, não `vitest`); só o achado 1 (lógica de Service/schema) se presta ao mesmo padrão do
+resto da suíte.
+
+**Verificação pós-correção**: tsc limpo, lint 46 (net zero), 351/351 testes (2 novos), build limpo.
+
 ## Conclusão
 
 O sistema tem uma base de design system e componentes reutilizáveis genuinamente madura (ADR-014/015/

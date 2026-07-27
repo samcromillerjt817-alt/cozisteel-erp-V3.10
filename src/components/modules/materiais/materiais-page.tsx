@@ -78,19 +78,31 @@ export function MateriaisPage({ categories, onCatalogChanged }: MateriaisPagePro
     load()
   }, [load])
 
+  // A seleção de `bulkActions` é escopada às linhas visíveis na página atual — trocar de página/filtro
+  // sem limpar deixava ids de outra página presos no Set, contados na barra de ação em lote mas
+  // silenciosamente ignorados por `bulkDelete` (que só recebe as linhas da página atual), achado do
+  // /codex review antes do fechamento.
+  function goToPage(nextPage: number) {
+    setPage(nextPage)
+    setSelectedIds(new Set())
+  }
+
   function handleSearchChange(value: string) {
     setSearch(value)
     setPage(1)
+    setSelectedIds(new Set())
   }
 
   function handleCategoryChange(value: string) {
     setCategoryFilter(value === 'all' ? '' : value)
     setPage(1)
+    setSelectedIds(new Set())
   }
 
   function handleLowStockChange(checked: boolean) {
     setLowStockOnly(checked)
     setPage(1)
+    setSelectedIds(new Set())
   }
 
   function openNew() {
@@ -195,7 +207,7 @@ export function MateriaisPage({ categories, onCatalogChanged }: MateriaisPagePro
     <div className="space-y-4">
       <PageHeader title="Matérias-Primas" actions={<Button onClick={openNew}><Plus className="w-4 h-4" /> Nova</Button>} />
 
-      <FilterBar onClear={() => { setSearch(''); setCategoryFilter(''); setLowStockOnly(false); setPage(1) }}>
+      <FilterBar onClear={() => { setSearch(''); setCategoryFilter(''); setLowStockOnly(false); setPage(1); setSelectedIds(new Set()) }}>
         <SearchInput value={search} onChange={handleSearchChange} placeholder="Buscar por nome ou código..." />
         <Select value={categoryFilter || 'all'} onValueChange={handleCategoryChange}>
           <SelectTrigger className="w-48"><SelectValue placeholder="Categoria" /></SelectTrigger>
@@ -227,7 +239,7 @@ export function MateriaisPage({ categories, onCatalogChanged }: MateriaisPagePro
         bulkActions={[
           { label: 'Excluir selecionadas', icon: <Trash2 />, variant: 'destructive', onClick: bulkDelete },
         ]}
-        pagination={{ page, pageSize: PAGE_SIZE, total, onPageChange: setPage }}
+        pagination={{ page, pageSize: PAGE_SIZE, total, onPageChange: goToPage }}
       />
 
       <FormDialog
