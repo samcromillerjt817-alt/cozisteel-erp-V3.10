@@ -340,21 +340,45 @@ Nenhuma fase começa sem aprovação explícita da anterior.
 
 ## PARTE 5 — Decisões pendentes (precisam da sua resposta antes de qualquer implementação)
 
-1. **Select inline de status na tabela** (Orçamentos) vs. `DetailDrawer` (padrão declarado permanente
-   no ADR-018): manter a exceção, migrar para o padrão, ou era uma decisão consciente que eu não
-   encontrei registrada?
-2. **Roadmap de status de Produção** ("Planejada→Liberada→...→Encerrada") citado no plano original do
-   projeto nunca foi implementado — os 5 estados reais (`planned/in_progress/paused/completed/
-   cancelled`) ficam como estão, ou o roadmap de 6+ estados deve ser implementado agora?
-3. **Módulo de Qualidade**: não existe hoje, nem parcialmente. O pedido original assumia que existia.
-   Criar do zero é um escopo novo (não uma "revisão") — quer que eu inclua isso no roadmap como uma fase
-   própria, ou fica fora deste levantamento?
+1. ~~**Select inline de status na tabela** (Orçamentos) vs. `DetailDrawer`~~ — **Respondida em
+   2026-07-27**: manter a exceção, documentada conscientemente. Investigação confirmou que dos 5
+   módulos com máquina de estado (Orçamentos/Pedidos/Compras/Requisições/Produção), só Orçamentos muda
+   status inline na linha da `DataTable` (`orcamentos-page.tsx`) em vez de dentro de um `DetailDrawer`
+   (os outros 4 usam `detail.status` dentro do drawer); Orçamentos nem tem `DetailDrawer` — o
+   `FormDialog` de edição cumpre esse papel (inclusive hospedando o `StatusTimeline` desde a Fase UX-2).
+   O risco funcional que normalmente justificaria migrar (aprovar/cancelar sem ver o documento
+   completo) já foi coberto pela Fase UX-1 (`useConfirm()` antes da transição pra `approved`) —
+   migrar para `DetailDrawer` hoje seria consistência arquitetural pura, sem nenhum ganho operacional
+   comprovado. Decisão: **não migrar**.
+2. ~~**Roadmap de status de Produção**~~ — **Não era, de fato, uma decisão pendente**: já estava
+   oficialmente resolvida em `ADR-001-principios-arquiteturais.md`, seção "Separação Comercial/
+   Industrial da Fase 4 original", item "Ciclo de vida da OP em 6 estados" (2026-07-09, **antes** deste
+   levantamento): *"Decisão oficial: a proposta de 6 estados está superada pela modelagem real da Fase
+   2 — encerrada, não será revisitada."* O levantamento original do ADR-022 redescobriu o mesmo gap de
+   forma independente (2.2, achado de Produção) sem cruzar com essa decisão já permanente — corrigido
+   aqui. Os 5 estados reais (`planned/in_progress/paused/completed/cancelled`) permanecem definitivos.
+3. ~~**Módulo de Qualidade**~~ — **Respondida em 2026-07-27**: fica fora de escopo por enquanto.
+   Confirmado que Qualidade nunca fez parte do roadmap oficial de 12 fases e foi explicitamente
+   removida até de uma proposta mais antiga (`ADR-009`, Fase 7, 2026-07-09 — lista de tipos de
+   Requisição revisada de 9 para 6 valores, removendo `TI`/`RH`/`QUALIDADE`); zero traço no código hoje
+   (nenhuma chave de módulo no RBAC, nenhuma tabela, nenhuma rota). `ADR-013` (Fase 10) registrou que o
+   schema de lote foi desenhado com uma futura entidade de inspeção em mente, mas o formato real
+   (inspeção de recebimento? não-conformidade vinculada a lote? certificado de análise? quarentena?)
+   nunca foi definido — não há pedido operacional concreto hoje que justifique escolher entre eles
+   especulativamente. Se surgir uma necessidade real, vira uma fase nova com levantamento próprio, não
+   uma extensão apressada deste ADR.
 4. **Alçada de aprovação** (Requisições, Compras): quer segunda pessoa obrigatória, limite de valor, ou
-   só reforçar a confirmação visual sem mudar a regra de quem pode aprovar?
+   só reforçar a confirmação visual sem mudar a regra de quem pode aprovar? **Ainda em aberto** — a
+   versão mínima (confirmação reforçada, sem nova regra de RBAC) já foi implementada na Fase UX-1 (ver
+   Parte 6, item 6); esta pergunta só importa se uma regra real de alçada for desejada no futuro.
 5. ~~**Escopo inicial de MRP/Reserva/Lote (Fase UX-3)**~~ — **Respondida em 2026-07-26**: começar só
    com telas de consulta (menor risco), nenhuma ação nova (aprovar sugestão, disparar cálculo de MRP).
    Implementado para Reserva de Material e Rastreabilidade por Lote — ver Parte 8. Exposição de MRP
    em si (sugestões + gatilho de execução) fica para uma fase futura, fora do escopo desta rodada.
+
+**Status final (2026-07-27): das 5 decisões originais, só a #4 (alçada de aprovação) segue
+genuinamente em aberto — e não bloqueia nenhuma fase do roadmap já implementado (UX-1 a UX-7), só uma
+eventual regra de RBAC mais rígida no futuro.**
 
 ---
 
