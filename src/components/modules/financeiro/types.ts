@@ -28,6 +28,7 @@ export interface AccountPayableRow {
   number: string
   amount: number
   dueDate: string
+  competenceDate: string
   status: string
   notes: string
   createdAt: string
@@ -45,6 +46,7 @@ export interface AccountReceivableRow {
   number: string
   amount: number
   dueDate: string
+  competenceDate: string
   status: string
   notes: string
   createdAt: string

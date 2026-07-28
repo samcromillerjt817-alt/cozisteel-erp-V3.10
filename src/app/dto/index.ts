@@ -265,6 +265,22 @@ export const changeShipmentStatusSchema = z.object({
   status: z.enum(SHIPMENT_STATUSES),
 })
 
+// ADR-023 (item 6, Decisão #5, Fechamento Mensal)
+
+export const periodClosingSchema = z.object({
+  period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Formato esperado: AAAA-MM'),
+  notes: z.string().default(''),
+})
+
+export const periodReopenSchema = z.object({
+  reason: z.string().min(1, 'Informe o motivo da reabertura'),
+})
+
+export const updateCompetenceDateSchema = z.object({
+  competenceDate: z.string().min(1, 'Informe a nova data de competência'),
+  reason: z.string().min(1, 'Informe o motivo da alteração'),
+})
+
 export const updatePurchaseOrderSchema = z.object({
   expectedDate: z.string().optional(),
   paymentTerms: z.string().optional(),
@@ -385,6 +401,9 @@ export type ReverseStockMovementDto = z.infer<typeof reverseStockMovementSchema>
 export type CreateShipmentDto = z.infer<typeof createShipmentSchema>
 export type UpdateShipmentDto = z.infer<typeof updateShipmentSchema>
 export type ChangeShipmentStatusDto = z.infer<typeof changeShipmentStatusSchema>
+export type PeriodClosingDto = z.infer<typeof periodClosingSchema>
+export type PeriodReopenDto = z.infer<typeof periodReopenSchema>
+export type UpdateCompetenceDateDto = z.infer<typeof updateCompetenceDateSchema>
 
 export function validateDto<T>(schema: z.ZodType<T>, data: unknown): T {
   const result = schema.safeParse(data)

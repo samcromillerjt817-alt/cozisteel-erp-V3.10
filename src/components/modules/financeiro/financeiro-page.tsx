@@ -18,6 +18,7 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { formatCurrency } from '@/lib/format'
 import { RegisterMovementDialog, todayDDMMYYYY } from './register-movement-dialog'
 import { FinanceiroRelatoriosTab } from './financeiro-relatorios-tab'
+import { FechamentosTab } from './fechamentos-tab'
 import { FINANCEIRO_STATUS_LABELS, outstandingAmount, type AccountPayableRow, type AccountReceivableRow } from './types'
 
 const PAGE_SIZE = 20
@@ -52,7 +53,7 @@ function isOverdue(dueDate: string, status: string): boolean {
  */
 export function FinanceiroPage({ products, onNavigateToCompras, onNavigateToPedidos }: FinanceiroPageProps) {
   const confirmAction = useConfirm()
-  const [view, setView] = useState<'pagar' | 'receber' | 'relatorios'>('pagar')
+  const [view, setView] = useState<'pagar' | 'receber' | 'relatorios' | 'fechamentos'>('pagar')
 
   // ── Contas a Pagar ──
   const [payableRows, setPayableRows] = useState<AccountPayableRow[]>([])
@@ -322,11 +323,12 @@ export function FinanceiroPage({ products, onNavigateToCompras, onNavigateToPedi
         title="Financeiro"
         description="Contas a Pagar e a Receber — baixa de títulos gerados automaticamente pelo recebimento de Pedidos de Compra e pelo faturamento de Pedidos de Venda."
         actions={
-          <Tabs value={view} onValueChange={(v) => setView(v as 'pagar' | 'receber' | 'relatorios')}>
+          <Tabs value={view} onValueChange={(v) => setView(v as 'pagar' | 'receber' | 'relatorios' | 'fechamentos')}>
             <TabsList>
               <TabsTrigger value="pagar">Contas a Pagar</TabsTrigger>
               <TabsTrigger value="receber">Contas a Receber</TabsTrigger>
               <TabsTrigger value="relatorios">Relatórios</TabsTrigger>
+              <TabsTrigger value="fechamentos">Fechamento Mensal</TabsTrigger>
             </TabsList>
           </Tabs>
         }
@@ -391,6 +393,7 @@ export function FinanceiroPage({ products, onNavigateToCompras, onNavigateToPedi
       )}
 
       {view === 'relatorios' && <FinanceiroRelatoriosTab products={products} />}
+      {view === 'fechamentos' && <FechamentosTab />}
 
       <DetailDrawer
         open={payableDetailOpen}
@@ -407,6 +410,7 @@ export function FinanceiroPage({ products, onNavigateToCompras, onNavigateToPedi
               <div><Label className="text-xs">Vencimento</Label><p className={isOverdue(payableDetail.dueDate, payableDetail.status) ? 'text-destructive font-semibold' : ''}>{formatDate(payableDetail.dueDate)}{isOverdue(payableDetail.dueDate, payableDetail.status) ? ' · vencido' : ''}</p></div>
               <div><Label className="text-xs">Valor total</Label><p>{formatCurrency(payableDetail.amount)}</p></div>
               <div><Label className="text-xs">Saldo em aberto</Label><p className="font-semibold">{formatCurrency(outstandingAmount(payableDetail.amount, payableDetail.payments))}</p></div>
+              <div><Label className="text-xs">Competência</Label><p>{formatDate(payableDetail.competenceDate)}</p></div>
             </div>
             {payableDetail.notes && (
               <div className="text-sm"><Label className="text-xs">Observações</Label><p className="whitespace-pre-wrap">{payableDetail.notes}</p></div>
@@ -469,6 +473,7 @@ export function FinanceiroPage({ products, onNavigateToCompras, onNavigateToPedi
               <div><Label className="text-xs">Vencimento</Label><p className={isOverdue(receivableDetail.dueDate, receivableDetail.status) ? 'text-destructive font-semibold' : ''}>{formatDate(receivableDetail.dueDate)}{isOverdue(receivableDetail.dueDate, receivableDetail.status) ? ' · vencido' : ''}</p></div>
               <div><Label className="text-xs">Valor total</Label><p>{formatCurrency(receivableDetail.amount)}</p></div>
               <div><Label className="text-xs">Saldo em aberto</Label><p className="font-semibold">{formatCurrency(outstandingAmount(receivableDetail.amount, receivableDetail.receipts))}</p></div>
+              <div><Label className="text-xs">Competência</Label><p>{formatDate(receivableDetail.competenceDate)}</p></div>
             </div>
             {receivableDetail.notes && (
               <div className="text-sm"><Label className="text-xs">Observações</Label><p className="whitespace-pre-wrap">{receivableDetail.notes}</p></div>

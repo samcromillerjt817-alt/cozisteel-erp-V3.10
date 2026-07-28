@@ -738,21 +738,83 @@ removido, trava de edição fora de `draft`/`picking`.
 manifesto). **Item 6 PARCIAL: Expedição completa. Fechamento Mensal (a segunda metade do item 6)
 ainda não implementado — próximo passo.**
 
+## PARTE 14 — Item 6 (parte 2) implementado: Fechamento Mensal (2026-07-28)
+
+Decisão #5 (Parte 5) exigia um campo próprio de competência — nunca reaproveitando vencimento nem
+pagamento, os três conceitos deliberadamente nunca confundidos: vencimento é obrigação prevista,
+pagamento é caixa realizado, competência é o período econômico/contábil do lançamento em si. Último
+domínio genuinamente novo da sequência.
+
+**Schema (aditivo)**: `AccountPayable`/`AccountReceivable` ganham `competenceDate DateTime
+@default(now())` — preenchido automaticamente na criação (Conta a Pagar usa a data do recebimento do
+Pedido de Compra — o próprio momento em que `upsertPayableFromPurchaseOrder` é chamado; Conta a
+Receber usa a data da fatura — o momento de `createReceivableFromInvoice`). Nova tabela
+`PeriodClosing` — uma linha por competência ("AAAA-MM"), `status: closed | reopened`; histórico de
+quem fechou/reabriu quando já vive no `AuditLog` genérico (achado do levantamento, item 13) — esta
+tabela só guarda o estado atual do período, não um histórico de fechamentos/reaberturas repetidos.
+
+**Trava aplicada nos 4 métodos de mutação + 2 de criação do Financeiro**: `registerPayment`,
+`registerReceipt`, `cancelPayable`, `cancelReceivable`, `upsertPayableFromPurchaseOrder` e
+`createReceivableFromInvoice` — todos chamam `periodClosingService.assertPeriodOpen()` contra a
+`competenceDate` do título (nunca contra a data do pagamento/vencimento, que são conceitos de caixa
+à parte) antes de mutar. Fluxo de Caixa (`getProjectedCashFlow`) **não foi tocado** — continua usando
+vencimento/pagamento normalmente, exatamente como a decisão exige.
+
+**Alteração manual de competência**: `financialAccountService.updateCompetenceDate()` — gated por
+`financeiro:manage` (não só `update`, a mesma permissão especial da Central de Administração/Alçadas)
+e motivo sempre obrigatório (validado no DTO). Bloqueia tanto se o período ATUAL do título estiver
+fechado quanto se o período DESTINO estiver fechado — não dá pra tirar nem pra empurrar um
+lançamento para dentro de uma competência já fechada.
+
+**Exposição**: `GET/POST /api/financeiro/fechamentos` (listar + fechar), `POST
+/api/financeiro/fechamentos/[period]/reabrir`, `POST /api/financeiro/contas-a-pagar/[id]/competencia`
+e `.../contas-a-receber/[id]/competencia` (alteração manual). Nova aba "Fechamento Mensal" em
+Financeiro (4ª aba, ao lado de Relatórios): fechar/reabrir competência com motivo, histórico de quem
+fechou/reabriu quando. `competenceDate` também passou a aparecer no detalhe de Conta a Pagar/Receber.
+
+**Achado real durante os testes, corrigido antes do commit**: fechar a competência ATUAL (necessário
+pra testar o bloqueio, já que todo título novo nasce com `competenceDate = hoje`) exigia limpeza
+cuidadosa no `afterAll` de teste — um `StockMovement` órfão (gerado pelo recebimento de Pedido de
+Compra) bloqueava a exclusão do usuário de teste com violação de FK, quebrando a suíte inteira se um
+teste anterior falhasse no meio do `afterAll`. Corrigido adicionando a limpeza de `StockMovement` por
+`referenceId`, e documentado aqui como lembrete: qualquer teste que force o fechamento do mês
+corrente precisa ser hiper cuidadoso para nunca deixar a competência atual fechada para os demais
+arquivos de teste que rodam contra o mesmo `test.db`.
+
+**Fora de escopo, deliberado**: conciliação bancária (Decisão #5 já marcava como "futura"); UI
+dedicada para o fluxo de alteração manual de competência (rota/service prontos e testados, só sem
+botão na tela — mesmo tipo de corte menor já aceito no item 4, edição de notas/effectiveFrom da
+BomRevision).
+
+7 testes novos (`period-closing.test.ts`): formato de período inválido recusado, fecha/reabre um
+período passado sem afetar nada, recusa reabrir período nunca fechado, fechar a competência atual
+bloqueia pagamento/recebimento/cancelamento nos títulos gerados nela (reabrindo, volta a funcionar),
+`updateCompetenceDate` recusa mover para dentro de um período fechado e funciona normalmente entre
+períodos abertos.
+
+**Verificação**: tsc limpo, lint 55→56 (+1 real, mesmo padrão de fetch-em-efeito já aceito —
+`fechamentos-tab.tsx`), 405/405 testes (7 novos), build limpo (4 rotas novas confirmadas no
+manifesto). **Item 6 completo — Expedição (Parte 13) e Fechamento Mensal (Parte 14), os dois últimos
+domínios genuinamente novos da sequência.**
+
 ## Conclusão
 
 Esta rodada mudou uma suposição importante: vários itens que pareciam "faltando" no pedido original já
 têm boa parte da engenharia pronta e só nunca foram conectados — Faturamento foi o primeiro caso
 (existia, testado, zero rota), seguido por MRP (Parte 10) e BOM formal (Parte 11), os três com
-exatamente o mesmo padrão "motor pronto, zero exposição". Já os itens 5 (Parte 12) e 6 (Parte 13)
-foram o oposto: nada existia, e cada um exigiu decisões de desenho genuinamente novas — o item 5
+exatamente o mesmo padrão "motor pronto, zero exposição". Já os itens 5 (Parte 12) e 6 (Partes 13 e
+14) foram o oposto: nada existia, e cada um exigiu decisões de desenho genuinamente novas — o item 5
 religando 3 fluxos estáveis a um motor novo em vez de um atalho, o item 6 introduzindo a primeira
 mudança de comportamento desta iniciativa que remove uma capacidade manual (`in_production →
-completed` direto), consequência correta e documentada da própria decisão do usuário. As 6 decisões
-pendentes foram todas resolvidas (Parte 5), e os itens 1 (Faturamento, Parte 7), 2 (Estorno —
-recebimento de compra e produção, Partes 8 e 9), 3 (MRP exposto, Parte 10), 4 (BOM formal exposta,
-Parte 11), 5 (motor de alçadas, Parte 12) e a primeira metade do item 6 (Expedição, Parte 13) da
-sequência já estão completos e testados, incluindo o caso mais arriscado de todo o levantamento
-(estorno de produção) e um bug real de tipo encontrado e corrigido
-antes do commit (`leadTimeDays` nunca lido de verdade, Parte 10). Próximo passo: a segunda metade do
-item 6 — Fechamento Mensal (competência contábil, trava de período), o último domínio genuinamente
-novo da sequência.
+completed` direto), consequência correta e documentada da própria decisão do usuário, e um segundo
+domínio 100% novo (Fechamento Mensal) protegendo os 4 métodos de mutação do Financeiro com uma trava
+que nunca existiu.
+
+**As 6 decisões pendentes foram todas resolvidas (Parte 5), e todos os 6 itens da sequência de
+implementação definida pelo usuário (Parte 6) estão completos e testados**: 1 (Faturamento, Parte 7),
+2 (Estorno — recebimento de compra e produção, Partes 8 e 9), 3 (MRP exposto, Parte 10), 4 (BOM formal
+exposta, Parte 11), 5 (motor de alçadas, Parte 12) e 6 (Expedição + Fechamento Mensal, Partes 13 e
+14) — incluindo o caso mais arriscado de todo o levantamento (estorno de produção), um bug real de
+tipo encontrado e corrigido antes do commit (`leadTimeDays` nunca lido de verdade, Parte 10), e uma
+mudança de comportamento deliberada e documentada com todo o peso que merece (`in_production →
+completed` direto removido, Parte 13). **ADR-023 está fechado.**

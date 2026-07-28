@@ -31,6 +31,11 @@ class AccountReceivableRepository extends BaseRepository<typeof db.accountReceiv
     return this.delegate.create({ data: data as any, include: DETAIL_INCLUDE })
   }
 
+  /** ADR-023 (item 6, Decisão #5) — mesmo propósito de AccountPayableRepository.updateCompetenceDate. */
+  updateCompetenceDate(id: string, competenceDate: Date) {
+    return this.delegate.update({ where: { id }, data: { competenceDate }, include: DETAIL_INCLUDE })
+  }
+
   /** Registra uma baixa (recebimento) e recalcula o status do título — numa única transação, mesmo
    * princípio de `purchaseOrderRepository.receiveItems()` (leitura+escrita consistente, sem window
    * de corrida entre o `Σ` de recebimentos já feitos e a definição do novo status). */

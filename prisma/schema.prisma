@@ -130,6 +130,8 @@ model User {
   payments                  Payment[]
   approvalRecords           ApprovalRecord[]
   shipments                 Shipment[]
+  periodClosingsClosed      PeriodClosing[]            @relation("PeriodClosingClosedBy")
+  periodClosingsReopened    PeriodClosing[]            @relation("PeriodClosingReopenedBy")
 
   @@index([role])
   @@index([active])
@@ -1262,6 +1264,12 @@ model AccountReceivable {
   invoice   Invoice  @relation(fields: [invoiceId], references: [id])
   amount    Float
   dueDate   DateTime
+  // ADR-023 (item 6, Decisão #5) — período econômico/contábil do lançamento, NUNCA confundido com
+  // dueDate (obrigação prevista) nem com Receipt.paidAt (caixa realizado). Preenchido automaticamente
+  // com a data da fatura no momento da criação; alterar depois exige `financeiro:manage` + motivo
+  // (ver `periodClosingService`/`updateCompetenceDate`). O Fluxo de Caixa continua usando
+  // dueDate/paidAt normalmente — competência não substitui a visão de caixa.
+  competenceDate DateTime @default(now())
   status    String   @default("open") // open, partially_paid, paid, cancelled
   notes     String   @default("")
   createdAt DateTime @default(now())
@@ -1272,6 +1280,7 @@ model AccountReceivable {
   receipts Receipt[]
 
   @@index([status])
+  @@index([competenceDate])
 }
 
 model Receipt {
@@ -1295,6 +1304,9 @@ model AccountPayable {
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
   amount          Float
   dueDate         DateTime
+  // ADR-023 (item 6, Decisão #5) — mesmo conceito de AccountReceivable.competenceDate. Preenchido
+  // automaticamente com a data do recebimento do pedido de compra no momento da criação do título.
+  competenceDate DateTime @default(now())
   status          String        @default("open") // open, partially_paid, paid, cancelled
   notes           String        @default("")
   createdAt       DateTime      @default(now())
@@ -1305,6 +1317,7 @@ model AccountPayable {
   payments Payment[]
 
   @@index([status])
+  @@index([competenceDate])
 }
 
 model Payment {
@@ -1363,4 +1376,26 @@ model ApprovalRecord {
 
   @@unique([approvalRuleId, documentId, userId])
   @@index([documentType, documentId])
+}
+
+// ── FECHAMENTO MENSAL (ADR-023, item 6, Decisão #5) ─────
+// Trava por competência (não por vencimento/pagamento) — bloqueia inclusão, alteração, cancelamento e
+// baixa retroativa de Contas a Pagar/Receber cuja `competenceDate` caia dentro de um período fechado.
+// Uma linha por período ("YYYY-MM"); reabrir não apaga a linha, só marca `reopened` — fechar de novo
+// sobrescreve `closedAt`/`closedById`. Histórico de quem fechou/reabriu quando já vive no `AuditLog`
+// genérico (achado do levantamento, item 13) — esta tabela só guarda o ESTADO atual do período.
+model PeriodClosing {
+  id           String    @id @default(cuid())
+  period       String    @unique // "YYYY-MM"
+  status       String    @default("closed") // closed, reopened
+  closedAt     DateTime  @default(now())
+  closedById   String
+  closedBy     User      @relation("PeriodClosingClosedBy", fields: [closedById], references: [id])
+  reopenedAt   DateTime?
+  reopenedById String?
+  reopenedBy   User?     @relation("PeriodClosingReopenedBy", fields: [reopenedById], references: [id])
+  notes        String    @default("")
+
+  @@index([period])
+  @@index([status])
 }
