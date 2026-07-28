@@ -38,6 +38,7 @@ export type StatusDomain =
   | 'bom'
   | 'financeiro'
   | 'invoice'
+  | 'shipment'
 
 export const domainStatusCategory: Record<StatusDomain, Record<string, StatusCategory>> = {
   quote: {
@@ -56,8 +57,14 @@ export const domainStatusCategory: Record<StatusDomain, Record<string, StatusCat
   productionOrder: {
     planned: 'pending', in_progress: 'info', paused: 'warning', completed: 'completed', cancelled: 'cancelled',
   },
+  // ADR-023 (item 6, Decisão #3) — ready_for_shipping/partially_fulfilled novos; completed agora só
+  // é alcançado via recalculateFulfillment (100% expedido), nunca escolhido manualmente.
   salesOrder: {
-    open: 'pending', in_production: 'info', completed: 'completed', cancelled: 'cancelled',
+    open: 'pending', in_production: 'info', ready_for_shipping: 'info', partially_fulfilled: 'warning',
+    completed: 'completed', cancelled: 'cancelled',
+  },
+  shipment: {
+    draft: 'pending', picking: 'info', ready: 'info', shipped: 'warning', delivered: 'completed', cancelled: 'cancelled',
   },
   stockMovement: {
     IN: 'success', OUT: 'error', ADJUST: 'warning',

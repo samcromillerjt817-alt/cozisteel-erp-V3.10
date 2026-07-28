@@ -234,6 +234,37 @@ export const reverseStockMovementSchema = z.object({
   reason: z.string().min(1, 'Informe o motivo do estorno'),
 })
 
+// ADR-023 (item 6, Decisão #3, Expedição)
+
+export const createShipmentItemSchema = z.object({
+  salesOrderItemId: z.string(),
+  quantity: z.number().positive('Quantidade deve ser maior que zero'),
+})
+
+export const createShipmentSchema = z.object({
+  carrier: z.string().default(''),
+  vehiclePlate: z.string().default(''),
+  driverName: z.string().default(''),
+  scheduledDate: z.string().optional().nullable(),
+  notes: z.string().default(''),
+  items: z.array(createShipmentItemSchema).min(1, 'Informe ao menos um item a expedir'),
+})
+
+export const updateShipmentSchema = z.object({
+  carrier: z.string().default(''),
+  vehiclePlate: z.string().default(''),
+  driverName: z.string().default(''),
+  scheduledDate: z.string().optional().nullable(),
+  proofDocument: z.string().default(''),
+  notes: z.string().default(''),
+})
+
+export const SHIPMENT_STATUSES = ['draft', 'picking', 'ready', 'shipped', 'delivered', 'cancelled'] as const
+
+export const changeShipmentStatusSchema = z.object({
+  status: z.enum(SHIPMENT_STATUSES),
+})
+
 export const updatePurchaseOrderSchema = z.object({
   expectedDate: z.string().optional(),
   paymentTerms: z.string().optional(),
@@ -351,6 +382,9 @@ export type BomLineSubstituteDto = z.infer<typeof bomLineSubstituteSchema>
 export type ApprovalRuleDto = z.infer<typeof approvalRuleSchema>
 export type CreateInvoiceDto = z.infer<typeof createInvoiceSchema>
 export type ReverseStockMovementDto = z.infer<typeof reverseStockMovementSchema>
+export type CreateShipmentDto = z.infer<typeof createShipmentSchema>
+export type UpdateShipmentDto = z.infer<typeof updateShipmentSchema>
+export type ChangeShipmentStatusDto = z.infer<typeof changeShipmentStatusSchema>
 
 export function validateDto<T>(schema: z.ZodType<T>, data: unknown): T {
   const result = schema.safeParse(data)

@@ -40,7 +40,12 @@ class SalesOrderRepository extends BaseRepository<typeof db.salesOrder> {
   findByIdWithProductionOrders(id: string) {
     return this.delegate.findUnique({
       where: { id },
-      include: { productionOrders: { select: { id: true, number: true, status: true } } },
+      include: {
+        productionOrders: { select: { id: true, number: true, status: true } },
+        // ADR-023 (item 6) — mesma guarda de cancelamento já aplicada a Ordem de Produção, agora
+        // também considera Expedição ativa vinculada.
+        shipments: { select: { id: true, number: true, status: true } },
+      },
     })
   }
 
@@ -56,6 +61,31 @@ class SalesOrderRepository extends BaseRepository<typeof db.salesOrder> {
           },
         },
       },
+    })
+  }
+
+  // ADR-023 (item 6, Decisão #3, Expedição) — mesmo padrão de findByIdWithInvoiceableItems: só conta
+  // `ShipmentItem` de Shipments NÃO canceladas, pra "quantidade já expedida" nunca contar uma
+  // expedição cancelada.
+  findByIdWithShippableItems(id: string) {
+    return this.delegate.findUnique({
+      where: { id },
+      include: {
+        items: {
+          include: {
+            shipmentItems: { where: { shipment: { status: { not: 'cancelled' } } }, select: { quantity: true } },
+          },
+        },
+      },
+    })
+  }
+
+  // Usado pela guarda de cancelamento (bloqueia cancelar um Pedido com expedição ativa) e por
+  // `recalculateFulfillment` (decide partially_fulfilled vs completed a partir do que já saiu).
+  findByIdWithShipments(id: string) {
+    return this.delegate.findUnique({
+      where: { id },
+      include: { shipments: { select: { id: true, number: true, status: true } } },
     })
   }
 

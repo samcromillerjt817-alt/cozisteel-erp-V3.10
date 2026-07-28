@@ -68,7 +68,7 @@ model AuditLog {
 // consulta complexa nesta fase.
 model StatusHistory {
   id         String   @id @default(cuid())
-  entityType String // "quote" | "sales_order" | "production_order" | "requisition" | "purchase_order" | "bom_revision"
+  entityType String // "quote" | "sales_order" | "production_order" | "requisition" | "purchase_order" | "bom_revision" | "shipment"
   entityId   String
   fromStatus String
   toStatus   String
@@ -129,6 +129,7 @@ model User {
   accountPayables           AccountPayable[]
   payments                  Payment[]
   approvalRecords           ApprovalRecord[]
+  shipments                 Shipment[]
 
   @@index([role])
   @@index([active])
@@ -722,7 +723,13 @@ model ProductImage {
 model SalesOrder {
   id            String   @id @default(cuid())
   number        String   @unique
-  status        String   @default("open") // open, in_production, completed, cancelled
+  // ADR-023 (item 6, Decisão #3): open, in_production, ready_for_shipping, partially_fulfilled,
+  // completed, cancelled. "ready_for_shipping" ainda é transição manual; "partially_fulfilled" e o
+  // novo sentido de "completed" (só quando 100% expedido) passam a ser calculados automaticamente
+  // por `salesOrderService.recalculateFulfillment()` a partir das quantidades somadas de Shipment,
+  // nunca escolhidos manualmente pelo usuário — só quem estava disponível antes desta mudança
+  // (open/in_production/cancelled) continua alcançável por `changeStatus()`.
+  status        String   @default("open")
   date          String
   quoteId       String   @unique // 1 orçamento -> no máximo 1 pedido de venda
   quote         Quote    @relation(fields: [quoteId], references: [id])
@@ -744,6 +751,7 @@ model SalesOrder {
   items            SalesOrderItem[]
   productionOrders ProductionOrder[]
   invoices         Invoice[] // Fase 12, ADR-016 — 1 Pedido de Venda pode gerar N faturas (faturamento parcial)
+  shipments        Shipment[] // ADR-023 (item 6) — 1 Pedido de Venda pode gerar N expedições (entrega parcial)
 
   @@index([quoteId])
   @@index([clientId])
@@ -765,10 +773,55 @@ model SalesOrderItem {
   total        Float      @default(0)
   order        Int        @default(0)
 
-  invoiceItems InvoiceItem[]
+  invoiceItems  InvoiceItem[]
+  shipmentItems ShipmentItem[] // ADR-023 (item 6)
 
   @@index([salesOrderId])
   @@index([productId])
+}
+
+// ── EXPEDIÇÃO (ADR-023, item 6, Decisão #3) ─────────────
+// Máquina de estados PRÓPRIA, separada da do Pedido de Venda de propósito — produção e expedição são
+// processos diferentes, com ritmos e responsáveis diferentes; misturar os dois num único enum forçaria
+// estados artificiais ("expedido parcial") no lugar errado. Várias Shipments por Pedido (entregas
+// parciais reais, não um placeholder) — quem determina se o Pedido está parcial ou totalmente atendido
+// são as quantidades somadas de todas as Shipments não canceladas, nunca um status escolhido à mão.
+
+model Shipment {
+  id            String     @id @default(cuid())
+  number        String     @unique // via NumberingService "expedicao"
+  salesOrderId  String
+  salesOrder    SalesOrder @relation(fields: [salesOrderId], references: [id])
+  status        String     @default("draft") // draft, picking, ready, shipped, delivered, cancelled
+  carrier       String     @default("") // transportadora
+  vehiclePlate  String     @default("") // veículo
+  driverName    String     @default("") // motorista
+  scheduledDate DateTime? // data prevista de saída
+  shippedAt     DateTime? // data efetiva de saída — marca o momento em que a quantidade passa a contar como atendida
+  deliveredAt   DateTime? // data efetiva de entrega
+  proofDocument String     @default("") // comprovante de entrega — caminho/URL, texto livre nesta versão (sem upload dedicado)
+  notes         String     @default("")
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  userId        String
+  user          User       @relation(fields: [userId], references: [id])
+
+  items ShipmentItem[]
+
+  @@index([salesOrderId])
+  @@index([status])
+}
+
+model ShipmentItem {
+  id               String         @id @default(cuid())
+  shipmentId       String
+  shipment         Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  salesOrderItemId String
+  salesOrderItem   SalesOrderItem @relation(fields: [salesOrderItemId], references: [id])
+  quantity         Float // quantidade expedida nesta remessa, para este item
+
+  @@index([shipmentId])
+  @@index([salesOrderItemId])
 }
 
 // ── REQUISIÇÕES DE MATÉRIA-PRIMA (compra ao fornecedor) ─

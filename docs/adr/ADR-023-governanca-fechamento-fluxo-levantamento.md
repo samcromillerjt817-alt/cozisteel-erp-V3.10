@@ -679,18 +679,80 @@ externas, ainda não implementado).
 `alcadas-tab.tsx`), 388/388 testes (10 novos), build limpo (2 rotas novas confirmadas no
 manifesto). **Item 5 da sequência (motor de alçadas) completo.**
 
+## PARTE 13 — Item 6 (parcial) implementado: Expedição (2026-07-28)
+
+Decisão #3 (Parte 5) exigia duas máquinas de estado separadas — o Pedido de Venda não ganha todos os
+status de expedição diretamente; uma entidade nova (`Shipment`) tem sua própria máquina, e quem
+determina se o Pedido está parcial ou totalmente atendido são as quantidades somadas de todas as
+Shipments não canceladas, nunca um status escolhido manualmente. Implementado o modelo completo desde
+já, não um placeholder.
+
+**Schema (aditivo)**: `Shipment` (transportadora, veículo, motorista, datas prevista/efetiva,
+comprovante, `draft → picking → ready → shipped → delivered` + `cancelled`) e `ShipmentItem`
+(quantidade expedida por item do Pedido). `SalesOrder.status` ganha `ready_for_shipping` e
+`partially_fulfilled` — sem migração de coluna, só novos valores de string.
+
+**Mudança de comportamento deliberada, a primeira desta iniciativa que remove uma capacidade manual
+já existente**: `in_production → completed` direto foi removido do mapa de transições do Pedido de
+Venda. Antes desta mudança, o usuário podia marcar "Concluído" manualmente assim que a produção
+terminasse; agora "completed" só é alcançado automaticamente, via `recalculateFulfillment()`, quando
+100% da quantidade de todos os itens já foi expedida (`status = 'shipped'` ou `'delivered'` em pelo
+menos uma Shipment não cancelada). Consequência direta e correta da Decisão #3 ("quem determina...
+são as quantidades, nunca uma escolha manual"), documentada aqui com todo o peso que merece — nenhum
+teste existente cobria esse caminho (`in_production → completed` nunca tinha um teste dedicado), então
+não há regressão detectável por teste, só pela leitura desta ADR.
+
+**Fluxo completo**: `open → in_production` (manual, como antes) `→ ready_for_shipping` (manual, novo)
+`→` [uma ou mais `Shipment`s: `draft → picking → ready → shipped`, cada `shipped` chama
+`recalculateFulfillment`] `→ partially_fulfilled` (automático, enquanto sobrar saldo) `→ completed`
+(automático, saldo zerado). `delivered` é só confirmação de chegada — não recalcula nada, o Pedido já
+contava como atendido desde o embarque (`shipped`).
+
+**Guarda de cancelamento estendida**: cancelar o Pedido de Venda agora também é bloqueado quando existe
+Expedição não cancelada vinculada (mesmo padrão já aplicado à Ordem de Produção) — nomeando a(s)
+expedição(ões) no erro, mesma disciplina de mensagem acionável das Partes 8/9.
+
+**Exposição**: `GET/POST /api/sales-orders/[id]/shipments` (balanço expedível + histórico, mesmo
+formato combinado já usado no Faturamento), `GET/PUT /api/shipments/[id]`, `POST
+/api/shipments/[id]/status`. Todas gated por `orcamentos` (mesmo módulo do Pedido de Venda — não
+existe módulo RBAC próprio de logística). Nova seção "Expedição" no `DetailDrawer` de Pedidos de
+Venda, ao lado de Faturamento: saldo expedível por item com quantidade pré-selecionada no total
+restante (mesma convenção do Faturamento), criação de expedição, transição de status por `Select`
+(mesmo padrão de Pedidos/Compras/Produção), edição restrita a `draft`/`picking`.
+
+**Fora de escopo, deliberado**: upload real de arquivo para o comprovante de entrega (campo é texto
+livre — URL/caminho — sem endpoint de upload dedicado nesta rodada); qualquer UI de rastreamento em
+trânsito; notificação automática ao cliente na entrega (depende do item de notificações externas,
+ainda não implementado).
+
+10 testes novos (`shipment.test.ts`): bloqueio de criação fora de `ready_for_shipping`/
+`partially_fulfilled`, expedição parcial não recalcula antes de `shipped`, segunda expedição
+completando o saldo leva a `completed`, recusa exceder saldo restante, `shipped` não pode ser
+cancelada mas `draft` pode, expedição cancelada não conta no saldo (pode expedir de novo
+integralmente), bloqueio de cancelamento do Pedido com expedição ativa, liberação do cancelamento
+quando a única expedição está cancelada, confirmação de que `in_production → completed` direto foi
+removido, trava de edição fora de `draft`/`picking`.
+
+**Verificação**: tsc limpo, lint 54→55 (+1 real, mesmo padrão de fetch-em-efeito já aceito —
+`shipment-section.tsx`), 398/398 testes (10 novos), build limpo (3 rotas novas confirmadas no
+manifesto). **Item 6 PARCIAL: Expedição completa. Fechamento Mensal (a segunda metade do item 6)
+ainda não implementado — próximo passo.**
+
 ## Conclusão
 
 Esta rodada mudou uma suposição importante: vários itens que pareciam "faltando" no pedido original já
 têm boa parte da engenharia pronta e só nunca foram conectados — Faturamento foi o primeiro caso
 (existia, testado, zero rota), seguido por MRP (Parte 10) e BOM formal (Parte 11), os três com
-exatamente o mesmo padrão "motor pronto, zero exposição". Já o item 5 (Parte 12) foi o oposto: nada
-existia, e a decisão do usuário exigia religar 3 fluxos estáveis a um motor novo em vez de um atalho —
-o risco real desta rodada, mitigado por manter a política implícita idêntica ao comportamento anterior
-e por um teste de integração dedicado confirmando o bloqueio real de status. As 6 decisões pendentes
-foram todas resolvidas (Parte 5), e os itens 1 (Faturamento, Parte 7), 2 (Estorno — recebimento de
-compra e produção, Partes 8 e 9), 3 (MRP exposto, Parte 10), 4 (BOM formal exposta, Parte 11) e 5
-(motor de alçadas, Parte 12) da sequência já estão completos e testados, incluindo o caso mais
-arriscado de todo o levantamento (estorno de produção) e um bug real de tipo encontrado e corrigido
-antes do commit (`leadTimeDays` nunca lido de verdade, Parte 10). Próximo passo: item 6 da Parte 6 —
-Expedição e Fechamento Mensal, os dois domínios genuinamente novos deixados por último de propósito.
+exatamente o mesmo padrão "motor pronto, zero exposição". Já os itens 5 (Parte 12) e 6 (Parte 13)
+foram o oposto: nada existia, e cada um exigiu decisões de desenho genuinamente novas — o item 5
+religando 3 fluxos estáveis a um motor novo em vez de um atalho, o item 6 introduzindo a primeira
+mudança de comportamento desta iniciativa que remove uma capacidade manual (`in_production →
+completed` direto), consequência correta e documentada da própria decisão do usuário. As 6 decisões
+pendentes foram todas resolvidas (Parte 5), e os itens 1 (Faturamento, Parte 7), 2 (Estorno —
+recebimento de compra e produção, Partes 8 e 9), 3 (MRP exposto, Parte 10), 4 (BOM formal exposta,
+Parte 11), 5 (motor de alçadas, Parte 12) e a primeira metade do item 6 (Expedição, Parte 13) da
+sequência já estão completos e testados, incluindo o caso mais arriscado de todo o levantamento
+(estorno de produção) e um bug real de tipo encontrado e corrigido
+antes do commit (`leadTimeDays` nunca lido de verdade, Parte 10). Próximo passo: a segunda metade do
+item 6 — Fechamento Mensal (competência contábil, trava de período), o último domínio genuinamente
+novo da sequência.

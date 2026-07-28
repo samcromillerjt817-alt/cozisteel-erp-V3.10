@@ -16,7 +16,7 @@ interface StatusHistoryEntry {
 interface StatusTimelineProps {
   /** Valor bruto gravado em `StatusHistory.entityType` (snake_case — ver `prisma/schema.prisma`),
    * nunca o mesmo literal de `StatusDomain` (camelCase, usado só pra cor do badge). */
-  entityType: 'quote' | 'sales_order' | 'production_order' | 'requisition' | 'purchase_order' | 'bom_revision'
+  entityType: 'quote' | 'sales_order' | 'production_order' | 'requisition' | 'purchase_order' | 'bom_revision' | 'shipment'
   entityId: string
   domain: StatusDomain
   labels: Record<string, string>
