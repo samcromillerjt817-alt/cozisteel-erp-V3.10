@@ -14,7 +14,12 @@ const DETAIL_INCLUDE = {
     include: {
       material: { select: { id: true, name: true, unit: true } },
       componentProduct: { select: { id: true, name: true, internalCode: true, unit: true } },
+      substitutes: { include: { material: { select: { id: true, name: true, unit: true } } } },
     },
+  },
+  operations: {
+    orderBy: { sequenceOrder: 'asc' as const },
+    include: { operationType: { select: { id: true, name: true } } },
   },
 }
 

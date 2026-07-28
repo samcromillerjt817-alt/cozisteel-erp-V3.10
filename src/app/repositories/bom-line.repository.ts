@@ -4,6 +4,7 @@ import { BaseRepository } from './base.repository'
 const MUTATION_INCLUDE = {
   material: { select: { id: true, name: true, unit: true } },
   componentProduct: { select: { id: true, name: true, internalCode: true, unit: true } },
+  substitutes: { include: { material: { select: { id: true, name: true, unit: true } } } },
 }
 
 class BomLineRepository extends BaseRepository<typeof db.bomLine> {

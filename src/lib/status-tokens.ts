@@ -71,10 +71,10 @@ export const domainStatusCategory: Record<StatusDomain, Record<string, StatusCat
   userStatus: {
     active: 'success', inactive: 'cancelled',
   },
-  // Nenhuma tela ainda renderiza status de BOM via `StatusBadge` (não há UI de BOM nesta fase) —
-  // entrada adicionada por completude/future-proofing (achado da auditoria), não corrige um bug visível.
+  // ADR-023 (item 4) — primeira tela real usando este domínio (entrada existia por completude desde
+  // antes, sem nenhuma UI de BOM). `pending_approval` adicionado junto com o status novo, opcional.
   bom: {
-    draft: 'pending', released: 'success', obsolete: 'cancelled',
+    draft: 'pending', pending_approval: 'warning', released: 'success', obsolete: 'cancelled',
   },
   // Fase 12 (Financeiro), Subetapa 7-UI — mesmo domínio de status para Contas a Pagar e a Receber
   // (os dois modelos usam exatamente o mesmo vocabulário, `financial-account.service.ts`).

@@ -72,6 +72,7 @@ model StatusHistory {
   entityId   String
   fromStatus String
   toStatus   String
+  reason     String   @default("") // motivo da transição, texto livre — opcional (ADR-023, item 4). Vazio para toda transição anterior a esta mudança e para quem não informar.
   userId     String
   user       User     @relation(fields: [userId], references: [id])
   createdAt  DateTime @default(now())
@@ -249,6 +250,7 @@ model Material {
   materialReservations MaterialReservation[] @relation("MaterialReservationMaterial")
   mrpSuggestions       MrpSuggestion[] // sugestões de compra geradas para este material (Fase 6, ADR-007)
   materialBatches      MaterialBatch[] // lotes recebidos deste material (Fase 10, ADR-013)
+  bomLineSubstitutions BomLineSubstitute[] // este material listado como substituto de alguma linha (ADR-023, item 4)
 
   @@index([internalCode])
   @@index([categoryId])
@@ -425,7 +427,7 @@ model BomRevision {
   productId     String
   product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
   revisionCode  String // "A", "B", "01"... convenção da empresa, não fixada aqui
-  status        String    @default("draft") // draft, released, obsolete
+  status        String    @default("draft") // draft, pending_approval, released, obsolete (pending_approval opcional — ADR-023, item 4: draft ainda pode ir direto a released, mesmo comportamento de antes)
   effectiveFrom DateTime?
   notes         String    @default("")
   createdById   String
@@ -464,9 +466,30 @@ model BomLine {
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
 
+  substitutes BomLineSubstitute[] // materiais substitutos aceitos para esta linha (ADR-023, item 4) — só informativo nesta versão, não consumido por MRP/Reserva/Produção
+
   @@index([bomRevisionId])
   @@index([materialId])
   @@index([componentProductId])
+}
+
+// Material substituto aceito para uma linha de material de uma BomRevision (ADR-023, item 4) —
+// conceito que não existia em nenhum lugar do schema. Só documental/informativo nesta versão: MRP,
+// Reserva de Material e consumo de Produção continuam usando exclusivamente `BomLine.materialId`,
+// nunca escolhendo automaticamente entre os substitutos — isso seria uma mudança de comportamento
+// muito maior, fora do escopo de só "existir o conceito" pedido no levantamento.
+model BomLineSubstitute {
+  id         String   @id @default(cuid())
+  bomLineId  String
+  bomLine    BomLine  @relation(fields: [bomLineId], references: [id], onDelete: Cascade)
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+  notes      String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@unique([bomLineId, materialId])
+  @@index([bomLineId])
+  @@index([materialId])
 }
 
 // Catálogo mestre de tipos de operação — só o "o quê" (nome/descrição), reaproveitável entre

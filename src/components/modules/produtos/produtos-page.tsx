@@ -16,6 +16,7 @@ import { ProdutoFormFields } from './produto-form-fields'
 import { ProdutoImages } from './produto-images'
 import { ProdutoMaterialLinks } from './produto-material-links'
 import { ProdutoAuxiliaryCard } from './produto-auxiliary-card'
+import { ProdutoBomSection } from './produto-bom-section'
 import { EMPTY_PRODUCT_FORM, productToFormData, type ProductListItem, type ProductFormData, type ProductImage, type ProductMaterialLink } from './types'
 
 interface ProdutosPageProps {
@@ -318,6 +319,7 @@ export function ProdutosPage({ categories, materials, materialsFull, onCatalogCh
         <ProdutoFormFields form={form} onChange={setForm} categories={categories} materials={materials} />
         {editingId && <ProdutoImages images={images} uploading={imageUploading} onUpload={uploadImage} onSetPrimary={setPrimaryImage} onDelete={deleteImage} />}
         {editingId && <ProdutoMaterialLinks links={materialLinks} materialsFull={materialsFull} onLink={linkMaterial} onUnlink={unlinkMaterial} />}
+        {editingId && <ProdutoBomSection productId={editingId} materialsFull={materialsFull} />}
       </FormDialog>
     </div>
   )

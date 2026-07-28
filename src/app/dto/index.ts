@@ -300,6 +300,18 @@ export const productOperationSchema = z.object({
   notes: z.string().default(''),
 })
 
+// ADR-023 (item 4, "completar a BOM formal")
+
+export const changeBomRevisionStatusSchema = z.object({
+  status: z.enum(['draft', 'pending_approval', 'released', 'obsolete']),
+  reason: z.string().default(''),
+})
+
+export const bomLineSubstituteSchema = z.object({
+  materialId: z.string().min(1, 'Matéria-prima é obrigatória'),
+  notes: z.string().default(''),
+})
+
 export type CreateQuoteDto = z.infer<typeof createQuoteSchema>
 export type UpdateQuoteDto = z.infer<typeof updateQuoteSchema>
 export type CreateProductDto = z.infer<typeof createProductSchema>
@@ -318,6 +330,8 @@ export type CreateBomRevisionDto = z.infer<typeof createBomRevisionSchema>
 export type BomLineDto = z.infer<typeof bomLineSchema>
 export type CreateOperationTypeDto = z.infer<typeof createOperationTypeSchema>
 export type ProductOperationDto = z.infer<typeof productOperationSchema>
+export type ChangeBomRevisionStatusDto = z.infer<typeof changeBomRevisionStatusSchema>
+export type BomLineSubstituteDto = z.infer<typeof bomLineSubstituteSchema>
 export type CreateInvoiceDto = z.infer<typeof createInvoiceSchema>
 export type ReverseStockMovementDto = z.infer<typeof reverseStockMovementSchema>
 

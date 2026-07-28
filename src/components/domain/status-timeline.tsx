@@ -8,6 +8,7 @@ interface StatusHistoryEntry {
   id: string
   fromStatus: string
   toStatus: string
+  reason: string
   createdAt: string
   user: { id: string; name: string } | null
 }
@@ -58,6 +59,7 @@ export function StatusTimeline({ entityType, entityId, domain, labels }: StatusT
             <p className="text-xs text-muted-foreground">
               {e.user?.name || 'Sistema'} — {new Date(e.createdAt).toLocaleString('pt-BR')}
             </p>
+            {e.reason && <p className="text-xs italic">&ldquo;{e.reason}&rdquo;</p>}
           </div>
         </li>
       ))}

@@ -556,15 +556,81 @@ que os 5 campos realmente persistem via `mrpRunRepository.persist()`).
 confirmadas no manifesto: `/api/mrp/runs`, `/api/mrp/suggestions`, `/api/mrp/suggestions/[id]/approve`,
 `/api/mrp/suggestions/[id]/dismiss`). **Item 3 da sequência (MRP) completo.**
 
+## PARTE 11 — Item 4 da sequência implementado: BOM formal exposta (2026-07-28)
+
+**Achado real, maior que o diagnóstico original da Parte 2**: o item 10 dizia "a maior parte já
+existe", referindo-se ao Service (`bom.service.ts`) e ao schema (`BomRevision`/`BomLine`/
+`ProductOperation`), prontos e testados desde a Fase 4 (ADR-005). O que a Parte 2 não capturou: **zero
+rota de API e zero tela expunham esse motor** — `bomService` só era chamado por testes, exatamente o
+mesmo padrão "existe, testado, zero rota" já visto em Faturamento (Parte 7) e MRP (Parte 10). "Completar
+a BOM formal" acabou sendo duas coisas, não uma: construir a tela do zero, e só depois as 4 lacunas
+mapeadas (status "em aprovação", motivo da alteração, diff entre revisões, materiais substitutos).
+Apresentado ao usuário antes de prosseguir; confirmado fazer tudo na mesma rodada.
+
+**As 4 lacunas**:
+1. **Status "em aprovação"**: `pending_approval` adicionado como intermediário OPCIONAL entre `draft` e
+   `released` — `draft → released` direto continua permitido (mesmo comportamento de antes, mesmo
+   princípio de "política inicial simples que preserva o comportamento atual" já usado na Alçada, Parte
+   5). `ALLOWED_TRANSITIONS`: `draft → {pending_approval, released, obsolete}`,
+   `pending_approval → {released, draft, obsolete}`. Confirmado sem quebrar nenhum teste existente
+   (`bom-revision.test.ts` continua liberando direto de `draft`).
+2. **Motivo da alteração**: `StatusHistory` ganha `reason String @default("")` — campo genérico do
+   histórico de status, não só de BOM (usado por Orçamento, Pedido, OP, Requisição, Pedido de Compra
+   também, sempre opcional). `changeStatus()` de `bom.service.ts` passa a aceitar um 5º parâmetro
+   opcional; `StatusTimeline` (componente compartilhado, ADR-022) passa a exibir o motivo quando
+   informado — todo domínio que já usa o componente ganha a exibição de graça, não só BOM.
+3. **Diff entre revisões**: `bomService.compareRevisions(fromId, toId)` — recusa comparar revisões de
+   produtos diferentes; chave da linha é o item referenciado (material/componente), não o id da linha,
+   então uma linha recriada do zero pro mesmo item aparece como "alterada", nunca como remover+adicionar
+   falsos. Detecta adicionado/removido/alterado (quantidade, unidade, % de perda).
+4. **Materiais substitutos**: `BomLineSubstitute` (nova tabela) — só para linhas de matéria-prima,
+   nunca componente. **Deliberadamente só informativo nesta versão**: MRP, Reserva de Material e
+   consumo de Produção continuam usando exclusivamente `BomLine.materialId`, nunca escolhendo
+   automaticamente entre substitutos — isso seria uma mudança de comportamento muito maior (o sistema
+   precisaria decidir sozinho qual material usar), fora do escopo de só "o conceito existir" pedido no
+   levantamento.
+
+**Exposição** — primeira vez que o motor de engenharia tem qualquer rota de API: `GET/POST
+/api/products/[id]/bom-revisions`, `GET/PUT/DELETE /api/bom-revisions/[id]`, `POST
+/api/bom-revisions/[id]/status`, `GET/POST /api/bom-revisions/[id]/lines`, `PUT/DELETE
+.../lines/[lineId]`, `GET/POST .../lines/[lineId]/substitutes`, `DELETE
+.../substitutes/[substituteId]`, `GET/POST /api/bom-revisions/[id]/operations`, `PUT/DELETE
+.../operations/[operationId]`, `GET/POST /api/operation-types`, `GET /api/bom-revisions/compare`.
+Todas gated por `produtos:read`/`update`/`delete`, mesmo módulo do cadastro de Produto.
+
+**UI**: nova seção "Engenharia (BOM formal)" dentro do `FormDialog` de edição de Produto (mesmo
+tratamento de Imagens/Matérias-primas já usado nesta tela) — lista de revisões com ação "Ver/Editar
+Estrutura" (abre um `DetailDrawer` com linhas, operações e histórico de status), ações de mudança de
+status por transição válida (com motivo opcional), "Comparar com outra revisão", e exclusão (só
+rascunho). Dentro do detalhe: CRUD de linhas (material ou componente, com busca de produto via
+`SearchableSelect`), CRUD de operações (com criação inline de novo tipo de operação), e um diálogo de
+materiais substitutos por linha de matéria-prima.
+
+**Fora de escopo, deliberado**: MRP/Reserva/Produção escolherem automaticamente entre substitutos
+(mudança de comportamento maior, não pedida); edição de notas/`effectiveFrom` da revisão via UI (rota
+já existe, só não tem botão — nicety menor, não uma das 4 lacunas mapeadas).
+
+9 testes novos (`bom-formal.test.ts`): transição opcional via `pending_approval` nos dois sentidos,
+motivo gravado e motivo vazio por padrão, diff com adicionado/removido/alterado, diff recusa produtos
+diferentes, substitutos CRUD + recusa duplicado + recusa o próprio material + recusa em linha de
+componente + trava fora de rascunho.
+
+**Verificação**: tsc limpo, lint 49→53 (+4 reais, mesmo padrão de fetch-em-efeito já aceito nas Partes
+8/9/10 — os 4 componentes novos de UI), 378/378 testes (9 novos), build limpo (10 rotas novas
+confirmadas no manifesto). Não testado manualmente em navegador nesta rodada (sem processo PM2 ativo
+no momento da implementação) — verificação ficou na cobertura de teste de serviço + rota + build, não
+em clique real na tela. **Item 4 da sequência (BOM formal) completo.**
+
 ## Conclusão
 
 Esta rodada mudou uma suposição importante: vários itens que pareciam "faltando" no pedido original já
-têm boa parte da engenharia pronta e só nunca foram conectados — Faturamento foi o caso mais gritante
-(existia, testado, zero rota), seguido por MRP (motor sofisticado, zero UI, Parte 10) e BOM formal
-(quase completo). É exatamente por isso que a sequência de implementação real (Parte 6) prioriza esses
-três primeiro, à frente inclusive de itens que apareciam mais cedo na proposta original. As 6 decisões
-pendentes foram todas resolvidas (Parte 5), e os itens 1 (Faturamento, Parte 7), 2 (Estorno —
-recebimento de compra e produção, Partes 8 e 9) e 3 (MRP exposto, Parte 10) da sequência já estão
-completos e testados, incluindo o caso mais arriscado de todo o levantamento (estorno de produção) e um
-bug real de tipo encontrado e corrigido antes do commit (`leadTimeDays` nunca lido de verdade). Próximo
-passo: item 4 da Parte 6 — completar a BOM formal.
+têm boa parte da engenharia pronta e só nunca foram conectados — Faturamento foi o primeiro caso
+(existia, testado, zero rota), seguido por MRP (Parte 10) e BOM formal (Parte 11), os três com
+exatamente o mesmo padrão "motor pronto, zero exposição". É exatamente por isso que a sequência de
+implementação real (Parte 6) prioriza esses três primeiro, à frente inclusive de itens que apareciam
+mais cedo na proposta original. As 6 decisões pendentes foram todas resolvidas (Parte 5), e os itens 1
+(Faturamento, Parte 7), 2 (Estorno — recebimento de compra e produção, Partes 8 e 9), 3 (MRP exposto,
+Parte 10) e 4 (BOM formal exposta, Parte 11) da sequência já estão completos e testados, incluindo o
+caso mais arriscado de todo o levantamento (estorno de produção) e um bug real de tipo encontrado e
+corrigido antes do commit (`leadTimeDays` nunca lido de verdade, Parte 10). Próximo
+passo: item 5 da Parte 6 — criar o novo modelo configurável de alçadas.
