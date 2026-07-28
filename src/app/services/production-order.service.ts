@@ -1,3 +1,4 @@
+import { db } from '@/lib/db'
 import { productionOrderRepository } from '@/app/repositories/production-order.repository'
 import { bomRevisionRepository } from '@/app/repositories/bom-revision.repository'
 import { bomLineRepository } from '@/app/repositories/bom-line.repository'
@@ -6,6 +7,7 @@ import { numberingService } from '@/app/services/numbering.service'
 import { materialReservationService } from '@/app/services/material-reservation.service'
 import { reservationReconciliationService } from '@/app/services/reservation-reconciliation.service'
 import { statusHistoryService } from '@/app/services/status-history.service'
+import { auditService } from '@/app/services/audit.service'
 import { NotFoundException, BadRequestException } from '@/app/exceptions'
 import { checkTransition } from '@/lib/status-machine'
 import { domainEvents, DOMAIN_EVENTS } from '@/lib/domain-events'
@@ -263,6 +265,79 @@ class ProductionOrderService {
     }
 
     return result.order
+  }
+
+  /**
+   * ADR-023 (Decisão #1, Estorno) — reverte UMA rodada de produção (`ProductBatch`), o caso mais
+   * arriscado dos 4 mapeados no levantamento. Só existe para produto lotControlled (única situação em
+   * que `ProductBatch` é criado — se não existe lote, não há como reverter uma rodada específica com
+   * segurança). Recusa sem cascata quando o lote já foi consumido como componente de outra OP, nomeando
+   * a(s) OP(s) e o(s) produto(s) gerados — mesmo espírito da Decisão #1 já aplicado ao estorno de
+   * recebimento de compra.
+   *
+   * **Limitação conhecida, documentada de propósito (não escondida)**: não há hoje nenhuma
+   * rastreabilidade de que o produto acabado desta rodada foi vendido/expedido (Faturamento/Expedição
+   * ainda não têm controle de quantidade por lote) — a única defesa possível aqui é recusar se o saldo
+   * agregado do produto já não comporta a reversão (`stockQty` insuficiente), o que pega o caso mais
+   * grave (nada sobrou) mas não atribui com certeza absoluta que ESTA rodada especificamente ainda
+   * está em estoque intacta quando o saldo é suficiente.
+   */
+  async reverseProduction(productBatchId: string, reason: string, userId: string) {
+    const productBatch = await db.productBatch.findUnique({
+      where: { id: productBatchId },
+      include: {
+        product: { select: { id: true, name: true, stockQty: true } },
+        productionOrder: { select: { id: true, number: true, quantity: true, quantityCompleted: true, status: true } },
+        consumedFrom: { select: { itemType: true, materialBatchId: true, consumedProductBatchId: true, quantityConsumed: true } },
+        consumedAsComponentIn: {
+          include: { productBatch: { include: { productionOrder: { select: { number: true } }, product: { select: { name: true } } } } },
+        },
+      },
+    })
+    if (!productBatch) throw new NotFoundException('Lote de produção não encontrado')
+    if (productBatch.reversedAt) throw new BadRequestException('Esta rodada de produção já foi estornada')
+
+    if (productBatch.consumedAsComponentIn.length > 0) {
+      const opNumbers = [...new Set(productBatch.consumedAsComponentIn.map((c) => c.productBatch.productionOrder.number))]
+      const productNames = [...new Set(productBatch.consumedAsComponentIn.map((c) => c.productBatch.product.name))]
+      throw new BadRequestException(
+        `Não é possível estornar: o lote ${productBatch.batchNumber} já foi consumido como componente` +
+        (opNumbers.length ? ` na(s) Ordem(ns) de Produção ${opNumbers.join(', ')}` : '') +
+        (productNames.length ? `, gerando ${productNames.join(', ')}` : '') +
+        '. Para reverter esse caso, é necessária uma correção administrativa especializada (Central de Administração), não um estorno comum.'
+      )
+    }
+    if (productBatch.product.stockQty < productBatch.quantityProduced - 1e-9) {
+      throw new BadRequestException(
+        `Não é possível estornar: o saldo atual de "${productBatch.product.name}" (${productBatch.product.stockQty}) já é menor do que a quantidade desta rodada (${productBatch.quantityProduced}) — parte do lote já saiu do estoque por outro caminho (venda, ajuste). Contate um administrador para analisar o caso.`
+      )
+    }
+
+    const updatedOrder = await productionOrderRepository.reverseProduction(
+      productBatch,
+      productBatch.productionOrder,
+      reason,
+      userId
+    )
+
+    await auditService.log({
+      userId,
+      action: 'PATCH',
+      module: 'producao',
+      entityId: productBatch.productionOrder.id,
+      entityName: productBatch.productionOrder.number,
+      details: `Estorno da rodada de produção (lote ${productBatch.batchNumber}, ${productBatch.quantityProduced} un.) na OP ${productBatch.productionOrder.number}${reason ? ` — motivo: ${reason}` : ''}`,
+      beforeValue: { productBatchId: productBatch.id, quantityProduced: productBatch.quantityProduced },
+      afterValue: { quantityCompleted: updatedOrder.quantityCompleted, status: updatedOrder.status },
+    })
+
+    return updatedOrder
+  }
+
+  /** ADR-023 (Decisão #1, Estorno) — lista os lotes já produzidos (um por rodada), para a UI decidir
+   * quais ainda podem ser estornados. */
+  async listProductBatches(productionOrderId: string) {
+    return productionOrderRepository.findProductBatches(productionOrderId)
   }
 
   /**

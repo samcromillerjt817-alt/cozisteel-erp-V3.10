@@ -38,6 +38,12 @@ class ProductionOrderRepository extends BaseRepository<typeof db.productionOrder
     return this.delegate.findUnique({ where: { id }, include: DETAIL_INCLUDE })
   }
 
+  /** ADR-023 (Decisão #1, Estorno) — primeira vez que os lotes produzidos por uma OP (um por
+   * rodada, `ProductBatch`) são listados pela UI; existiam desde o ADR-013 sem nenhum consumidor. */
+  findProductBatches(productionOrderId: string) {
+    return db.productBatch.findMany({ where: { productionOrderId }, orderBy: { producedAt: 'asc' } })
+  }
+
   findByIdWithProductMaterials(id: string) {
     return this.delegate.findUnique({
       where: { id },
@@ -320,6 +326,113 @@ class ProductionOrderRepository extends BaseRepository<typeof db.productionOrder
       }
 
       return { order: updatedOrder, isComplete, alreadyProcessed: false, productBatch: createdProductBatch }
+    })
+  }
+
+  /**
+   * ADR-023 (Decisão #1, Estorno) — reverte UMA rodada de produção inteira (um `ProductBatch`), na
+   * mesma transação: restaura o estoque do produto acabado, restaura cada matéria-prima/subconjunto
+   * consumido (`consumedFrom`), apaga os registros de consumo desta rodada (deixam de existir porque
+   * o consumo em si deixou de existir — mantém `MaterialBatch.quantityAvailable`/disponibilidade de
+   * subconjunto corretas para qualquer cálculo futuro que some `BatchConsumption`) e recua
+   * `quantityCompleted`/`status` da OP. Reserva de material NÃO é restaurada nesta rodada (fora de
+   * escopo desta primeira versão — ver nota na Parte 8 do ADR-023): é um construto de planejamento,
+   * não uma trilha de estoque físico, então deixá-la como está é uma imprecisão de planejamento
+   * menor, nunca um risco de corrupção de dado.
+   */
+  async reverseProduction(
+    productBatch: {
+      id: string
+      productId: string
+      quantityProduced: number
+      batchNumber: string
+      consumedFrom: Array<{ itemType: string; materialBatchId: string | null; consumedProductBatchId: string | null; quantityConsumed: number }>
+    },
+    order: { id: string; number: string; quantity: number; quantityCompleted: number; status: string },
+    reason: string,
+    userId: string
+  ) {
+    return db.$transaction(async (tx) => {
+      const reasonSuffix = reason ? ` — ${reason}` : ''
+      const movementReason = `Estorno de produção — OP ${order.number}, lote ${productBatch.batchNumber}${reasonSuffix}`
+
+      const updatedFinishedProduct = await tx.product.update({
+        where: { id: productBatch.productId },
+        data: { stockQty: { decrement: productBatch.quantityProduced } },
+      })
+      await tx.stockMovement.create({
+        data: {
+          itemType: 'product',
+          productId: productBatch.productId,
+          type: 'OUT',
+          quantity: productBatch.quantityProduced,
+          balanceAfter: updatedFinishedProduct.stockQty,
+          reason: movementReason,
+          referenceType: 'production_order',
+          referenceId: order.id,
+          userId,
+        },
+      })
+
+      for (const consumption of productBatch.consumedFrom) {
+        if (consumption.itemType === 'material' && consumption.materialBatchId) {
+          const batch = await tx.materialBatch.update({
+            where: { id: consumption.materialBatchId },
+            data: { quantityAvailable: { increment: consumption.quantityConsumed } },
+          })
+          const updatedMaterial = await tx.material.update({
+            where: { id: batch.materialId },
+            data: { stockQty: { increment: consumption.quantityConsumed } },
+          })
+          await tx.stockMovement.create({
+            data: {
+              itemType: 'material',
+              materialId: batch.materialId,
+              type: 'IN',
+              quantity: consumption.quantityConsumed,
+              balanceAfter: updatedMaterial.stockQty,
+              reason: movementReason,
+              referenceType: 'production_order',
+              referenceId: order.id,
+              userId,
+              materialBatchId: batch.id,
+            },
+          })
+        } else if (consumption.itemType === 'product' && consumption.consumedProductBatchId) {
+          const consumedBatch = await tx.productBatch.findUniqueOrThrow({ where: { id: consumption.consumedProductBatchId } })
+          const updatedComponent = await tx.product.update({
+            where: { id: consumedBatch.productId },
+            data: { stockQty: { increment: consumption.quantityConsumed } },
+          })
+          await tx.stockMovement.create({
+            data: {
+              itemType: 'product',
+              productId: consumedBatch.productId,
+              type: 'IN',
+              quantity: consumption.quantityConsumed,
+              balanceAfter: updatedComponent.stockQty,
+              reason: movementReason,
+              referenceType: 'production_order',
+              referenceId: order.id,
+              userId,
+            },
+          })
+        }
+      }
+
+      await tx.batchConsumption.deleteMany({ where: { productBatchId: productBatch.id } })
+      await tx.productBatch.update({ where: { id: productBatch.id }, data: { reversedAt: new Date() } })
+
+      const newQuantityCompleted = Math.max(0, order.quantityCompleted - productBatch.quantityProduced)
+      const newStatus = newQuantityCompleted >= order.quantity ? 'completed' : (order.status === 'completed' ? 'in_progress' : order.status)
+
+      const updatedOrder = await tx.productionOrder.update({
+        where: { id: order.id },
+        data: { quantityCompleted: newQuantityCompleted, status: newStatus },
+        include: UPDATE_INCLUDE,
+      })
+
+      return updatedOrder
     })
   }
 }

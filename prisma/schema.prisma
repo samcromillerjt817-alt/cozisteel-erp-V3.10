@@ -1087,6 +1087,11 @@ model ProductBatch {
   // Onde este lote (quando ele mesmo é um subconjunto) foi consumido por uma OP de nível superior.
   consumedAsComponentIn BatchConsumption[] @relation("ProductBatchConsumedAsComponent")
 
+  // ADR-023, Decisão #1 (Estorno) — marca que esta rodada de produção já foi estornada (impede
+  // estornar de novo). Só existe para lotes lotControlled (única situação em que este modelo é
+  // criado), o que já garante que só rodadas com rastreabilidade completa podem ser estornadas.
+  reversedAt DateTime?
+
   @@index([productId])
   @@index([productionOrderId])
   @@index([producedAt]) // Fase 11, ADR-017 — volume produzido por período, todos os produtos

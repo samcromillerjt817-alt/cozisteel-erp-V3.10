@@ -454,6 +454,50 @@ bloqueio ao tentar estornar de novo, bloqueio ao tentar estornar um estorno.
 **Verificação**: tsc limpo, lint 47 (net zero — nenhum hook novo, a UI reaproveita o `loadMovements()`
 já existente), 359/359 testes (5 novos), build limpo (rota nova confirmada no manifesto).
 
+## PARTE 9 — Item 2 completo: Estorno de produção (2026-07-27, mesmo dia)
+
+O caso mais arriscado dos 4 mapeados na Parte 2, implementado na mesma rodada em vez de deixado para
+o futuro. Só suportado para produto `lotControlled` — única situação em que `ProductBatch` é criado, o
+que já garante que só rodadas com rastreabilidade completa podem ser estornadas; para produto sem
+controle de lote, não existe hoje como identificar com segurança o que uma rodada específica consumiu
+(confirmado lendo `produceWithTx()`: sem lote no produto acabado, o `BatchConsumption` da rodada nunca
+é persistido — mesmo que a matéria-prima consumida seja lotControlled).
+
+Schema (aditivo): `ProductBatch` ganha `reversedAt`.
+
+`productionOrderService.reverseProduction(productBatchId, reason, userId)` reverte a rodada inteira
+numa transação: restaura `Product.stockQty` do produto acabado, restaura cada matéria-prima/
+subconjunto consumido (via `consumedFrom`, incluindo o caso de subconjunto lotControlled testado
+separadamente), apaga os registros de consumo desta rodada (o consumo em si deixou de existir — evita
+que qualquer cálculo futuro de disponibilidade some uma consumição fantasma) e recua
+`quantityCompleted`/`status` da OP.
+
+**Bloqueio central, testado**: recusa quando o lote já foi consumido como componente de outra OP,
+nomeando a(s) OP(s) e o(s) produto(s) gerados, apontando para a mesma correção administrativa
+especializada futura da Parte 8. **Limitação conhecida e documentada de propósito, não escondida**:
+não existe hoje rastreabilidade de que o produto acabado foi vendido/expedido por lote (Faturamento/
+Expedição ainda não controlam quantidade por lote) — a única defesa possível além do bloqueio acima é
+recusar quando o saldo agregado do produto já não comporta a reversão, o que pega o caso mais grave
+(nada sobrou) mas não garante com certeza absoluta que o saldo suficiente pertence exatamente a esta
+rodada. **Decisão deliberada de escopo**: reserva de material NÃO é restaurada nesta primeira versão —
+é um construto de planejamento, não uma trilha de estoque físico, então deixá-la como está é uma
+imprecisão de planejamento menor, nunca um risco de corrupção de dado.
+
+Rota nova: `POST /api/production-orders/batches/[batchId]/reverse` (`producao:update`) + `GET /api/
+production-orders/[id]/batches` (lista os lotes produzidos — existia desde o ADR-013, nunca exposta).
+UI: nova seção "Lotes Produzidos" no detalhe da OP, com ação "Estornar" por rodada (motivo obrigatório)
+— e o texto de confirmação de "Registrar produção" corrigido (dizia "não pode ser desfeito pelo
+sistema", o que deixou de ser verdade a partir desta implementação).
+
+5 testes novos: reversão simples, reversão com subconjunto lotControlled (o caminho mais complexo do
+código), bloqueio quando consumido por outra OP (nomeando a OP no erro), bloqueio de estorno duplo,
+bloqueio por saldo insuficiente.
+
+**Verificação**: tsc limpo, lint 48 (+1 real, mesmo padrão de fetch-em-efeito já aceito — o novo
+componente `production-batches-section.tsx`), 364/364 testes (5 novos), build limpo (2 rotas novas
+confirmadas no manifesto). **Item 2 da sequência (estorno) agora completo — os dois casos mapeados no
+levantamento (recebimento de compra e produção) estão implementados e testados.**
+
 ## Conclusão
 
 Esta rodada mudou uma suposição importante: vários itens que pareciam "faltando" no pedido original já
@@ -461,7 +505,7 @@ têm boa parte da engenharia pronta e só nunca foram conectados — Faturamento
 (existe, testado, zero rota), seguido por MRP (motor sofisticado, zero UI) e BOM formal (quase
 completo). É exatamente por isso que a sequência de implementação real (Parte 6) prioriza esses três
 primeiro, à frente inclusive de itens que apareciam mais cedo na proposta original. As 6 decisões
-pendentes foram todas resolvidas (Parte 5), e os itens 1 (Faturamento, Parte 7) e 2 (Estorno de
-recebimento de compra, Parte 8) da sequência já estão implementados e testados. O estorno de produção
-(o caso mais arriscado, mapeado na Parte 2) fica para uma rodada futura dentro do mesmo item 2, dado o
-risco já documentado ali. Próximo passo: item 3 da Parte 6 — completar a exposição do MRP.
+pendentes foram todas resolvidas (Parte 5), e os itens 1 (Faturamento, Parte 7) e 2 (Estorno —
+recebimento de compra e produção, Partes 8 e 9) da sequência já estão completos e testados, incluindo
+o caso mais arriscado de todo o levantamento (estorno de produção). Próximo passo: item 3 da Parte 6 —
+completar a exposição do MRP.

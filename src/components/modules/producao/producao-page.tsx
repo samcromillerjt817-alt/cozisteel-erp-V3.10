@@ -18,6 +18,7 @@ import { useConfirm } from '@/components/domain/confirm-dialog'
 import { StatusTimeline } from '@/components/domain/status-timeline'
 import { ProducaoFormFields } from './producao-form-fields'
 import { ReservationList } from './reservation-list'
+import { ProductionBatchesSection } from './production-batches-section'
 import {
   PRODUCTION_ORDER_STATUS_LABELS, PRODUCTION_ORDER_TRANSITIONS, EMPTY_PRODUCTION_ORDER_FORM, productionOrderToFormData,
   type ProductionOrderListRow, type ProductionOrderRecord, type ProductionOrderFormData,
@@ -230,7 +231,7 @@ export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initial
     }
     if (!(await confirmAction({
       title: 'Registrar produção',
-      description: `Confirma produzir ${produceQty} ${detail.unit}? Isso dá baixa na matéria-prima e gera um novo lote de produto acabado — não pode ser desfeito pelo sistema.`,
+      description: `Confirma produzir ${produceQty} ${detail.unit}? Isso dá baixa na matéria-prima e gera um novo lote de produto acabado. Só pode ser revertido depois em "Lotes Produzidos", e apenas enquanto o lote gerado não tiver sido consumido por outra Ordem de Produção.`,
     }))) return
     setProducing(true)
     try {
@@ -380,6 +381,11 @@ export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initial
             <div className="space-y-2">
               <Label className="text-xs">Reserva de Material</Label>
               <ReservationList productionOrderId={detail.id} />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs">Lotes Produzidos</Label>
+              <ProductionBatchesSection productionOrderId={detail.id} />
             </div>
 
             <div className="space-y-2">
