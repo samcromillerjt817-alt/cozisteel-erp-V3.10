@@ -107,4 +107,7 @@ export interface ProductOption {
   unit?: string
   salePrice: number
   weight: number
+  width: number
+  height: number
+  length: number
 }

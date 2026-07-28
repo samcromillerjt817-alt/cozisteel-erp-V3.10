@@ -125,6 +125,14 @@ class DashboardRepository {
     })
   }
 
+  /** Orçamentos confirmados (aprovados/recusados) pelo cliente via link público desde `since` — ADR-025 addendum. */
+  async findRecentClientConfirmations(since: Date) {
+    return db.quote.findMany({
+      where: { clientRespondedAt: { gte: since } },
+      select: { id: true, number: true, status: true, clientRespondedAt: true },
+    })
+  }
+
   /** Pares createdAt/approvedAt de orçamentos já aprovados, para calcular tempo médio de aprovação. */
   async findApprovedQuoteTimings(from?: Date, to?: Date) {
     const createdAt = buildPeriodFilter(from, to)

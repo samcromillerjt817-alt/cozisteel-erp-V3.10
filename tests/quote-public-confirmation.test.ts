@@ -34,9 +34,9 @@ describe('Orçamentos — confirmação do cliente via link público', () => {
         items: [{ productId: null, code: 'QP-1', description: 'Item', quantity: 1, unit: 'UN', unitPrice: 100, notes: '' }],
       } as never,
       user.id
-    )) as { id: string; publicToken: string | null }
+    )) as unknown as { id: string; publicToken: string | null }
     createdQuoteIds.push(quote.id)
-    const sent = (await quoteService.changeStatus(quote.id, 'sent', user.id)) as { publicToken: string | null }
+    const sent = (await quoteService.changeStatus(quote.id, 'sent', user.id)) as unknown as { publicToken: string | null }
     return { user, quoteId: quote.id, token: sent.publicToken as string }
   }
 
@@ -102,7 +102,7 @@ describe('Orçamentos — confirmação do cliente via link público', () => {
   it('9. reenviar o orçamento (sent -> draft -> sent) gera um token novo; o token antigo para de funcionar', async () => {
     const { user, quoteId, token: firstToken } = await createSentQuote('public-token-regenerado')
     await quoteService.changeStatus(quoteId, 'draft', user.id)
-    const resent = (await quoteService.changeStatus(quoteId, 'sent', user.id)) as { publicToken: string | null }
+    const resent = (await quoteService.changeStatus(quoteId, 'sent', user.id)) as unknown as { publicToken: string | null }
 
     expect(resent.publicToken).toBeTruthy()
     expect(resent.publicToken).not.toBe(firstToken)

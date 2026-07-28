@@ -203,6 +203,40 @@ registerWidget({
   },
 })
 
+// Janela de "recente" pro alerta de confirmação do cliente (ADR-025 addendum) — diferente de
+// `orcamentos-vencidos` (que é status atual), `clientRespondedAt` nunca "desfaz" sozinho depois de
+// setado, então uma contagem sem janela de tempo só cresceria pra sempre. 48h dá folga pra fins de
+// semana sem deixar o alerta acumular indefinidamente.
+const CLIENT_CONFIRMATION_WINDOW_HOURS = 48
+
+registerWidget({
+  id: 'comercial.orcamentos-confirmados-cliente',
+  sourceProfiles: ['comercial'],
+  expensive: false,
+  compute: async (): Promise<DashboardWidgetDTO> => {
+    const since = new Date(Date.now() - CLIENT_CONFIRMATION_WINDOW_HOURS * 60 * 60 * 1000)
+    const confirmations = await dashboardRepository.findRecentClientConfirmations(since)
+    const count = confirmations.length
+    const approved = confirmations.filter((q) => q.status === 'approved').length
+    const rejected = confirmations.filter((q) => q.status === 'rejected').length
+    return {
+      id: 'comercial.orcamentos-confirmados-cliente',
+      type: 'alert',
+      title: 'Orçamentos confirmados pelo cliente',
+      order: 95,
+      data: {
+        severity: count === 0 ? 'info' : 'warning',
+        count,
+        message:
+          count === 0
+            ? 'Nenhum orçamento confirmado pelo cliente nas últimas 48h.'
+            : `${count} orçamento${count === 1 ? '' : 's'} confirmado${count === 1 ? '' : 's'} pelo cliente nas últimas 48h (${approved} aprovado${approved === 1 ? '' : 's'}, ${rejected} recusado${rejected === 1 ? '' : 's'}).`,
+        linkToModule: 'orcamentos',
+      },
+    }
+  },
+})
+
 registerWidget({
   id: 'comercial.tempo-criacao-aprovacao',
   sourceProfiles: ['comercial'],

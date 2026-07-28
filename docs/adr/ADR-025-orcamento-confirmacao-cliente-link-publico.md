@@ -96,7 +96,57 @@ diferenciada por aprovado/recusado) → inválido/expirado (mensagem genérica, 
 `orcamentos-page.tsx`, nova ação de linha (`Link2`), habilitada só quando `status === 'sent'` e
 `publicToken` existe. Copia `${origin}/orcamento/${token}` pra área de transferência.
 
-## Parte 3 — Segurança, riscos conhecidos e não resolvidos agora
+## Parte 3 — Correções relacionadas encontradas durante avaliação ao vivo
+
+Durante o teste do link público em produção, o usuário reportou 2 problemas adicionais no fluxo de
+Orçamentos, corrigidos nesta mesma rodada:
+
+- **Dimensões do Romaneio saindo "- x - x - cm"**: `QuoteItem` tem `weight`/`width`/`height`/`length`,
+  e o Romaneio de Transporte (`pdf.service.ts`) lê os 4 direto, caindo pro traço quando vazios. Causa
+  raiz: `selectItemProduct()` (`orcamentos-page.tsx`), acionado ao escolher um produto cadastrado pro
+  item, só copiava `weight` do Product — nunca `width`/`height`/`length`, apesar do `Product` ter os 4
+  campos. Não existe nenhum input manual pra nenhum dos 4 campos na tela de Orçamento hoje, então antes
+  desta correção não havia NENHUMA forma de esses 3 campos saírem diferentes de zero. Corrigido:
+  `selectItemProduct` agora copia os 4 campos do Product, igual já fazia com `weight`. Segue exigindo
+  que o cadastro do Produto tenha as dimensões preenchidas — "- x - x -" ainda aparece se o Produto em
+  si não tiver dimensão cadastrada, o que é esperado (não um bug).
+- **Pergunta: editar um Produto altera Orçamentos já existentes?** Não — confirmado que `QuoteItem`
+  grava um retrato (`description`/`code`/`unitPrice`/`weight`/`width`/`height`/`length`) no momento da
+  criação do item; `selectItemProduct` só pré-preenche o formulário naquele instante.
+  `productService.update()` explicitamente remove `quoteItems` do payload de atualização
+  (`product.service.ts:83`) justamente pra nunca tocar em itens de orçamento já existentes. Pra
+  refletir um dado novo do Produto num Orçamento já existente, o procedimento é manual: editar o
+  Orçamento e reselecionar o produto do item (ou reentrar os valores).
+
+## Parte 4 — Alerta interno quando o cliente confirma (addendum)
+
+Pergunta do usuário após ver o fluxo funcionando: "temos como implementar algo quando o cliente aprova
+ou rejeita a proposta que sejamos notificados". Não existe nenhum envio de e-mail/SMS nesta aplicação
+(verificado — nenhuma dependência de SMTP/nodemailer/serviço de e-mail no projeto). Decisão do usuário:
+alerta dentro do próprio ERP (reaproveita a infraestrutura de alertas já existente), não e-mail — evita
+introduzir uma dependência externa nova só pra isso.
+
+Novo widget `comercial.orcamentos-confirmados-cliente` (`dashboard-widgets-comercial.ts`), tipo
+`alert`, conta orçamentos com `clientRespondedAt` preenchido nas últimas 48h (janela de tempo, não
+status — diferente de `orcamentos-vencidos`, `clientRespondedAt` nunca "desfaz" sozinho depois de
+setado, então uma contagem sem janela cresceria pra sempre; 48h dá folga de fim de semana sem acumular
+indefinidamente). Mensagem distingue quantos foram aprovados vs. recusados. Aparece automaticamente no
+sino de notificações e no Centro de Operações (ADR-024) — ambos consomem `getAllAlerts()`, que agrega
+todo widget cujo `kind === 'alert'` no catálogo, sem filtro de perfil.
+
+## Parte 5 — Acesso externo ao sistema (infraestrutura, fora do código)
+
+Pra o link público ser abrível por um cliente de verdade (fora da rede local), o ERP precisa estar
+alcançável pela internet — o que não tinha nada a ver com código, e sim com a rede da máquina que
+hospeda o PM2 (WSL2 em modo NAT, IP interno dinâmico, sem qualquer exposição externa configurada antes
+desta rodada). Resolvido com **Tailscale Funnel**: `sudo tailscale funnel --bg 3000` expõe a porta 3000
+publicamente via `https://<nome-do-node>.<tailnet>.ts.net`, com HTTPS automático, sem tela de
+interstício (diferente do ngrok gratuito, testado e descartado por causa disso), sem custo, e sem
+precisar de domínio próprio. Configuração roda como parte do serviço `tailscaled` do sistema — não
+depende de nenhum terminal aberto, sobrevive a reinicializações do WSL. Registrado aqui só como
+referência de infraestrutura; não é código deste repositório.
+
+## Parte 6 — Segurança, riscos conhecidos e não resolvidos agora
 
 - **Sem rate limiting**: não há nenhum mecanismo de rate limiting nesta aplicação hoje (verificado —
   nenhuma referência a rate limit em todo o código). A rota pública fica exposta a tentativas de força
@@ -113,7 +163,10 @@ diferenciada por aprovado/recusado) → inválido/expirado (mensagem genérica, 
 
 `prisma db push` aplicado em `test.db` e produção (`data/cozisteel.db`) — 2 campos aditivos, sem
 perda de dados real. tsc limpo. lint 57 problemas (0 erros), mesma contagem de antes desta mudança —
-nenhum warning novo. 420/420 testes (9 novos em `tests/quote-public-confirmation.test.ts`, cobrindo
-geração/regeneração de token, aprovação/recusa direta, expiração por validade, token de uso único, e
-token de orçamento não encontrado). Build de produção limpo, com `/api/public/quotes/[token]` e
-`/orcamento/[token]` registrados corretamente como rotas dinâmicas.
+nenhum warning novo. 421/421 testes (9 novos em `tests/quote-public-confirmation.test.ts` cobrindo
+geração/regeneração de token, aprovação/recusa direta, expiração por validade, token de uso único e
+token de orçamento não encontrado; +1 novo em `tests/dashboard-widgets-comercial.test.ts` cobrindo o
+alerta de confirmação do cliente; 2 asserções pré-existentes de contagem cumulativa de catálogo
+atualizadas — 36→37 e 46→47 — por causa do novo widget). Build de produção limpo, com
+`/api/public/quotes/[token]` e `/orcamento/[token]` registrados corretamente como rotas dinâmicas. PM2
+reconstruído e reiniciado, sistema validado ao vivo via `https://<node>.<tailnet>.ts.net`.

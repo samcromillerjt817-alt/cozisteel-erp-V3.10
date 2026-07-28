@@ -327,6 +327,9 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
       unit: product.unit || items[idx].unit || 'UN',
       unitPrice: product.salePrice || 0,
       weight: product.weight || items[idx].weight || 0,
+      width: product.width || items[idx].width || 0,
+      height: product.height || items[idx].height || 0,
+      length: product.length || items[idx].length || 0,
     }
     items[idx].total = items[idx].quantity * items[idx].unitPrice
     setForm({ ...form, items })
