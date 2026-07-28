@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Search, Star, PackageSearch } from 'lucide-react'
+import { Search, Star, PackageSearch, ShoppingCart } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useCatalogCart } from '@/hooks/use-catalog-cart'
 import { PaginationBar } from '@/components/domain/pagination-bar'
 
 interface CatalogCategory {
@@ -31,9 +33,8 @@ interface CatalogProduct {
 const PAGE_SIZE = 20
 
 /**
- * Catálogo Digital Público (ADR-026, Fase 2) — página fora do SPA autenticado, sem menu/sessão, mesmo
- * princípio já usado em `/orcamento/[token]` (ADR-025). Só leitura nesta fase — cesta/submissão
- * chegam na Fase 3.
+ * Catálogo Digital Público (ADR-026) — página fora do SPA autenticado, sem menu/sessão, mesmo
+ * princípio já usado em `/orcamento/[token]` (ADR-025).
  */
 export default function CatalogoPage() {
   const [products, setProducts] = useState<CatalogProduct[]>([])
@@ -45,6 +46,7 @@ export default function CatalogoPage() {
   const [sort, setSort] = useState<'destaque' | 'name_asc' | 'name_desc'>('destaque')
   const [loading, setLoading] = useState(true)
   const debouncedSearch = useDebouncedValue(search, 400)
+  const { items: cartItems } = useCatalogCart()
 
   useEffect(() => {
     fetch('/api/public/catalog/categories')
@@ -78,9 +80,21 @@ export default function CatalogoPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b bg-white">
-        <div className="max-w-6xl mx-auto px-4 py-6">
-          <h1 className="text-2xl font-bold">Catálogo Cozisteel</h1>
-          <p className="text-sm text-slate-500">Equipamentos inoxidáveis — monte sua solicitação de orçamento</p>
+        <div className="max-w-6xl mx-auto px-4 py-6 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">Catálogo Cozisteel</h1>
+            <p className="text-sm text-slate-500">Equipamentos inoxidáveis — monte sua solicitação de orçamento</p>
+          </div>
+          <Link href="/catalogo/carrinho">
+            <Button variant="outline" className="relative shrink-0">
+              <ShoppingCart className="w-4 h-4 mr-1" /> Cesta
+              {cartItems.length > 0 && (
+                <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                  {cartItems.length}
+                </span>
+              )}
+            </Button>
+          </Link>
         </div>
       </header>
 

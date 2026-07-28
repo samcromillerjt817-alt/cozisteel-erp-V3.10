@@ -1,6 +1,6 @@
 # ADR-026 — Catálogo Digital Público (Levantamento)
 
-- **Status**: Fases 1 e 2 implementadas e verificadas — Fase 3 (cesta + submissão) ainda não iniciada
+- **Status**: Fases 1, 2 e 3 implementadas e verificadas — Fase 4 (triagem interna) ainda não iniciada
 - **Data**: 2026-07-29
 - **Origem**: pedido explícito do usuário para uma nova linha de evolução — um catálogo digital público
   (link único, sem login) onde um cliente monta uma "cesta" de produtos com personalizações e envia uma
@@ -391,3 +391,43 @@ inexistente, gating de preço por `catalogPriceMode`, ausência de campo interno
 pública, categorias vazias excluídas). Build limpo, com as 4 rotas públicas + as 2 páginas registradas
 corretamente. PM2 reconstruído e reiniciado, testado ao vivo (`/catalogo` responde 200, API devolve
 lista vazia — correto, nenhum produto foi habilitado pro catálogo em produção ainda).
+
+## Verificação (Fase 3)
+
+Campo novo `CatalogRequest.idempotencyKey` (único, aditivo). `catalogRequestService.submit()`:
+valida produtos contra o catálogo público de verdade (nunca confia em `productId` vindo de fora),
+dedupe de cliente por CPF/CNPJ (`clientRepository.findByCpfCnpj`, mesmo formato mascarado já usado
+internamente via `maskCpfCnpj`) ou e-mail — sem nunca revelar match/no-match na resposta pública —,
+cria `CatalogRequest`+`CatalogRequestItem[]` e o Orçamento (`origin: catalogo_digital`,
+`internalStage: aguardando_triagem`, sempre `draft`) na mesma transação (`db.$transaction`, mesmo
+padrão já usado em `invoice.service.ts`/`shipment.service.ts`), com personalização condensada em
+`QuoteItem.notes` por item (não por produto — o mesmo produto pode aparecer 2x no carrinho com
+personalizações diferentes, tratado corretamente via um array pré-computado que preserva a ordem do
+carrinho, sem reparear por `productId` depois de ir ao banco).
+
+**Achado durante a implementação, não previsto no levantamento**: `Quote.userId` é campo obrigatório
+(nunca opcional), mas uma solicitação pública não tem nenhum usuário interno associado. Resolvido com
+um usuário de sistema (`username: "catalogo-digital"`, `active: false` — bloqueia login
+estruturalmente, mesma checagem de `src/lib/auth.ts`), criado sob demanda na primeira submissão
+(mesmo padrão lazy-create já usado por `numberingService.getNextNumber()`).
+
+Idempotência via chave gerada uma vez por carregamento da página `/catalogo/carrinho`
+(`crypto.randomUUID()`), reenviada em qualquer nova tentativa de submit — reenvio da mesma chave
+devolve o protocolo já emitido, nunca duplica `CatalogRequest`/Orçamento.
+
+UI: cesta em `localStorage` (`useCatalogCart`, hook novo) — só vira dado real no servidor no momento
+da submissão, navegar/fechar a aba antes disso não deixa rastro nenhum. Diálogo de personalização na
+ficha do produto (campos de dimensão/material/acabamento só aparecem se `catalogAllowCustomization`).
+Página `/catalogo/carrinho`: lista da cesta (quantidade editável, remover item) + identificação do
+cliente **só aqui**, na revisão final (decisão da Parte 16) + checkbox de consentimento (obrigatório
+pra habilitar o envio) + aviso explícito de que a solicitação não representa preço/pedido/prazo
+confirmado + botão "Enviar solicitação de orçamento" (nunca "Finalizar compra").
+
+Verificação: tsc limpo, lint 58 problemas (mesma contagem de antes desta fase — o novo hook de cesta
+usa init tardio de estado em vez de `useEffect`, evitando o warning que teria gerado; a nova página do
+carrinho compensou com 1 warning do mesmo padrão de fetch-em-efeito já aceito, líquido zero). 437/437
+testes (8 novos em `tests/catalog-request.test.ts`: criação vinculada Orçamento↔CatalogRequest, rejeição
+de produto oculto/inexistente, dedupe por CNPJ, dedupe por e-mail, ausência de match, idempotência,
+produto repetido no carrinho com personalizações distintas, usuário de sistema correto). Build limpo
+com `/api/public/catalog-requests` e `/catalogo/carrinho` registrados. PM2 reconstruído e reiniciado,
+testado ao vivo.

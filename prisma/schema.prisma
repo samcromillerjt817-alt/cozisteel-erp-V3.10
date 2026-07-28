@@ -1127,6 +1127,7 @@ model CatalogRequest {
   generalNotes   String   @default("") // prazo, local de instalação, entrega, observações gerais da solicitação
   sourceLink     String   @default("") // reservado — link por vendedor/campanha/cliente (fora de escopo v1)
   archivedReason String   @default("")
+  idempotencyKey String?  @unique // chave gerada no cliente (ADR-026, Fase 3) — reenvio da mesma chave devolve o resultado já existente, nunca duplica
   quoteId        String?  @unique
   quote          Quote?   @relation(fields: [quoteId], references: [id])
   createdAt      DateTime @default(now())

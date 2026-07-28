@@ -411,6 +411,39 @@ export type PeriodClosingDto = z.infer<typeof periodClosingSchema>
 export type PeriodReopenDto = z.infer<typeof periodReopenSchema>
 export type UpdateCompetenceDateDto = z.infer<typeof updateCompetenceDateSchema>
 
+// Catálogo Digital Público (ADR-026, Fase 3) — entrada não confiável (rota pública, sem autenticação),
+// por isso todo campo de texto tem limite de tamanho explícito (defesa contra payload abusivo).
+export const catalogRequestItemSchema = z.object({
+  productId: z.string().min(1),
+  quantity: z.number().min(0.01).max(100000),
+  width: z.number().min(0).max(100000).optional(),
+  height: z.number().min(0).max(100000).optional(),
+  length: z.number().min(0).max(100000).optional(),
+  material: z.string().max(200).default(''),
+  finish: z.string().max(200).default(''),
+  voltage: z.string().max(50).default(''),
+  operationSide: z.string().max(100).default(''),
+  accessories: z.string().max(1000).default(''),
+  modifications: z.string().max(1000).default(''),
+  notes: z.string().max(1000).default(''),
+})
+
+export const submitCatalogRequestSchema = z.object({
+  idempotencyKey: z.string().min(10).max(100),
+  clientName: z.string().min(1, 'Nome ou razão social é obrigatório').max(200),
+  clientCpfCnpj: z.string().max(20).default(''),
+  clientContact: z.string().max(200).default(''),
+  clientEmail: z.string().max(200).default(''),
+  clientPhone: z.string().max(30).default(''),
+  clientCity: z.string().max(100).default(''),
+  clientState: z.string().max(2).default(''),
+  clientCompany: z.string().max(200).default(''),
+  generalNotes: z.string().max(2000).default(''),
+  items: z.array(catalogRequestItemSchema).min(1, 'A solicitação precisa ter ao menos 1 item').max(50),
+})
+
+export type SubmitCatalogRequestDto = z.infer<typeof submitCatalogRequestSchema>
+
 export function validateDto<T>(schema: z.ZodType<T>, data: unknown): T {
   const result = schema.safeParse(data)
   if (!result.success) {
