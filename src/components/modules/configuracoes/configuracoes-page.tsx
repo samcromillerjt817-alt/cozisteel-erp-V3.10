@@ -9,8 +9,9 @@ import { AtualizacoesTab } from './atualizacoes-tab'
 import { DiagnosticoTab } from './diagnostico-tab'
 import { ConsoleTab } from './console-tab'
 import { CorrecoesTab } from './correcoes-tab'
+import { AlcadasTab } from './alcadas-tab'
 
-export type ConfigSubModule = 'empresa' | 'numeracao' | 'pdf' | 'custeio' | 'sistema' | 'atualizacoes' | 'diagnostico' | 'console' | 'correcoes'
+export type ConfigSubModule = 'empresa' | 'numeracao' | 'pdf' | 'custeio' | 'sistema' | 'atualizacoes' | 'diagnostico' | 'console' | 'correcoes' | 'alcadas'
 
 interface ConfiguracoesPageProps {
   /** Qual sub-aba mostrar — a navegação em si (os links) continua na barra lateral em `page.tsx`,
@@ -44,6 +45,8 @@ export function ConfiguracoesPage({ configSub, isAdmin }: ConfiguracoesPageProps
       return isAdmin ? <ConsoleTab /> : <RestritoAdmin />
     case 'correcoes':
       return isAdmin ? <CorrecoesTab /> : <RestritoAdmin />
+    case 'alcadas':
+      return isAdmin ? <AlcadasTab /> : <RestritoAdmin />
   }
 }
 

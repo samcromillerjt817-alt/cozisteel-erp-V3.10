@@ -3,6 +3,7 @@ import { clientRepository } from '@/app/repositories/client.repository'
 import { numberingService } from '@/app/services/numbering.service'
 import { auditService } from '@/app/services/audit.service'
 import { statusHistoryService } from '@/app/services/status-history.service'
+import { approvalService } from '@/app/services/approval.service'
 import { domainEvents, DOMAIN_EVENTS } from '@/lib/domain-events'
 import type { OrcamentoAprovadoPayload, OrcamentoConvertidoEmPedidoVendaPayload } from '@/lib/domain-events'
 import { NotFoundException, BadRequestException } from '@/app/exceptions'
@@ -64,6 +65,7 @@ interface QuoteWithItemsAndSalesOrder {
   id: string
   number: string
   status: string
+  userId: string
   clientId: string | null
   clientName: string
   clientCnpj: string
@@ -295,7 +297,7 @@ class QuoteService {
    * `orcamento.aprovado` (ADR-003) — quem consome (ProductionOrderService) é resolvido em
    * `register-domain-event-handlers.ts`, não importado aqui.
    */
-  async changeStatus(id: string, status: string, userId: string) {
+  async changeStatus(id: string, status: string, userId: string, userRole = '') {
     const quote = (await quoteRepository.findByIdWithItemsAndSalesOrder(id)) as QuoteWithItemsAndSalesOrder | null
     if (!quote) throw new NotFoundException('Orçamento não encontrado')
 
@@ -306,6 +308,16 @@ class QuoteService {
       throw new BadRequestException(
         `Não é possível cancelar: este orçamento já foi convertido no Pedido de Venda ${quote.salesOrder.number}`
       )
+    }
+
+    // ADR-023 (item 5) — "aprovar" passa pelo motor de alçada antes de qualquer efeito colateral.
+    // Enquanto o número de aprovações exigido não for atingido, o Orçamento continua em "sent" —
+    // sem trocar status, sem StatusHistory, sem gerar Ordem de Produção.
+    if (status === 'approved') {
+      const outcome = await approvalService.recordApproval('quote', id, quote.total, userId, quote.userId, userRole)
+      if (!outcome.complete) {
+        return { pendingApproval: true, approvalsGiven: outcome.approvalsGiven, approvalsNeeded: outcome.approvalsNeeded }
+      }
     }
 
     const updateData: Record<string, unknown> = { status }

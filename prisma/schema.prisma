@@ -128,6 +128,7 @@ model User {
   receipts                  Receipt[]
   accountPayables           AccountPayable[]
   payments                  Payment[]
+  approvalRecords           ApprovalRecord[]
 
   @@index([role])
   @@index([active])
@@ -1265,4 +1266,48 @@ model Payment {
   user             User           @relation(fields: [userId], references: [id])
 
   @@index([accountPayableId])
+}
+
+// ── ALÇADA DE APROVAÇÃO (ADR-023, item 5) ───────────────
+// Motor genuinamente configurável: tipo de documento, faixa de valor, perfil aprovador, quantidade de
+// aprovações exigidas, permitir ou não autoaprovação, ordem entre regras concorrentes, vigência.
+// Enquanto nenhuma ApprovalRule existir para um documentType, a política implícita em código
+// (approval.service.ts) preserva o comportamento de antes desta mudança: 1 aprovação, sem faixa de
+// valor, qualquer aprovador com permissão de módulo aprova, autoaprovação permitida — mas mesmo esse
+// caminho passa pelo motor novo (`recordApproval`), nunca por um atalho paralelo (decisão do usuário).
+model ApprovalRule {
+  id                String   @id @default(cuid())
+  documentType      String // "quote" | "requisition" | "purchase_order"
+  minValue          Float? // null = sem piso
+  maxValue          Float? // null = sem teto
+  approverRole      String? // null = qualquer papel com permissão de módulo já aprova
+  requiredApprovals Int      @default(1)
+  allowSelfApproval Boolean  @default(true) // true preserva o comportamento atual — nada bloqueia autoaprovação hoje
+  order             Int      @default(0) // menor = avaliada primeiro entre regras concorrentes do mesmo documentType
+  active            Boolean  @default(true)
+  notes             String   @default("")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  approvals ApprovalRecord[]
+
+  @@index([documentType])
+  @@index([active])
+}
+
+// Cada aprovação individual dada por um usuário contra um documento — quando o total bate
+// `requiredApprovals` da regra aplicável, o Service de origem (Orçamento/Requisição/Pedido de Compra)
+// libera a transição de status de verdade.
+model ApprovalRecord {
+  id             String       @id @default(cuid())
+  approvalRuleId String
+  approvalRule   ApprovalRule @relation(fields: [approvalRuleId], references: [id])
+  documentType   String
+  documentId     String
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@unique([approvalRuleId, documentId, userId])
+  @@index([documentType, documentId])
 }

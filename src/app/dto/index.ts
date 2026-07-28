@@ -312,6 +312,22 @@ export const bomLineSubstituteSchema = z.object({
   notes: z.string().default(''),
 })
 
+// ADR-023 (item 5, "motor de alçadas configurável")
+
+export const APPROVAL_DOCUMENT_TYPES = ['quote', 'requisition', 'purchase_order'] as const
+
+export const approvalRuleSchema = z.object({
+  documentType: z.enum(APPROVAL_DOCUMENT_TYPES),
+  minValue: z.number().min(0).optional().nullable(),
+  maxValue: z.number().min(0).optional().nullable(),
+  approverRole: z.string().optional().nullable(),
+  requiredApprovals: z.number().int().min(1).default(1),
+  allowSelfApproval: z.boolean().default(true),
+  order: z.number().int().min(0).default(0),
+  active: z.boolean().default(true),
+  notes: z.string().default(''),
+})
+
 export type CreateQuoteDto = z.infer<typeof createQuoteSchema>
 export type UpdateQuoteDto = z.infer<typeof updateQuoteSchema>
 export type CreateProductDto = z.infer<typeof createProductSchema>
@@ -332,6 +348,7 @@ export type CreateOperationTypeDto = z.infer<typeof createOperationTypeSchema>
 export type ProductOperationDto = z.infer<typeof productOperationSchema>
 export type ChangeBomRevisionStatusDto = z.infer<typeof changeBomRevisionStatusSchema>
 export type BomLineSubstituteDto = z.infer<typeof bomLineSubstituteSchema>
+export type ApprovalRuleDto = z.infer<typeof approvalRuleSchema>
 export type CreateInvoiceDto = z.infer<typeof createInvoiceSchema>
 export type ReverseStockMovementDto = z.infer<typeof reverseStockMovementSchema>
 

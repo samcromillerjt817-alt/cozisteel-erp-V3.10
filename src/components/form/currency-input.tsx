@@ -8,6 +8,7 @@ interface CurrencyInputProps {
   value: number
   onChange: (value: number) => void
   className?: string
+  disabled?: boolean
 }
 
 /**
@@ -15,7 +16,7 @@ interface CurrencyInputProps {
  * durante o foco, convertendo com `parseCurrencyInput` no blur. `formatCurrency` já inclui o prefixo
  * "R$" desde a Hardening pós-11.5 — sem prefixo visual próprio aqui, ou o valor mostraria "R$ R$ ...".
  */
-export function CurrencyInput({ value, onChange, className }: CurrencyInputProps) {
+export function CurrencyInput({ value, onChange, className, disabled }: CurrencyInputProps) {
   const [text, setText] = useState(() => formatCurrency(value))
   const [focused, setFocused] = useState(false)
 
@@ -28,6 +29,7 @@ export function CurrencyInput({ value, onChange, className }: CurrencyInputProps
       className={`text-right ${className || ''}`}
       value={text}
       inputMode="decimal"
+      disabled={disabled}
       onFocus={() => setFocused(true)}
       onChange={(e) => setText(e.target.value)}
       onBlur={() => {

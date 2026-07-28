@@ -10,7 +10,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     const { id } = await ctx.params
     const { status } = await req.json()
 
-    const result = await requisitionService.changeStatus(id, status, user.id)
+    const result = await requisitionService.changeStatus(id, status, user.id, user.role)
     return ok(result)
   } catch (error) {
     return handleRouteError(error, 'Erro ao alterar status')

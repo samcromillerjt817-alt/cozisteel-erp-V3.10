@@ -235,6 +235,14 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
         })
         const json = await r.json()
         if (!r.ok) { toast.error(json.error || 'Erro ao alterar status'); return }
+        // ADR-023 (item 5) — motor de alçada pode exigir mais de 1 aprovação; enquanto não atingir o
+        // total configurado, o Orçamento continua "sent" de propósito (nenhuma Ordem de Produção é
+        // gerada ainda) e a resposta não traz os campos de sucesso normais.
+        if (json.pendingApproval) {
+          toast.info(`Aprovação registrada: ${json.approvalsGiven} de ${json.approvalsNeeded} necessárias. Aguardando mais aprovações.`)
+          load()
+          return
+        }
         const generated = json.generatedProductionOrders as Array<{ id: string; number: string }> | undefined
         if (generated && generated.length > 0) {
           showActionResult({

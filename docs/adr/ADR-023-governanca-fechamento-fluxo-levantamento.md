@@ -621,16 +621,76 @@ confirmadas no manifesto). Não testado manualmente em navegador nesta rodada (s
 no momento da implementação) — verificação ficou na cobertura de teste de serviço + rota + build, não
 em clique real na tela. **Item 4 da sequência (BOM formal) completo.**
 
+## PARTE 12 — Item 5 da sequência implementado: motor de alçadas (2026-07-28)
+
+Decisão #4 (Parte 5) exigia um motor **genuinamente configurável** — tipo de documento, faixa de
+valor, perfil aprovador, quantidade de aprovações exigidas, autoaprovação, ordem entre regras,
+vigência — e que a política inicial (sem valores reais ainda) passasse pelo motor novo, "não por um
+atalho paralelo". Isso significou religar as 3 transições de aprovação já existentes (Orçamento,
+Requisição, Pedido de Compra) para passarem pelo motor, em vez de só construí-lo isolado.
+
+**Schema (aditivo)**: `ApprovalRule` (regra: `documentType`, `minValue`/`maxValue` opcionais,
+`approverRole` opcional, `requiredApprovals`, `allowSelfApproval`, `order`, `active`, `notes`) e
+`ApprovalRecord` (cada aprovação individual dada por um usuário contra um documento, `@@unique` por
+regra+documento+usuário — impede duplo voto). **Nenhuma regra é semeada por padrão** — decisão
+deliberada: enquanto a tabela estiver vazia, uma política implícita em código
+(`approval.service.ts`) preserva exatamente o comportamento de antes (1 aprovação, sem faixa de
+valor, qualquer aprovador com permissão de módulo aprova, autoaprovação permitida), mas o caminho
+percorrido é o `recordApproval()` do motor novo, nunca um atalho — quando os valores reais da empresa
+chegarem, cadastrar `ApprovalRule`s é suficiente, nenhuma mudança de código deveria ser necessária.
+
+**Religação nos 3 domínios**: `quote.service.ts`, `requisition.service.ts` e
+`purchase-order.service.ts` — na transição especificamente para `"approved"`, cada `changeStatus()`
+chama `approvalService.recordApproval()` com o valor do documento (`Quote.total`,
+`PurchaseOrder.total`, ou a soma `quantity × estimatedPrice` dos itens da Requisição, que não tem
+`total` persistido) antes de qualquer efeito colateral. Se a aprovação não estiver completa
+(`requiredApprovals` ainda não atingido), o documento **permanece no status anterior** — sem
+`StatusHistory`, sem gerar Ordem de Produção (Orçamento) ou avançar a Requisição — e o método
+devolve `{ pendingApproval: true, approvalsGiven, approvalsNeeded }` em vez do objeto atualizado
+normal. Só quando a última aprovação necessária é registrada o resto do método (inalterado) executa.
+Os 3 testes de status já existentes continuam passando sem alteração — a política implícita é
+indistinguível do comportamento anterior quando nenhuma regra está cadastrada.
+
+**Exposição administrativa**: `GET/POST /api/approval-rules`, `PUT/DELETE /api/approval-rules/[id]`
+(gated por `sistema:manage`, mesmo módulo/ação da Central de Administração, ADR-021). Nova aba
+"Alçadas" em Configurações → Central de Administração (admin-only, mesmo padrão de Console SQL/
+Correções): CRUD completo de regras, com o valor mínimo tratando 0 como "sem piso" e um toggle "sem
+teto" para o valor máximo.
+
+**UI dos 3 módulos**: Orçamentos/Requisições/Compras passam a tratar `pendingApproval` na resposta —
+toast informativo ("Aprovação registrada: X de Y necessárias") em vez de assumir sucesso silencioso.
+Os textos de confirmação de "Aprovar" em Requisição/Compra, que antes afirmavam categoricamente "o
+sistema não exige um segundo aprovador", foram generalizados (essa afirmação deixaria de ser
+sempre verdadeira assim que uma regra real for cadastrada).
+
+10 testes novos: `approval-engine.test.ts` (9 — política implícita, múltiplas aprovações
+acumulando, duplo voto recusado, autoaprovação bloqueada, perfil exigido, faixa de valor,
+regra inativa ignorada, CRUD completo) + 1 teste de integração em
+`purchase-order-approval.test.ts` confirmando que uma regra real de 2 aprovações bloqueia o
+Pedido de Compra em "pending_approval" até a segunda aprovação, com `approvedBy` gravado
+corretamente do segundo aprovador.
+
+**Fora de escopo, deliberado**: qualquer valor de corte real (depende de dado que só a empresa tem,
+Decisão #4); `ApprovalDelegate` para substituto temporário (mencionado no diagnóstico original mas
+não pedido na decisão final); notificar aprovadores pendentes (depende do item 6, notificações
+externas, ainda não implementado).
+
+**Verificação**: tsc limpo, lint 53→54 (+1 real, mesmo padrão de fetch-em-efeito já aceito —
+`alcadas-tab.tsx`), 388/388 testes (10 novos), build limpo (2 rotas novas confirmadas no
+manifesto). **Item 5 da sequência (motor de alçadas) completo.**
+
 ## Conclusão
 
 Esta rodada mudou uma suposição importante: vários itens que pareciam "faltando" no pedido original já
 têm boa parte da engenharia pronta e só nunca foram conectados — Faturamento foi o primeiro caso
 (existia, testado, zero rota), seguido por MRP (Parte 10) e BOM formal (Parte 11), os três com
-exatamente o mesmo padrão "motor pronto, zero exposição". É exatamente por isso que a sequência de
-implementação real (Parte 6) prioriza esses três primeiro, à frente inclusive de itens que apareciam
-mais cedo na proposta original. As 6 decisões pendentes foram todas resolvidas (Parte 5), e os itens 1
-(Faturamento, Parte 7), 2 (Estorno — recebimento de compra e produção, Partes 8 e 9), 3 (MRP exposto,
-Parte 10) e 4 (BOM formal exposta, Parte 11) da sequência já estão completos e testados, incluindo o
-caso mais arriscado de todo o levantamento (estorno de produção) e um bug real de tipo encontrado e
-corrigido antes do commit (`leadTimeDays` nunca lido de verdade, Parte 10). Próximo
-passo: item 5 da Parte 6 — criar o novo modelo configurável de alçadas.
+exatamente o mesmo padrão "motor pronto, zero exposição". Já o item 5 (Parte 12) foi o oposto: nada
+existia, e a decisão do usuário exigia religar 3 fluxos estáveis a um motor novo em vez de um atalho —
+o risco real desta rodada, mitigado por manter a política implícita idêntica ao comportamento anterior
+e por um teste de integração dedicado confirmando o bloqueio real de status. As 6 decisões pendentes
+foram todas resolvidas (Parte 5), e os itens 1 (Faturamento, Parte 7), 2 (Estorno — recebimento de
+compra e produção, Partes 8 e 9), 3 (MRP exposto, Parte 10), 4 (BOM formal exposta, Parte 11) e 5
+(motor de alçadas, Parte 12) da sequência já estão completos e testados, incluindo o caso mais
+arriscado de todo o levantamento (estorno de produção) e um bug real de tipo encontrado e corrigido
+antes do commit (`leadTimeDays` nunca lido de verdade, Parte 10). Próximo passo: item 6 da Parte 6 —
+Expedição e Fechamento Mensal, os dois domínios genuinamente novos deixados por último de propósito.

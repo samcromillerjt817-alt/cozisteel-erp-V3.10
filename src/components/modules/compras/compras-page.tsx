@@ -124,7 +124,7 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail, onNavigat
   async function changeStatus(id: string, status: string) {
     if (status === 'approved' && !(await confirmAction({
       title: 'Aprovar Pedido de Compra',
-      description: 'Você está aprovando este pedido sozinho — o sistema não exige um segundo aprovador. Confirme só se tiver revisado fornecedor, itens e valores.',
+      description: 'Confirme só se tiver revisado fornecedor, itens e valores. Dependendo da alçada configurada, pode ser necessária mais de uma aprovação antes de avançar.',
     }))) return
     setStatusChanging(true)
     try {
@@ -132,7 +132,12 @@ export function ComprasPage({ initialDetailId, onConsumeInitialDetail, onNavigat
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
       })
       if (r.ok) {
-        toast.success('Status atualizado!')
+        const json = await r.json()
+        if (json.pendingApproval) {
+          toast.info(`Aprovação registrada: ${json.approvalsGiven} de ${json.approvalsNeeded} necessárias. Aguardando mais aprovações.`)
+        } else {
+          toast.success('Status atualizado!')
+        }
         load()
         if (detail?.id === id) setDetail(await fetchDetail(id))
       } else {

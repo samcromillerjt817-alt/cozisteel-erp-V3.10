@@ -4,6 +4,7 @@ import { userRepository } from '@/app/repositories/user.repository'
 import { numberingService } from '@/app/services/numbering.service'
 import { auditService } from '@/app/services/audit.service'
 import { statusHistoryService } from '@/app/services/status-history.service'
+import { approvalService } from '@/app/services/approval.service'
 import { NotFoundException, BadRequestException } from '@/app/exceptions'
 import { checkTransition } from '@/lib/status-machine'
 import { domainEvents, DOMAIN_EVENTS } from '@/lib/domain-events'
@@ -48,6 +49,8 @@ interface PurchaseOrderRecord {
   number: string
   status: string
   receivedAt: Date | null
+  total: number
+  userId: string
 }
 
 interface RequisitionItemForPurchase {
@@ -134,7 +137,7 @@ class PurchaseOrderService {
     return { success: true }
   }
 
-  async changeStatus(id: string, status: string, userId: string) {
+  async changeStatus(id: string, status: string, userId: string, userRole = '') {
     if (['partially_received', 'received'].includes(status)) {
       throw new BadRequestException('Use o endpoint de recebimento para dar entrada de mercadoria')
     }
@@ -144,6 +147,14 @@ class PurchaseOrderService {
 
     const transitionError = checkTransition(purchaseOrder.status, status, ALLOWED_TRANSITIONS, VALID_STATUSES)
     if (transitionError) throw new BadRequestException(transitionError)
+
+    // ADR-023 (item 5) — mesmo motor de alçada do Orçamento/Requisição.
+    if (status === 'approved') {
+      const outcome = await approvalService.recordApproval('purchase_order', id, purchaseOrder.total, userId, purchaseOrder.userId, userRole)
+      if (!outcome.complete) {
+        return { pendingApproval: true, approvalsGiven: outcome.approvalsGiven, approvalsNeeded: outcome.approvalsNeeded }
+      }
+    }
 
     const updateData: Record<string, unknown> = { status }
     if (status === 'approved') {

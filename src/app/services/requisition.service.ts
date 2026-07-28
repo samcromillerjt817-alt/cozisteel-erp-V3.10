@@ -6,6 +6,7 @@ import { userRepository } from '@/app/repositories/user.repository'
 import { numberingService } from '@/app/services/numbering.service'
 import { auditService } from '@/app/services/audit.service'
 import { statusHistoryService } from '@/app/services/status-history.service'
+import { approvalService } from '@/app/services/approval.service'
 import { domainEvents, DOMAIN_EVENTS } from '@/lib/domain-events'
 import type { RequisicaoAprovadaParaCompraPayload, RequisicaoCriadaPayload } from '@/lib/domain-events'
 import { NotFoundException, BadRequestException } from '@/app/exceptions'
@@ -52,6 +53,7 @@ interface RequisitionWithItems {
   number: string
   status: string
   originModule: string
+  userId: string
   items: Array<{ id: string; supplierId: string | null; materialId: string | null; quantity: number; unit: string; estimatedPrice: number }>
 }
 
@@ -280,12 +282,22 @@ class RequisitionService {
    * (ADR-003) — quem consome (PurchaseOrderService) é resolvido em
    * `register-domain-event-handlers.ts`, não importado aqui.
    */
-  async changeStatus(id: string, status: string, userId: string) {
+  async changeStatus(id: string, status: string, userId: string, userRole = '') {
     const requisition = (await requisitionRepository.findByIdWithItems(id)) as RequisitionWithItems | null
     if (!requisition) throw new NotFoundException('Requisição não encontrada')
 
     const transitionError = checkTransition(requisition.status, status, ALLOWED_TRANSITIONS)
     if (transitionError) throw new BadRequestException(transitionError)
+
+    // ADR-023 (item 5) — mesmo motor de alçada do Orçamento/Pedido de Compra. Valor é a soma
+    // estimada dos itens (Requisition não tem `total` persistido, ao contrário de Quote/PurchaseOrder).
+    if (status === 'approved') {
+      const value = requisition.items.reduce((sum, item) => sum + item.quantity * item.estimatedPrice, 0)
+      const outcome = await approvalService.recordApproval('requisition', id, value, userId, requisition.userId, userRole)
+      if (!outcome.complete) {
+        return { pendingApproval: true, approvalsGiven: outcome.approvalsGiven, approvalsNeeded: outcome.approvalsNeeded }
+      }
+    }
 
     const skipStockCheck = requisition.originModule === 'mrp'
 

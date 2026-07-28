@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { registerDomainEventHandlers } from '@/lib/register-domain-event-handlers'
 import { requisitionService } from '@/app/services/requisition.service'
 import { purchaseOrderService } from '@/app/services/purchase-order.service'
+import { approvalService } from '@/app/services/approval.service'
 import { createTestUser, createTestMaterial, createTestSupplier } from './helpers/fixtures'
 
 /**
@@ -215,5 +216,32 @@ describe('Pedido de Compra — Aprovação (Fase 8)', () => {
     const movements = await db.stockMovement.findMany({ where: { referenceId: purchaseOrder.id, type: 'IN' } })
     expect(movements).toHaveLength(1)
     expect(movements[0].quantity).toBe(item.quantity)
+  })
+
+  it('12. ADR-023 (item 5) — com uma ApprovalRule exigindo 2 aprovações, "approved" fica pendente até a segunda; nenhum atalho contorna o motor novo', async () => {
+    const { user, purchaseOrder } = await createDraftPurchaseOrder('po-approval-alcada')
+    const secondApprover = await createTestUser('po-approval-alcada-2')
+    createdUserIds.push(secondApprover.id)
+
+    const rule = await approvalService.createRule({
+      documentType: 'purchase_order', minValue: null, maxValue: null, approverRole: null,
+      requiredApprovals: 2, allowSelfApproval: true, order: 0, active: true, notes: '',
+    })
+
+    try {
+      await purchaseOrderService.changeStatus(purchaseOrder.id, 'pending_approval', user.id)
+
+      const first = (await purchaseOrderService.changeStatus(purchaseOrder.id, 'approved', user.id)) as { pendingApproval?: boolean }
+      expect(first.pendingApproval).toBe(true)
+      const stillPending = await db.purchaseOrder.findUnique({ where: { id: purchaseOrder.id } })
+      expect(stillPending?.status).toBe('pending_approval') // não avançou com só 1 de 2 aprovações
+
+      const second = (await purchaseOrderService.changeStatus(purchaseOrder.id, 'approved', secondApprover.id)) as { status: string; approvedBy: string | null }
+      expect(second.status).toBe('approved')
+      expect(second.approvedBy).toBe(secondApprover.id)
+    } finally {
+      await db.approvalRecord.deleteMany({ where: { approvalRuleId: (rule as { id: string }).id } })
+      await db.approvalRule.delete({ where: { id: (rule as { id: string }).id } })
+    }
   })
 })

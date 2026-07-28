@@ -448,6 +448,7 @@ export default function ERPPage() {
     ...(userRole === 'admin' ? [
       { key: 'console' as ConfigSubModule, icon: <Terminal className="w-4 h-4" />, label: 'Console SQL' },
       { key: 'correcoes' as ConfigSubModule, icon: <Wrench className="w-4 h-4" />, label: 'Correções' },
+      { key: 'alcadas' as ConfigSubModule, icon: <ShieldCheck className="w-4 h-4" />, label: 'Alçadas' },
     ] : []),
   ]
 
