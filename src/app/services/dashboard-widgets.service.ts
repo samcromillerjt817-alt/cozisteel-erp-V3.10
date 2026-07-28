@@ -28,6 +28,10 @@ const WIDGET_REGISTRY: WidgetDefinition[] = []
 
 // Quais domínios de conteúdo compõem cada perfil (ADR-017 §2, decisão #1).
 const PROFILE_CONTENT_SOURCES: Record<DashboardProfile, WidgetSourceProfile[]> = {
+  // Centro de Operações (ADR-024) nunca passa por `getDashboard()` — a rota já intercepta esse
+  // perfil antes (`centroOperacoesService.getPayload()`). Entrada vazia só para satisfazer o tipo
+  // `Record<DashboardProfile, ...>`, nunca de fato consultada.
+  'centro-operacoes': [],
   diretoria: ['comercial', 'compras', 'producao', 'estoque', 'administrativo', 'financeiro'],
   comercial: ['comercial'],
   compras: ['compras'],
@@ -119,8 +123,9 @@ export async function getAllAlerts(): Promise<DashboardWidgetDTO[]> {
 }
 
 /** Computa só os widgets pedidos por `id` — usado pela Diretoria para pegar 1 KPI headline por
- * módulo sem computar (e pagar o custo de) todo o resto do catálogo de cada perfil. */
-async function getWidgetsByIds(ids: string[], period: DashboardPeriod): Promise<DashboardWidgetDTO[]> {
+ * módulo sem computar (e pagar o custo de) todo o resto do catálogo de cada perfil. Exportado a
+ * partir do ADR-024 (Centro de Operações) para o mesmo reaproveitamento pelas KPIs operacionais. */
+export async function getWidgetsByIds(ids: string[], period: DashboardPeriod): Promise<DashboardWidgetDTO[]> {
   const defs = WIDGET_REGISTRY.filter((def) => ids.includes(def.id))
   const cacheKeySuffix = `${period.from?.toISOString() ?? ''}:${period.to?.toISOString() ?? ''}`
   return Promise.all(

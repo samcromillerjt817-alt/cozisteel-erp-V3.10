@@ -100,6 +100,11 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogEntry[] = [
   // reaproveitava widgets de Comercial/Compras (Hardening pós-11.5). Também alimenta o card "Financeiro"
   // no Resumo por Módulo da Diretoria.
   { id: 'financeiro.saldo-liquido-em-aberto', nome: 'Saldo líquido em aberto (a receber − a pagar)', categoria: 'financeiro', perfilPadrao: ['financeiro'], ordemPadrao: 10, implementado: true, dependencias: [], faseRoadmap: 'Fase 11 - Subetapa 7.5 (ADR-019)', kind: 'kpi' },
+  // ADR-024 (Centro de Operações, Fase 1) — primeiro alerta nativo do Financeiro (antes só tinha o
+  // KPI de saldo acima). Mesma definição de "vencido" já usada em `financialReportService.
+  // getAccountBalances()` (dueDate < agora, título ainda não quitado) — aqui como contagem de
+  // títulos, não soma monetária.
+  { id: 'financeiro.contas-vencidas', nome: 'Contas vencidas (a pagar + a receber)', categoria: 'financeiro', perfilPadrao: ['financeiro'], ordemPadrao: 20, implementado: true, dependencias: [], faseRoadmap: 'ADR-024 - Centro de Operações, Fase 1', kind: 'alert', linkToModule: 'financeiro' },
 ]
 
 export function getCatalogEntry(id: string): DashboardWidgetCatalogEntry | undefined {

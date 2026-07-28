@@ -44,14 +44,15 @@ describe('Dashboard — RBAC composto por perfil (dashboard-access.service)', ()
   })
 
   it('getAccessibleProfiles(role) devolve exatamente os perfis esperados por Role', () => {
-    expect(getAccessibleProfiles('comercial').sort()).toEqual(['comercial'])
-    expect(getAccessibleProfiles('producao').sort()).toEqual(['pcp', 'producao'].sort())
+    // ADR-024 (Centro de Operações) — home de todo mundo, aparece pra qualquer Role a partir daqui.
+    expect(getAccessibleProfiles('comercial').sort()).toEqual(['centro-operacoes', 'comercial'].sort())
+    expect(getAccessibleProfiles('producao').sort()).toEqual(['centro-operacoes', 'pcp', 'producao'].sort())
     expect(getAccessibleProfiles('admin').sort()).toEqual(
-      ['diretoria', 'comercial', 'compras', 'producao', 'estoque', 'pcp', 'administrativo', 'financeiro'].sort()
+      ['centro-operacoes', 'diretoria', 'comercial', 'compras', 'producao', 'estoque', 'pcp', 'administrativo', 'financeiro'].sort()
     )
     // Hardening pós-11.5, Prioridade 2: `financeiro` ganhou seu próprio perfil no Dashboard v2 —
     // antes disto, era o único Role com `dashboard: ['read']` que nunca aparecia em nenhum perfil.
-    expect(getAccessibleProfiles('financeiro')).toEqual(['financeiro'])
+    expect(getAccessibleProfiles('financeiro').sort()).toEqual(['centro-operacoes', 'financeiro'].sort())
   })
 })
 

@@ -5,6 +5,10 @@ import { DASHBOARD_PROFILES, type DashboardProfile } from '@/app/services/dashbo
 // 2026-07-10) — nenhum Role novo, nenhuma alteração em `rbac.ts`. Esta tabela vive só na camada de
 // Dashboard; o modelo de permissões existente permanece 100% preservado.
 const PROFILE_ACCESS: Record<DashboardProfile, Role[]> = {
+  // ADR-024 (Centro de Operações) — home de todo mundo, nenhum Role de fora: os 9 papéis existentes,
+  // igual à lista completa de `Role` em rbac.ts (sem viewer excluído de propósito — é leitura, mesmo
+  // um perfil só-leitura se beneficia de ver o pipeline geral).
+  'centro-operacoes': ['admin', 'manager', 'user', 'viewer', 'comercial', 'producao', 'compras', 'estoque', 'financeiro'],
   diretoria: ['admin', 'manager'],
   comercial: ['comercial', 'admin', 'manager'],
   compras: ['compras', 'admin', 'manager'],

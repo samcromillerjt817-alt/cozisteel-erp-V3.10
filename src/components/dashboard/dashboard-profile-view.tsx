@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, type ElementType } from 'react'
-import { LayoutDashboard, TrendingUp, ClipboardList, ShoppingCart, Factory, Package, Settings2, Radar, Gauge, Wallet } from 'lucide-react'
+import { Home, LayoutDashboard, TrendingUp, ClipboardList, ShoppingCart, Factory, Package, Settings2, Radar, Gauge, Wallet } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DashboardAlertCenter } from '@/components/dashboard/dashboard-alert-center'
 import { DashboardKpiRow } from '@/components/dashboard/dashboard-kpi-row'
@@ -19,6 +19,7 @@ interface DashboardProfileViewProps {
 // KPI usa o mesmo círculo `bg-primary/10`, só o ícone varia por perfil (mesmo espírito do dashboard
 // atual, que já varia ícone por card).
 export const PROFILE_ICONS: Record<DashboardProfile, ElementType> = {
+  'centro-operacoes': Home,
   diretoria: LayoutDashboard,
   comercial: TrendingUp,
   pcp: ClipboardList,

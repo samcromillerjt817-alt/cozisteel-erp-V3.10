@@ -4,6 +4,7 @@
 // reordenar/adicionar widgets ou personalizar por usuário/perfil sem mudar o contrato do DTO.
 
 export type DashboardProfile =
+  | 'centro-operacoes'
   | 'diretoria'
   | 'comercial'
   | 'pcp'
@@ -13,7 +14,11 @@ export type DashboardProfile =
   | 'administrativo'
   | 'financeiro'
 
+// ADR-024 (Centro de Operações) — primeira entrada da lista de propósito: é a home de todo usuário,
+// não um perfil operacional específico, então vem antes de tudo (mesma ordem que vira aba padrão em
+// `dashboard-tabs.tsx`, já que `profiles[0]` é sempre a aba ativa inicial).
 export const DASHBOARD_PROFILES: DashboardProfile[] = [
+  'centro-operacoes',
   'diretoria',
   'comercial',
   'pcp',
@@ -103,4 +108,27 @@ export interface DashboardModuleSummaryDTO {
 export interface DashboardDiretoriaPayloadDTO {
   alerts: DashboardWidgetDTO[]
   moduleSummaries: DashboardModuleSummaryDTO[]
+}
+
+// ADR-024 (Centro de Operações, Fase 1) — pipeline Orçamento→Financeiro. Deliberadamente FORA do
+// catálogo de widgets (`dashboard-widget-catalog.ts`): não é um indicador de um domínio, é uma
+// contagem de "quanto está em trânsito em cada etapa" que atravessa todos eles — mesmo precedente já
+// usado por `getPendingRequisitionsWidget()` (dashboard-widgets.service.ts) para conteúdo que não
+// justifica virar entrada formal do catálogo.
+export interface DashboardPipelineStageDTO {
+  id: string
+  label: string
+  count: number
+  severity: DashboardAlertSeverity
+  linkToModule: string
+}
+
+// Fase 1 do ADR-024: pipeline + Central de Alertas (reaproveitada de `getAllAlerts()`, sem mudança) +
+// KPIs operacionais (reaproveitando widgets já existentes do catálogo, ver `centro-operacoes.
+// service.ts`). Causa/sugestão por alerta, "Meu trabalho hoje" e o painel "Como resolver" são fases
+// futuras — ver Parte 6 do ADR-024.
+export interface DashboardCentroOperacoesPayloadDTO {
+  pipeline: DashboardPipelineStageDTO[]
+  alerts: DashboardWidgetDTO[]
+  kpis: DashboardModuleSummaryDTO[]
 }

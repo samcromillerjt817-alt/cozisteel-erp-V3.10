@@ -3,6 +3,7 @@ import { requireModulePermission, ok, handleRouteError } from '@/lib/api-utils'
 import { BadRequestException, ForbiddenException } from '@/app/exceptions'
 import { canAccessProfile } from '@/app/services/dashboard-access.service'
 import { getDashboard, getDiretoriaSummary } from '@/app/services/dashboard-widgets.service'
+import { centroOperacoesService } from '@/app/services/centro-operacoes.service'
 import { resolveDashboardPeriod } from '@/lib/dashboard-period'
 import { DASHBOARD_PROFILES, type DashboardProfile } from '@/app/services/dashboard-types'
 import '@/app/services/dashboard-bootstrap'
@@ -28,9 +29,16 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     const { searchParams } = new URL(req.url)
     const period = resolveDashboardPeriod(searchParams)
 
-    // Diretoria (ADR-019, Subetapa 7.5) tem formato de resposta próprio (síntese, não composição de
-    // widgets) — mesma rota, mesmo RBAC/resolução de período, payload diferente só para este perfil.
-    const payload = dashboardProfile === 'diretoria' ? await getDiretoriaSummary(period) : await getDashboard(dashboardProfile, period)
+    // Diretoria (ADR-019, Subetapa 7.5) e Centro de Operações (ADR-024) têm formato de resposta
+    // próprio (síntese, não composição de widgets) — mesma rota, mesmo RBAC/resolução de período,
+    // payload diferente só para esses dois perfis. Centro de Operações ignora `period` de propósito
+    // nesta fase (pipeline/KPIs são retrato do AGORA, não uma agregação por período).
+    const payload =
+      dashboardProfile === 'diretoria'
+        ? await getDiretoriaSummary(period)
+        : dashboardProfile === 'centro-operacoes'
+          ? await centroOperacoesService.getPayload()
+          : await getDashboard(dashboardProfile, period)
 
     return ok(payload)
   } catch (error) {
