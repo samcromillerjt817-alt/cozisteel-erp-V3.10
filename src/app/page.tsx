@@ -19,6 +19,7 @@ import { ConfiguracoesPage, type ConfigSubModule } from '@/components/modules/co
 import { PedidosPage } from '@/components/modules/pedidos/pedidos-page'
 import { EstoquePage } from '@/components/modules/estoque/estoque-page'
 import { OrcamentosPage } from '@/components/modules/orcamentos/orcamentos-page'
+import { CatalogoRequestsPage } from '@/components/modules/catalogo/catalogo-requests-page'
 import { FinanceiroPage } from '@/components/modules/financeiro/financeiro-page'
 import { NotificationCenter } from '@/components/layout/notification-center'
 import { CommandPalette, type CommandPaletteGroup } from '@/components/platform/command-palette'
@@ -30,7 +31,7 @@ import {
   Edit, Copy, Trash2, X, Save, ChevronDown, ChevronRight, Menu,
   UserCog, Building2, Hash, FileOutput, ShieldCheck, Eye, Layers, ShoppingCart,
   SlidersHorizontal, Ban, RefreshCw, Warehouse, ClipboardList, ShoppingBag, Factory,
-  PanelLeftClose, PanelLeftOpen, Wallet, Calculator, Activity, Terminal, Wrench
+  PanelLeftClose, PanelLeftOpen, Wallet, Calculator, Activity, Terminal, Wrench, Globe
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -70,7 +71,7 @@ interface SessionUser { id: string; name: string; role: string; email?: string }
 interface Quote { id: string; number: string; status: string; date: string; clientName: string; total: number; clientId: string; version: number; createdAt: string; items?: QuoteItem[]; salesOrder?: { id: string; number: string } | null }
 interface QuoteItem { id?: string; productId?: string; code: string; description: string; quantity: number; unit: string; unitPrice: number; total: number; weight: number; width: number; height: number; length: number; order: number }
 interface Product { id: string; internalCode: string; name: string; description: string; categoryName: string; materialName: string; costPrice: number; salePrice: number; weight: number; unit?: string; active: boolean; createdAt: string; images?: { id: string; url: string; isPrimary: boolean }[] }
-type ModuleKey = 'dashboard' | 'orcamentos' | 'pedidos' | 'clientes' | 'produtos' | 'materiais' | 'producao' | 'fornecedores' | 'requisicoes' | 'compras' | 'estoque' | 'relatorios' | 'financeiro' | 'usuarios' | 'configuracoes'
+type ModuleKey = 'dashboard' | 'orcamentos' | 'pedidos' | 'clientes' | 'produtos' | 'materiais' | 'producao' | 'fornecedores' | 'requisicoes' | 'compras' | 'estoque' | 'relatorios' | 'financeiro' | 'usuarios' | 'configuracoes' | 'catalogo'
 
 
 /* ══════════════════════════════════════════════════════════════
@@ -375,6 +376,7 @@ export default function ERPPage() {
     dashboard: 'Dashboard', orcamentos: 'Orcamentos', pedidos: 'Pedidos de Venda', clientes: 'Clientes',
     produtos: 'Produtos', materiais: 'Materias-Primas', producao: 'Producao', usuarios: 'Usuarios', configuracoes: 'Configuracoes',
     fornecedores: 'Fornecedores', requisicoes: 'Requisicoes', compras: 'Compras', estoque: 'Estoque', relatorios: 'Relatorios', financeiro: 'Financeiro',
+    catalogo: 'Catalogo Digital',
     empresa: 'Empresa', numeracao: 'Numeracao', pdf: 'PDF', custeio: 'Custeio', sistema: 'Sistema', atualizacoes: 'Atualizacoes',
     diagnostico: 'Diagnostico', console: 'Console SQL', correcoes: 'Correcoes',
   }
@@ -392,6 +394,7 @@ export default function ERPPage() {
         { key: 'orcamentos', icon: <FileText className="w-5 h-5" />, label: 'Orcamentos' },
         { key: 'pedidos', icon: <ShoppingBag className="w-5 h-5" />, label: 'Pedidos de Venda' },
         { key: 'clientes', icon: <Users className="w-5 h-5" />, label: 'Clientes' },
+        { key: 'catalogo', icon: <Globe className="w-5 h-5" />, label: 'Catalogo Digital' },
       ],
     },
     {
@@ -739,6 +742,15 @@ export default function ERPPage() {
                 onConsumeInitialDetail={() => { setPendingOrcamentoDetailId(undefined); setPendingOrcamentoSalesOrder(undefined) }}
               />
             </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════
+              CATÁLOGO DIGITAL MODULE (ADR-026, Fase 4)
+              ═══════════════════════════════════════════════════════ */}
+          {activeModule === 'catalogo' && canAccess('catalogo') && (
+            <CatalogoRequestsPage
+              onNavigateToOrcamento={(quoteId) => { setActiveModule('orcamentos'); setPendingOrcamentoDetailId(quoteId) }}
+            />
           )}
 
           {/* ═══════════════════════════════════════════════════════

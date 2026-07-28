@@ -4,8 +4,25 @@ import { db } from '@/lib/db'
 import { numberingService } from '@/app/services/numbering.service'
 import { clientRepository } from '@/app/repositories/client.repository'
 import { formatDate } from '@/lib/format'
-import { BadRequestException } from '@/app/exceptions'
+import { BadRequestException, NotFoundException } from '@/app/exceptions'
 import type { SubmitCatalogRequestDto } from '@/app/dto'
+
+export interface ListCatalogRequestsInput {
+  status?: string
+  page: number
+  limit: number
+}
+
+const LIST_INCLUDE = {
+  quote: { select: { id: true, number: true, status: true, internalStage: true, userId: true, user: { select: { id: true, name: true } } } },
+  _count: { select: { items: true } },
+}
+
+const DETAIL_INCLUDE = {
+  quote: { select: { id: true, number: true, status: true, internalStage: true, userId: true, user: { select: { id: true, name: true } } } },
+  client: { select: { id: true, corporateName: true, tradeName: true } },
+  items: { include: { product: { select: { id: true, name: true, internalCode: true } } } },
+}
 
 const SYSTEM_USER_USERNAME = 'catalogo-digital'
 
@@ -179,6 +196,44 @@ class CatalogRequestService {
     })
 
     return result
+  }
+
+  /** Fila de triagem (ADR-026, Fase 4) — lista as solicitações recebidas, com o Orçamento gerado já
+   *  incluído (mesmo padrão de "vínculo direto com a tela de Orçamento", sem duplicar edição). */
+  async list({ status, page, limit }: ListCatalogRequestsInput) {
+    const where: Record<string, unknown> = {}
+    if (status) where.status = status
+
+    const [data, total] = await Promise.all([
+      db.catalogRequest.findMany({ where, include: LIST_INCLUDE, orderBy: { createdAt: 'desc' }, skip: (page - 1) * limit, take: limit }),
+      db.catalogRequest.count({ where }),
+    ])
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) }
+  }
+
+  async getById(id: string) {
+    const catalogRequest = await db.catalogRequest.findUnique({ where: { id }, include: DETAIL_INCLUDE })
+    if (!catalogRequest) throw new NotFoundException('Solicitação não encontrada')
+    return catalogRequest
+  }
+
+  /** Só quem pode ser responsável por um Orçamento (admin/manager/comercial, ativos) — endpoint
+   *  próprio e mínimo em vez de abrir `/api/users` (admin/manager-only) pra quem faz triagem. */
+  async listAssignableUsers() {
+    return db.user.findMany({
+      where: { role: { in: ['admin', 'manager', 'comercial'] }, active: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    })
+  }
+
+  /** Arquivar a solicitação NUNCA altera o Orçamento já gerado (ADR-026, Parte 14) — ele continua
+   *  existindo e seguindo seu próprio ciclo normalmente, só o registro de intake é marcado. */
+  async archive(id: string, reason: string) {
+    const catalogRequest = await db.catalogRequest.findUnique({ where: { id } })
+    if (!catalogRequest) throw new NotFoundException('Solicitação não encontrada')
+
+    return db.catalogRequest.update({ where: { id }, data: { status: 'arquivada', archivedReason: reason } })
   }
 }
 

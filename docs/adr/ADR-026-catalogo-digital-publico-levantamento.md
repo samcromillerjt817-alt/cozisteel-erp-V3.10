@@ -1,6 +1,6 @@
 # ADR-026 — Catálogo Digital Público (Levantamento)
 
-- **Status**: Fases 1, 2 e 3 implementadas e verificadas — Fase 4 (triagem interna) ainda não iniciada
+- **Status**: Fases 1, 2, 3 e 4 implementadas e verificadas — Fase 5 (segurança de produção) ainda não iniciada
 - **Data**: 2026-07-29
 - **Origem**: pedido explícito do usuário para uma nova linha de evolução — um catálogo digital público
   (link único, sem login) onde um cliente monta uma "cesta" de produtos com personalizações e envia uma
@@ -431,3 +431,44 @@ de produto oculto/inexistente, dedupe por CNPJ, dedupe por e-mail, ausência de 
 produto repetido no carrinho com personalizações distintas, usuário de sistema correto). Build limpo
 com `/api/public/catalog-requests` e `/catalogo/carrinho` registrados. PM2 reconstruído e reiniciado,
 testado ao vivo.
+
+## Verificação (Fase 4)
+
+Módulo RBAC novo `catalogo` (todos os 9 papéis atualizados; admin/manager/comercial com CRUD+export,
+os demais sem acesso — mesmo critério já usado pra `orcamentos`, já que a triagem é uma extensão
+comercial). Nova entrada de menu "Catálogo Digital" no grupo COMERCIAL.
+
+`catalogRequestService` ganhou `list()`/`getById()`/`archive()`/`listAssignableUsers()` + 4 rotas
+autenticadas (`GET /api/catalog-requests`, `GET /api/catalog-requests/[id]`,
+`PATCH /api/catalog-requests/[id]/archive`, `GET /api/catalog-requests/assignable-users`). `archive()`
+nunca altera o Orçamento vinculado (Parte 14) — só marca o registro de intake.
+
+**Achado durante a implementação, corrigido antes de virar bug em produção**: a intenção original era
+adicionar `userId`/`internalStage` a `ALLOWED_UPDATE_FIELDS` de `quoteService.update()` pra permitir
+reatribuir responsável/etapa pela tela de triagem. Descoberto ao escrever o teste que `update()`
+**sempre substitui todos os itens do Orçamento** (usa `body.items || []` — decisão de design do
+método existente, correta pro caso de uso original de edição completa via formulário, mas perigosa
+pra um patch parcial). Reatribuir responsável chamando `update()` sem passar `items` teria apagado
+todos os itens do Orçamento. Corrigido com um método dedicado,
+`quoteService.reassignAndStage(id, {userId?, internalStage?}, actingUserId)`, que reaproveita
+`quoteRepository.updateStatus()` (o mesmo primitivo de update parcial já usado por `changeStatus()`,
+que nunca toca em itens) — nova rota `PATCH /api/quotes/[id]/triagem`, dedicada, em vez de reusar
+`PATCH /api/quotes/[id]`.
+
+Tela "Solicitações do Catálogo" (`catalogo-requests-page.tsx`): lista com filtro por status
+(todas/convertidas/arquivadas), detalhe em painel lateral (dados do lead, itens com personalização
+completa, indicação de item personalizado), seletor de responsável + etapa de triagem (as 5 opções
+do `internalStage`, Parte 7), botão "Abrir Orçamento" que navega pro módulo Orçamentos de verdade via
+`initialDetailId` (mesmo mecanismo já usado por Requisições/Pedidos — sem duplicar tela de edição),
+e arquivamento com motivo opcional.
+
+Novo domínio no sistema central de cores de status (`status-tokens.ts`, ADR-015) —
+`catalogRequest: {recebida, em_triagem, convertida, arquivada}` — deliberadamente separado do domínio
+`quote`, já que são máquinas de status distintas por design (Parte 7).
+
+Verificação: tsc limpo, lint 59 problemas (+1, mesmo padrão de fetch-em-efeito já aceito). 441/441
+testes (4 novos: `list()` filtra por status e devolve o Orçamento vinculado, `getById()` com itens
+completos + 404 pra id inexistente, `archive()` nunca altera o Orçamento vinculado,
+`reassignAndStage()` reatribui responsável/etapa sem apagar itens — o teste que expôs o problema do
+`update()`). Build limpo com `/api/catalog-requests` (+ `[id]`, `/archive`, `/assignable-users`) e
+`/api/quotes/[id]/triagem` registrados. PM2 reconstruído e reiniciado.

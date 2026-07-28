@@ -39,6 +39,7 @@ export type StatusDomain =
   | 'financeiro'
   | 'invoice'
   | 'shipment'
+  | 'catalogRequest'
 
 export const domainStatusCategory: Record<StatusDomain, Record<string, StatusCategory>> = {
   quote: {
@@ -91,6 +92,11 @@ export const domainStatusCategory: Record<StatusDomain, Record<string, StatusCat
   // ADR-023 (Decisão #2, Faturamento) — só 2 estados: fatura nasce sempre emitida, sem rascunho.
   invoice: {
     issued: 'success', cancelled: 'cancelled',
+  },
+  // ADR-026 (Fase 4) — ciclo de vida do INTAKE bruto da solicitação, não confundir com o status
+  // comercial do Orçamento gerado (domínio `quote`) — são propositalmente máquinas separadas.
+  catalogRequest: {
+    recebida: 'pending', em_triagem: 'info', convertida: 'success', arquivada: 'cancelled',
   },
 }
 

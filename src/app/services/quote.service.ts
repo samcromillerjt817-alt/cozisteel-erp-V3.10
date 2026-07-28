@@ -311,6 +311,35 @@ class QuoteService {
     return updated
   }
 
+  /**
+   * Reatribuição de responsável e sub-status de triagem (ADR-026, Fase 4) — método dedicado em vez
+   * de reaproveitar `update()`: `update()` sempre substitui TODOS os itens do orçamento (usa
+   * `body.items || []`), então usá-lo aqui apagaria os itens só por causa de uma troca de
+   * responsável. `quoteRepository.updateStatus()` é o mesmo primitivo de update parcial já usado por
+   * `changeStatus()` — nunca toca em itens.
+   */
+  async reassignAndStage(id: string, data: { userId?: string; internalStage?: string }, actingUserId: string) {
+    const quote = (await quoteRepository.findById(id)) as QuoteRecord | null
+    if (!quote) throw new NotFoundException('Orçamento não encontrado')
+
+    const updateData: Record<string, unknown> = {}
+    if (data.userId !== undefined) updateData.userId = data.userId
+    if (data.internalStage !== undefined) updateData.internalStage = data.internalStage
+
+    const updated = await quoteRepository.updateStatus(id, updateData)
+
+    await auditService.log({
+      userId: actingUserId,
+      action: 'PATCH',
+      module: 'orcamentos',
+      entityId: id,
+      entityName: quote.number,
+      details: `Orçamento ${quote.number}: responsável/etapa de triagem atualizados`,
+    })
+
+    return updated
+  }
+
   async delete(id: string, userId: string) {
     const quote = (await quoteRepository.findByIdWithItemsAndSalesOrder(id)) as QuoteWithItemsAndSalesOrder | null
     if (!quote) throw new NotFoundException('Orçamento não encontrado')

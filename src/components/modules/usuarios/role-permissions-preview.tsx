@@ -6,7 +6,7 @@ const MODULE_LABELS: Record<Module, string> = {
   categorias: 'Categorias', materiais: 'Materiais', sistema: 'Sistema', configuracoes: 'Configurações',
   sequencias: 'Sequências', auditoria: 'Auditoria', dashboard: 'Dashboard', fornecedores: 'Fornecedores',
   requisicoes: 'Requisições', producao: 'Produção', estoque: 'Estoque', relatorios: 'Relatórios',
-  compras: 'Compras', financeiro: 'Financeiro',
+  compras: 'Compras', financeiro: 'Financeiro', catalogo: 'Catálogo Digital',
 }
 
 const ACTION_LABELS: Record<Action, string> = {

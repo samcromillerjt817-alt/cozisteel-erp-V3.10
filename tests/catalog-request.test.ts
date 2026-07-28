@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { db } from '@/lib/db'
 import { catalogRequestService } from '@/app/services/catalog-request.service'
+import { quoteService } from '@/app/services/quote.service'
+import { createTestUser } from './helpers/fixtures'
 import { BadRequestException } from '@/app/exceptions'
 
 /**
@@ -14,6 +16,7 @@ describe('Catálogo Digital Público — submissão (ADR-026, Fase 3)', () => {
   const catalogRequestIds: string[] = []
   const quoteIds: string[] = []
   const clientIds: string[] = []
+  const extraUserIds: string[] = []
   let categoryId: string
   let visibleProductId: string
   let hiddenProductId: string
@@ -38,6 +41,7 @@ describe('Catálogo Digital Público — submissão (ADR-026, Fase 3)', () => {
     await db.category.delete({ where: { id: categoryId } })
     await db.client.deleteMany({ where: { id: { in: clientIds } } })
     await db.user.deleteMany({ where: { username: 'catalogo-digital' } })
+    await db.user.deleteMany({ where: { id: { in: extraUserIds } } })
   })
 
   function baseInput(overrides: Partial<Parameters<typeof catalogRequestService.submit>[0]> = {}) {
@@ -166,5 +170,70 @@ describe('Catálogo Digital Público — submissão (ADR-026, Fase 3)', () => {
     const systemUser = await db.user.findUnique({ where: { id: quote!.userId } })
     expect(systemUser?.username).toBe('catalogo-digital')
     expect(systemUser?.active).toBe(false)
+  })
+
+  it('9. list() filtra por status e devolve o Orçamento vinculado (fila de triagem, ADR-026 Fase 4)', async () => {
+    const result = await catalogRequestService.submit(baseInput())
+    const catalogRequest = await db.catalogRequest.findUnique({ where: { protocol: result.protocol } })
+    catalogRequestIds.push(catalogRequest!.id)
+    quoteIds.push(catalogRequest!.quoteId!)
+
+    const convertidas = await catalogRequestService.list({ status: 'convertida', page: 1, limit: 50 })
+    const found = convertidas.data.find((r) => r.id === catalogRequest!.id) as unknown as { quote: { id: string } | null }
+    expect(found).toBeTruthy()
+    expect(found.quote?.id).toBe(catalogRequest!.quoteId)
+
+    const arquivadas = await catalogRequestService.list({ status: 'arquivada', page: 1, limit: 50 })
+    expect(arquivadas.data.find((r) => r.id === catalogRequest!.id)).toBeUndefined()
+  })
+
+  it('10. getById devolve os itens completos; lança NotFoundException pra id inexistente', async () => {
+    const result = await catalogRequestService.submit(baseInput())
+    const catalogRequest = await db.catalogRequest.findUnique({ where: { protocol: result.protocol } })
+    catalogRequestIds.push(catalogRequest!.id)
+    quoteIds.push(catalogRequest!.quoteId!)
+
+    const detail = await catalogRequestService.getById(catalogRequest!.id)
+    expect(detail.items).toHaveLength(1)
+
+    await expect(catalogRequestService.getById('id-inexistente')).rejects.toThrow(/não encontrada/)
+  })
+
+  it('11. archive() marca a solicitação como arquivada com o motivo, sem alterar o Orçamento vinculado', async () => {
+    const result = await catalogRequestService.submit(baseInput())
+    const catalogRequest = await db.catalogRequest.findUnique({ where: { protocol: result.protocol } })
+    catalogRequestIds.push(catalogRequest!.id)
+    quoteIds.push(catalogRequest!.quoteId!)
+    const quoteBefore = await db.quote.findUnique({ where: { id: catalogRequest!.quoteId! } })
+
+    await catalogRequestService.archive(catalogRequest!.id, 'Cliente desistiu')
+
+    const updated = await db.catalogRequest.findUnique({ where: { id: catalogRequest!.id } })
+    expect(updated?.status).toBe('arquivada')
+    expect(updated?.archivedReason).toBe('Cliente desistiu')
+
+    const quoteAfter = await db.quote.findUnique({ where: { id: catalogRequest!.quoteId! } })
+    expect(quoteAfter?.status).toBe(quoteBefore?.status)
+    expect(quoteAfter?.internalStage).toBe(quoteBefore?.internalStage)
+  })
+
+  it('12. reassignAndStage() reatribui responsável e sub-status de triagem, sem apagar os itens do Orçamento', async () => {
+    const result = await catalogRequestService.submit(baseInput())
+    const catalogRequest = await db.catalogRequest.findUnique({ where: { protocol: result.protocol } })
+    catalogRequestIds.push(catalogRequest!.id)
+    quoteIds.push(catalogRequest!.quoteId!)
+
+    const vendedor = await createTestUser(`triagem-${Date.now()}`)
+    extraUserIds.push(vendedor.id)
+    const itemsBefore = await db.quoteItem.count({ where: { quoteId: catalogRequest!.quoteId! } })
+
+    await quoteService.reassignAndStage(catalogRequest!.quoteId!, { userId: vendedor.id, internalStage: 'analise_tecnica' }, vendedor.id)
+
+    const updated = await db.quote.findUnique({ where: { id: catalogRequest!.quoteId! } })
+    expect(updated?.userId).toBe(vendedor.id)
+    expect(updated?.internalStage).toBe('analise_tecnica')
+
+    const itemsAfter = await db.quoteItem.count({ where: { quoteId: catalogRequest!.quoteId! } })
+    expect(itemsAfter).toBe(itemsBefore) // reassignAndStage NUNCA deve tocar em itens
   })
 })
