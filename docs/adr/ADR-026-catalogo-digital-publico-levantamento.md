@@ -1,7 +1,6 @@
 # ADR-026 — Catálogo Digital Público (Levantamento)
 
-- **Status**: Levantamento concluído, 4 decisões tomadas pelo usuário (Parte 16) — plano de
-  implementação (Parte 11) pronto para aprovação final antes do início da Fase 1
+- **Status**: Fase 1 (schema) implementada e verificada — Fase 2 ainda não iniciada
 - **Data**: 2026-07-29
 - **Origem**: pedido explícito do usuário para uma nova linha de evolução — um catálogo digital público
   (link único, sem login) onde um cliente monta uma "cesta" de produtos com personalizações e envia uma
@@ -354,3 +353,15 @@ impede isso (são camadas de apresentação sobre o mesmo catálogo de Produto).
 5. **Preço no catálogo**: ✅ todos os produtos começam como "sob consulta" na v1 — campo
    `catalogPriceMode` já fica pronto para "exibir"/"faixa" no futuro, mas nenhum produto mostra preço
    até decisão caso a caso posterior.
+
+## Verificação (Fase 1)
+
+Campos novos em `Product` (6 campos de controle de exibição + índice `showInCatalog`), `Quote`
+(`origin`, `internalStage`, índice `origin`) e `Client` (relação inversa `catalogRequests`); 2 models
+novos (`CatalogRequest`, `CatalogRequestItem`) — tudo aditivo, sem alteração de campo existente.
+Confirmado que `Product` usa soft-delete (`active: false`, nunca remove a linha), então a nova FK
+`CatalogRequestItem.productId` não introduz nenhum risco de violação de integridade referencial —
+nenhum guard de exclusão precisou ser adicionado. `prisma db push` aplicado em `test.db` e produção
+(`data/cozisteel.db`). tsc limpo, lint 57 problemas (mesma contagem, 0 novos), 421/421 testes (nenhum
+teste novo nesta fase — só schema, sem lógica), build limpo, PM2 reconstruído e reiniciado. Nenhuma
+rota, serviço ou UI nova ainda — só a fundação de dados para a Fase 2.
