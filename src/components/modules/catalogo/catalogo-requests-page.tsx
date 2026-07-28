@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Eye, ExternalLink, Archive } from 'lucide-react'
+import { Eye, ExternalLink, Archive, Link2 } from 'lucide-react'
 import { PageHeader } from '@/components/platform/page-header'
 import { DataTable, type DataTableColumn } from '@/components/platform/data-table'
 import { StatusBadge } from '@/components/domain/status-badge'
@@ -118,6 +118,12 @@ export function CatalogoRequestsPage({ onNavigateToOrcamento }: CatalogoRequests
     load()
   }, [load])
 
+  function copyCatalogLink() {
+    const url = `${window.location.origin}/catalogo`
+    navigator.clipboard.writeText(url)
+    toast.success('Link do catálogo copiado — envie para o cliente')
+  }
+
   async function openDetail(row: CatalogRequestRow) {
     try {
       const r = await fetch(`/api/catalog-requests/${row.id}`)
@@ -181,7 +187,14 @@ export function CatalogoRequestsPage({ onNavigateToOrcamento }: CatalogoRequests
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Catálogo Digital — Solicitações" />
+      <PageHeader
+        title="Catálogo Digital — Solicitações"
+        actions={
+          <Button variant="outline" onClick={copyCatalogLink}>
+            <Link2 className="w-4 h-4 mr-1" /> Copiar link do catálogo
+          </Button>
+        }
+      />
 
       <Tabs value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1) }}>
         <TabsList>
