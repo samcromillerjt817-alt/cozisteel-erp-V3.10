@@ -82,6 +82,7 @@ export interface QuoteListRow {
   clientName: string
   total: number
   salesOrder: { id: string; number: string } | null
+  publicToken: string | null
 }
 
 export interface ClientOption {

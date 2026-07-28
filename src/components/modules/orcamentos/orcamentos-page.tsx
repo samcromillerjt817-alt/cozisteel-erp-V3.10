@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Edit, Copy, FileOutput, Image as ImageIcon, Truck, ShoppingCart, Trash2, X, AlertTriangle } from 'lucide-react'
+import { Plus, Edit, Copy, FileOutput, Image as ImageIcon, Truck, ShoppingCart, Trash2, X, AlertTriangle, Link2 } from 'lucide-react'
 import { PageHeader } from '@/components/platform/page-header'
 import { FilterBar } from '@/components/platform/filter-bar'
 import { DataTable, type DataTableColumn } from '@/components/platform/data-table'
@@ -332,6 +332,13 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
     setForm({ ...form, items })
   }
 
+  function copyClientLink(q: QuoteListRow) {
+    if (!q.publicToken) return
+    const url = `${window.location.origin}/orcamento/${q.publicToken}`
+    navigator.clipboard.writeText(url)
+    toast.success('Link de confirmação copiado — envie para o cliente')
+  }
+
   function addItem() {
     setForm({ ...form, items: [...form.items, emptyQuoteItem()] })
   }
@@ -407,6 +414,10 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
             disabled: (q) => q.status !== 'approved' || !!q.salesOrder || pendingStatusIds.has(q.id),
           },
           { label: 'Editar', icon: <Edit />, onClick: (q) => openEdit(q.id, q.salesOrder) },
+          {
+            label: 'Copiar link de confirmação do cliente', icon: <Link2 />, onClick: (q) => copyClientLink(q),
+            disabled: (q) => q.status !== 'sent' || !q.publicToken,
+          },
           { label: 'Duplicar', icon: <Copy />, onClick: (q) => duplicateQuote(q.id) },
           { label: 'PDF Comercial', icon: <FileOutput />, onClick: (q) => window.open(`/api/quotes/${q.id}/pdf?variant=comercial`, '_blank') },
           { label: 'PDF Técnico (com foto)', icon: <ImageIcon />, onClick: (q) => window.open(`/api/quotes/${q.id}/pdf?variant=tecnico`, '_blank') },
@@ -559,7 +570,7 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
               </div>
               <div className="space-y-1.5"><Label>Garantia</Label><Input value={form.warranty} onChange={(e) => setForm({ ...form, warranty: e.target.value })} /></div>
               <div className="space-y-1.5"><Label>Validade</Label><DatePicker value={form.validity} onChange={(v) => setForm({ ...form, validity: v })} /></div>
-              <div className="space-y-1.5"><Label>Prazo Entrega</Label><Input value={form.deliveryTime} onChange={(e) => setForm({ ...form, deliveryTime: e.target.value })} /></div>
+              <div className="space-y-1.5"><Label>Prazo Entrega</Label><DatePicker value={form.deliveryTime} onChange={(v) => setForm({ ...form, deliveryTime: v })} /></div>
             </div>
             <div className="mt-3 space-y-1.5">
               <Label>Observações</Label>

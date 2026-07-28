@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import { quoteRepository } from '@/app/repositories/quote.repository'
 import { clientRepository } from '@/app/repositories/client.repository'
 import { numberingService } from '@/app/services/numbering.service'
@@ -8,7 +9,7 @@ import { domainEvents, DOMAIN_EVENTS } from '@/lib/domain-events'
 import type { OrcamentoAprovadoPayload, OrcamentoConvertidoEmPedidoVendaPayload } from '@/lib/domain-events'
 import { NotFoundException, BadRequestException } from '@/app/exceptions'
 import { checkTransition } from '@/lib/status-machine'
-import { formatDate } from '@/lib/format'
+import { formatDate, parseBrDate } from '@/lib/format'
 import type { CreateQuoteDto } from '@/app/dto'
 
 export interface ListQuotesInput {
@@ -59,6 +60,46 @@ interface QuoteRecord {
   discountType: string
   discountValue: number
   freightValue: number
+}
+
+interface QuotePublicRecord {
+  id: string
+  number: string
+  status: string
+  userId: string
+  date: string
+  validUntil: string
+  validity: string
+  clientName: string
+  clientCnpj: string
+  clientAddress: string
+  clientNeighborhood: string
+  clientCep: string
+  clientContact: string
+  clientEmail: string
+  clientPhone: string
+  subtotal: number
+  discountType: string
+  discountValue: number
+  discountTotal: number
+  freightMode: string
+  freightText: string
+  freightValue: number
+  total: number
+  warranty: string
+  deliveryTime: string
+  paymentTerms: string
+  generalConditions: string
+  notes: string
+  items: Array<{
+    code: string
+    description: string
+    quantity: number
+    unit: string
+    unitPrice: number
+    total: number
+    order: number
+  }>
 }
 
 interface QuoteWithItemsAndSalesOrder {
@@ -327,6 +368,9 @@ class QuoteService {
     }
     if (status === 'sent') {
       updateData.sentAt = new Date()
+      // Gera (ou regenera) o token do link público a cada novo envio — se o orçamento foi editado e
+      // reenviado, qualquer link antigo compartilhado com o cliente para de funcionar.
+      updateData.publicToken = crypto.randomBytes(32).toString('hex')
     }
 
     const updated = await quoteRepository.updateStatus(id, updateData)
@@ -347,32 +391,105 @@ class QuoteService {
     // A máquina de transições já garante que só se chega aqui vindo de "sent" — nunca de
     // "approved" pra "approved" (auto-transição não está no mapa), então gerar OP sempre que
     // o destino for "approved" é seguro e não duplica.
-    let productionOrders: Array<{ id: string; number: string }> = []
-    if (status === 'approved') {
-      const withItems = (await quoteRepository.findItemsWithProduct(id)) as {
-        items: Array<{ productId: string | null; description: string; quantity: number; unit: string; notes: string }>
-      } | null
-      const items = withItems?.items ?? []
-
-      if (items.length > 0) {
-        const results = await domainEvents.publish<OrcamentoAprovadoPayload, Array<{ id: string; number: string }>>(
-          DOMAIN_EVENTS.ORCAMENTO_APROVADO,
-          { quoteId: quote.id, quoteNumber: quote.number, userId, items }
-        )
-        productionOrders = results.flat()
-
-        await auditService.log({
-          userId,
-          action: 'CREATE',
-          module: 'producao',
-          entityId: id,
-          entityName: quote.number,
-          details: `${productionOrders.length} Ordem(ns) de Produção gerada(s) automaticamente a partir do orçamento ${quote.number}: ${productionOrders.map((o) => o.number).join(', ')}`,
-        })
-      }
-    }
+    const productionOrders = status === 'approved' ? await this.generateProductionOrdersForApproval(id, quote.number, userId) : []
 
     return { ...(updated as object), generatedProductionOrders: productionOrders }
+  }
+
+  /** Gera 1 Ordem de Produção por item vinculado a produto cadastrado, ao aprovar um orçamento — usado
+   * tanto pela aprovação interna (`changeStatus`) quanto pela confirmação do cliente via link público
+   * (`confirmByClient`). */
+  private async generateProductionOrdersForApproval(quoteId: string, quoteNumber: string, userId: string) {
+    const withItems = (await quoteRepository.findItemsWithProduct(quoteId)) as {
+      items: Array<{ productId: string | null; description: string; quantity: number; unit: string; notes: string }>
+    } | null
+    const items = withItems?.items ?? []
+    if (items.length === 0) return []
+
+    const results = await domainEvents.publish<OrcamentoAprovadoPayload, Array<{ id: string; number: string }>>(
+      DOMAIN_EVENTS.ORCAMENTO_APROVADO,
+      { quoteId, quoteNumber, userId, items }
+    )
+    const productionOrders = results.flat()
+
+    await auditService.log({
+      userId,
+      action: 'CREATE',
+      module: 'producao',
+      entityId: quoteId,
+      entityName: quoteNumber,
+      details: `${productionOrders.length} Ordem(ns) de Produção gerada(s) automaticamente a partir do orçamento ${quoteNumber}: ${productionOrders.map((o) => o.number).join(', ')}`,
+    })
+
+    return productionOrders
+  }
+
+  /**
+   * Visualização pública do orçamento (link com token, sem autenticação) — ADR-024 addendum. Só
+   * expõe orçamentos em "sent" e dentro da validade (`validUntil`); qualquer outro caso é tratado
+   * como link inválido/expirado, sem distinguir os dois motivos pro cliente.
+   */
+  async getByPublicToken(token: string) {
+    const quote = (await quoteRepository.findByPublicToken(token)) as unknown as QuotePublicRecord | null
+    if (!quote || quote.status !== 'sent' || this.isPastValidUntil(quote.validUntil)) {
+      throw new NotFoundException('Link inválido ou expirado')
+    }
+    return quote
+  }
+
+  /**
+   * Confirmação do cliente via link público — ADR-024 addendum. Decisão do usuário: o cliente É o
+   * aprovador nesse fluxo (muda o status direto pra approved/rejected), sem passar pelo motor de
+   * alçada (`approvalService`), que exige um usuário interno com Role — o cliente não tem nenhum dos
+   * dois. O fluxo interno de aprovação (ADR-023, item 5) continua existindo à parte, sem alteração,
+   * para os casos em que a equipe confirma manualmente (ex.: cliente aprovou por telefone).
+   */
+  async confirmByClient(token: string, decision: 'approved' | 'rejected') {
+    const quote = (await quoteRepository.findByPublicToken(token)) as unknown as QuotePublicRecord | null
+    if (!quote || quote.status !== 'sent' || this.isPastValidUntil(quote.validUntil)) {
+      throw new NotFoundException('Link inválido ou expirado')
+    }
+
+    const updateData: Record<string, unknown> = { status: decision, clientRespondedAt: new Date() }
+    if (decision === 'approved') {
+      updateData.approvedBy = 'Cliente (link público)'
+      updateData.approvedAt = new Date()
+    }
+
+    await quoteRepository.updateStatus(quote.id, updateData)
+
+    await statusHistoryService.record(
+      'quote',
+      quote.id,
+      quote.status,
+      decision,
+      quote.userId,
+      decision === 'approved' ? 'Aprovado pelo cliente via link público' : 'Recusado pelo cliente via link público'
+    )
+
+    await auditService.log({
+      userId: quote.userId,
+      action: 'PATCH',
+      module: 'orcamentos',
+      entityId: quote.id,
+      entityName: quote.number,
+      details: `Orçamento ${quote.number} ${decision === 'approved' ? 'aprovado' : 'recusado'} pelo cliente via link público`,
+      beforeValue: { status: quote.status },
+      afterValue: { status: decision },
+    })
+
+    const productionOrders =
+      decision === 'approved' ? await this.generateProductionOrdersForApproval(quote.id, quote.number, quote.userId) : []
+
+    return { status: decision, generatedProductionOrders: productionOrders }
+  }
+
+  private isPastValidUntil(validUntil: string): boolean {
+    const date = parseBrDate(validUntil)
+    if (!date) return false // sem data de validade preenchida — link não expira por essa via
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return date < today
   }
 
   /**

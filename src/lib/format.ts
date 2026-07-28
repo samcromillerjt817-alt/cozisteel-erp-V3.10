@@ -23,6 +23,13 @@ export function formatDate(date: Date): string {
   return `${d}/${m}/${y}`
 }
 
+/** Converte "dd/mm/aaaa" (formato de data de negócio usado em campos como Quote.validUntil) — devolve null se o formato não bater. */
+export function parseBrDate(value: string): Date | null {
+  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (!match) return null
+  return new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]))
+}
+
 export const statusLabels: Record<string, string> = {
   draft: 'Rascunho',
   sent: 'Enviado',

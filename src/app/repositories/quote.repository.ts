@@ -44,6 +44,10 @@ class QuoteRepository extends BaseRepository<typeof db.quote> {
     return this.delegate.findUnique({ where: { id }, include: { items: { orderBy: { order: 'asc' } } } })
   }
 
+  findByPublicToken(token: string) {
+    return this.delegate.findUnique({ where: { publicToken: token }, include: DETAIL_INCLUDE })
+  }
+
   findItemsWithProduct(id: string) {
     return this.delegate.findUnique({ where: { id }, include: { items: { where: { productId: { not: null } } } } })
   }

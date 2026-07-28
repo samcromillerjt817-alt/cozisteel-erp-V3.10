@@ -1044,6 +1044,8 @@ model Quote {
   approvedBy         String?
   approvedAt         DateTime?
   sentAt             DateTime?
+  publicToken        String?   @unique // token do link público de confirmação do cliente (ADR-024 addendum)
+  clientRespondedAt  DateTime? // quando o cliente confirmou (aprovou/recusou) via o link público
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   userId             String
