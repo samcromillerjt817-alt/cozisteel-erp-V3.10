@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ArrowLeft, PackageSearch, Trash2, CheckCircle2, Loader2 } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ClipboardCheck, Loader2, LockKeyhole, PackageSearch, ShoppingBag, Trash2, UserRound } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -84,13 +84,13 @@ export default function CarrinhoPage() {
   if (state.phase === 'done') {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
-        <Card className="max-w-md w-full">
-          <CardContent className="pt-6 flex flex-col items-center text-center gap-3">
-            <CheckCircle2 className="w-10 h-10 text-emerald-500" />
-            <p className="font-medium">Solicitação enviada com sucesso!</p>
-            <p className="text-sm text-slate-500">Protocolo: <span className="font-mono font-semibold">{state.protocol}</span></p>
+        <Card className="max-w-lg w-full border-0 shadow-2xl">
+          <CardContent className="flex flex-col items-center gap-5 px-8 py-12 text-center">
+            <div className="rounded-full bg-emerald-100 p-5"><CheckCircle2 className="h-12 w-12 text-emerald-600" /></div>
+            <div><p className="text-2xl font-bold text-slate-900">Solicitação enviada!</p><p className="mt-2 text-sm text-slate-500">Recebemos os dados do seu projeto.</p></div>
+            <div className="w-full rounded-xl bg-slate-100 p-4"><p className="text-xs uppercase tracking-widest text-slate-400">Protocolo</p><p className="mt-1 font-mono text-lg font-bold text-slate-800">{state.protocol}</p></div>
             <p className="text-sm text-slate-500">Nossa equipe vai analisar sua solicitação e entrar em contato em breve.</p>
-            <Link href="/catalogo" className="text-sm text-primary underline mt-2">Voltar ao catálogo</Link>
+            <Button asChild className="mt-2 w-full"><Link href="/catalogo">Voltar ao catálogo</Link></Button>
           </CardContent>
         </Card>
       </div>
@@ -98,42 +98,58 @@ export default function CarrinhoPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
-        <Link href="/catalogo" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700">
+    <div className="min-h-screen bg-slate-50/70">
+      <header className="border-b bg-white">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
+          <Link href="/catalogo" className="text-xl font-black tracking-tight text-slate-900">Cozisteel</Link>
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500"><LockKeyhole className="h-4 w-4 text-primary" /> Ambiente seguro</div>
+        </div>
+      </header>
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
+        <Link href="/catalogo" className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-primary">
           <ArrowLeft className="w-4 h-4" /> Continuar navegando o catálogo
         </Link>
+        <div className="my-7">
+          <p className="text-sm font-semibold uppercase tracking-widest text-primary">Solicitação de orçamento</p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">Revise seu projeto</h1>
+          <p className="mt-2 text-slate-500">Confira os equipamentos e conte-nos como podemos entrar em contato.</p>
+        </div>
 
-        <Card>
-          <CardHeader><CardTitle>Sua cesta</CardTitle></CardHeader>
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(340px,.75fr)]">
+        <div className="space-y-6">
+        <Card className="border-slate-200/80 shadow-sm">
+          <CardHeader className="flex-row items-center justify-between space-y-0 border-b">
+            <div><CardTitle className="flex items-center gap-2 text-xl"><ShoppingBag className="h-5 w-5 text-primary" /> Sua cesta</CardTitle><p className="mt-1 text-sm text-slate-500">{items.length} {items.length === 1 ? 'item selecionado' : 'itens selecionados'}</p></div>
+          </CardHeader>
           <CardContent className="space-y-3">
             {items.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
-                <PackageSearch className="w-8 h-8 text-slate-300" />
-                <p className="text-sm text-slate-500">Sua cesta está vazia</p>
+              <div className="flex flex-col items-center justify-center gap-4 py-14 text-center">
+                <div className="rounded-full bg-primary/10 p-5"><PackageSearch className="h-10 w-10 text-primary" /></div>
+                <div><p className="font-bold text-slate-900">Sua cesta está vazia</p><p className="mt-1 text-sm text-slate-500">Explore o catálogo e escolha os equipamentos para seu projeto.</p></div>
+                <Button asChild variant="outline"><Link href="/catalogo">Explorar catálogo</Link></Button>
               </div>
             ) : (
               items.map((item) => (
-                <div key={item.id} className="flex gap-3 border-b pb-3 last:border-b-0">
-                  <div className="relative w-16 h-16 shrink-0 bg-slate-100 rounded overflow-hidden">
+                <div key={item.id} className="flex gap-4 border-b border-slate-100 py-5 first:pt-5 last:border-b-0">
+                  <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-slate-100 sm:h-28 sm:w-28">
                     {item.productImage ? (
                       <Image src={item.productImage} alt={item.productName} fill className="object-cover" unoptimized />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-300"><PackageSearch className="w-5 h-5" /></div>
                     )}
                   </div>
-                  <div className="flex-1 space-y-1">
-                    <p className="font-medium text-sm">{item.productName}</p>
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-slate-400">Qtd.</Label>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="font-bold text-slate-900">{item.productName}</p>
+                    <div className="flex items-center gap-3">
+                      <Label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Quantidade</Label>
                       <Input
-                        type="number" min={1} className="w-20 h-8"
+                        type="number" min={1} className="h-9 w-20 rounded-lg"
                         value={item.quantity}
                         onChange={(e) => updateItem(item.id, { quantity: Number(e.target.value) || 1 })}
                       />
                     </div>
                     {(item.width || item.height || item.length) && (
-                      <p className="text-xs text-slate-500">{item.width || '-'} x {item.height || '-'} x {item.length || '-'} cm</p>
+                      <p className="inline-flex rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600">{item.width || '-'} × {item.height || '-'} × {item.length || '-'} cm</p>
                     )}
                     {(item.material || item.finish || item.voltage) && (
                       <p className="text-xs text-slate-500">
@@ -141,7 +157,7 @@ export default function CarrinhoPage() {
                       </p>
                     )}
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => removeItem(item.id)} title="Remover">
+                  <Button variant="ghost" size="icon" className="shrink-0 rounded-full hover:bg-destructive/10" onClick={() => removeItem(item.id)} title="Remover">
                     <Trash2 className="w-4 h-4 text-destructive" />
                   </Button>
                 </div>
@@ -151,16 +167,16 @@ export default function CarrinhoPage() {
         </Card>
 
         {items.length > 0 && (
-          <Card>
-            <CardHeader><CardTitle>Seus dados</CardTitle></CardHeader>
-            <CardContent className="grid sm:grid-cols-2 gap-3">
+          <Card className="border-slate-200/80 shadow-sm">
+            <CardHeader className="border-b"><CardTitle className="flex items-center gap-2 text-xl"><UserRound className="h-5 w-5 text-primary" /> Seus dados</CardTitle><p className="text-sm text-slate-500">Usaremos estas informações apenas para preparar e retornar seu orçamento.</p></CardHeader>
+            <CardContent className="grid gap-4 pt-6 sm:grid-cols-2">
               <div className="space-y-1.5 sm:col-span-2">
                 <Label>Nome ou razão social *</Label>
-                <Input value={form.clientName} onChange={(e) => setForm({ ...form, clientName: e.target.value })} />
+                <Input className="h-11" placeholder="Nome completo ou razão social" value={form.clientName} onChange={(e) => setForm({ ...form, clientName: e.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label>CPF ou CNPJ</Label>
-                <Input value={form.clientCpfCnpj} onChange={(e) => setForm({ ...form, clientCpfCnpj: maskCpfCnpj(e.target.value) })} />
+                <Input className="h-11" placeholder="00.000.000/0000-00" value={form.clientCpfCnpj} onChange={(e) => setForm({ ...form, clientCpfCnpj: maskCpfCnpj(e.target.value) })} />
               </div>
               <div className="space-y-1.5">
                 <Label>Nome do responsável</Label>
@@ -168,11 +184,11 @@ export default function CarrinhoPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>E-mail</Label>
-                <Input type="email" value={form.clientEmail} onChange={(e) => setForm({ ...form, clientEmail: e.target.value })} />
+                <Input className="h-11" type="email" placeholder="voce@empresa.com.br" value={form.clientEmail} onChange={(e) => setForm({ ...form, clientEmail: e.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label>Telefone/WhatsApp</Label>
-                <Input value={form.clientPhone} onChange={(e) => setForm({ ...form, clientPhone: maskPhone(e.target.value) })} />
+                <Input className="h-11" placeholder="(00) 00000-0000" value={form.clientPhone} onChange={(e) => setForm({ ...form, clientPhone: maskPhone(e.target.value) })} />
               </div>
               <div className="space-y-1.5">
                 <Label>Cidade</Label>
@@ -191,33 +207,37 @@ export default function CarrinhoPage() {
                 <Textarea rows={3} value={form.generalNotes} onChange={(e) => setForm({ ...form, generalNotes: e.target.value })} />
               </div>
             </CardContent>
-            <Separator />
-            <CardContent className="space-y-3 pt-4">
-              <p className="text-xs text-slate-500">
-                Esta solicitação ainda não representa preço, pedido ou prazo confirmado — nossa equipe vai
-                analisar e retornar com um orçamento formal.
-              </p>
-              <div className="flex items-start gap-2">
-                <Checkbox id="consent" checked={consent} onCheckedChange={(v) => setConsent(v === true)} />
-                <Label htmlFor="consent" className="text-xs font-normal text-slate-600 leading-snug">
-                  Concordo com o uso dos meus dados para fins de elaboração deste orçamento.
-                </Label>
+          </Card>
+        )}
+        </div>
+
+        {items.length > 0 && (
+          <Card className="border-0 shadow-xl lg:sticky lg:top-6">
+            <CardHeader className="rounded-t-xl bg-slate-900 text-white"><CardTitle className="flex items-center gap-2 text-lg"><ClipboardCheck className="h-5 w-5 text-primary" /> Revisão final</CardTitle></CardHeader>
+            <CardContent className="space-y-5 pt-6">
+              <div className="flex items-center justify-between"><span className="text-sm text-slate-500">Equipamentos</span><span className="font-bold">{items.length}</span></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-slate-500">Quantidade total</span><span className="font-bold">{items.reduce((sum, item) => sum + item.quantity, 0)}</span></div>
+              <Separator />
+              <div className="rounded-xl bg-primary/5 p-4 text-sm leading-relaxed text-slate-600">
+                Esta solicitação não representa preço, pedido ou prazo confirmado. Nossa equipe retornará com um orçamento formal.
               </div>
-              {state.phase === 'error' && <p className="text-sm text-destructive">{state.message}</p>}
+              <div className="flex items-start gap-3 rounded-xl border p-4">
+                <Checkbox id="consent" className="mt-0.5" checked={consent} onCheckedChange={(v) => setConsent(v === true)} />
+                <Label htmlFor="consent" className="text-xs font-normal leading-relaxed text-slate-600">Concordo com o uso dos meus dados para fins de elaboração deste orçamento.</Label>
+              </div>
+              {state.phase === 'error' && <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p>}
             </CardContent>
-            <CardFooter>
-              <Button
-                className="w-full"
-                disabled={state.phase === 'sending' || !form.clientName.trim() || !consent}
-                onClick={handleSubmit}
-              >
-                {state.phase === 'sending' ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
-                Enviar solicitação de orçamento
+            <CardFooter className="flex-col gap-3">
+              <Button className="h-12 w-full rounded-xl text-base shadow-lg shadow-primary/20" disabled={state.phase === 'sending' || !form.clientName.trim() || !consent} onClick={handleSubmit}>
+                {state.phase === 'sending' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Enviar solicitação
               </Button>
+              <p className="flex items-center gap-1.5 text-center text-[11px] text-slate-400"><LockKeyhole className="h-3 w-3" /> Seus dados são enviados com segurança.</p>
             </CardFooter>
           </Card>
         )}
-      </div>
+        </div>
+      </main>
     </div>
   )
 }

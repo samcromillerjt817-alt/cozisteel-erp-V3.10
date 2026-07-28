@@ -506,3 +506,19 @@ Verificação: tsc limpo, lint 59 problemas (mesma contagem, 0 novos — mudanç
 backend, sem componente novo). 446/446 testes (5 novos em `tests/catalog-fase5-security.test.ts`:
 rate limit bloqueia a Nª+1 requisição, isola por IP, aceita CPF/CNPJ com dígito válido, rejeita dígito
 inválido, aceita campo vazio). Build limpo, PM2 reconstruído e reiniciado, testado ao vivo.
+
+## Addendum — redesign visual (2026-07-28, via Codex CLI)
+
+Usuário avaliou as 3 páginas públicas ao vivo e achou o visual "seco" demais pra uma vitrine
+comercial. Redesign feito com `codex exec` (Codex CLI, já configurado no projeto) nas 3 páginas —
+`catalogo/page.tsx` (hero comercial, cards de produto mais ricos, skeletons melhores, estado vazio
+acolhedor), `catalogo/[productId]/page.tsx` (galeria maior, especificações em destaque, CTA mais
+forte), `catalogo/carrinho/page.tsx` (fluxo de revisão reorganizado, resumo lateral fixo). Prompt
+explicitamente restringiu Codex a: não mudar nenhuma chamada de API/payload, não mudar lógica de
+estado, reaproveitar componentes shadcn/ui já existentes, não tocar em nenhum arquivo fora das 3
+páginas. Revisão própria confirmou: `git diff --stat` só nas 3 páginas esperadas, toda lógica
+(fetch/useState/useEffect/useCatalogCart) idêntica à anterior, só JSX/CSS mudou.
+
+Verificação: tsc limpo, lint 59 problemas (mesma contagem, 0 novos), 446/446 testes (nenhum teste
+quebrou — confirma que o contrato de API e o comportamento não mudaram), build limpo, PM2
+reconstruído e reiniciado, testado ao vivo.
