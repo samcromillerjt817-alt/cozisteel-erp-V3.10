@@ -67,6 +67,12 @@ export const createProductSchema = z.object({
   family: z.string().default(''),
   line: z.string().default(''),
   notes: z.string().default(''),
+  showInCatalog: z.boolean().default(false),
+  catalogOrder: z.number().default(0),
+  catalogFeatured: z.boolean().default(false),
+  catalogDescription: z.string().default(''),
+  catalogPriceMode: z.string().default('sob_consulta'),
+  catalogAllowCustomization: z.boolean().default(true),
 })
 
 export const createClientSchema = z.object({

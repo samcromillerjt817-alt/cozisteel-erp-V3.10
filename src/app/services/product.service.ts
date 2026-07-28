@@ -73,6 +73,12 @@ class ProductService {
       family: data.family,
       line: data.line,
       notes: data.notes,
+      showInCatalog: data.showInCatalog,
+      catalogOrder: data.catalogOrder,
+      catalogFeatured: data.catalogFeatured,
+      catalogDescription: data.catalogDescription,
+      catalogPriceMode: data.catalogPriceMode,
+      catalogAllowCustomization: data.catalogAllowCustomization,
     })
   }
 

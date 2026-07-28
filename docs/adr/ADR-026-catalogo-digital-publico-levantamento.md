@@ -1,6 +1,6 @@
 # ADR-026 — Catálogo Digital Público (Levantamento)
 
-- **Status**: Fase 1 (schema) implementada e verificada — Fase 2 ainda não iniciada
+- **Status**: Fases 1 e 2 implementadas e verificadas — Fase 3 (cesta + submissão) ainda não iniciada
 - **Data**: 2026-07-29
 - **Origem**: pedido explícito do usuário para uma nova linha de evolução — um catálogo digital público
   (link único, sem login) onde um cliente monta uma "cesta" de produtos com personalizações e envia uma
@@ -365,3 +365,29 @@ nenhum guard de exclusão precisou ser adicionado. `prisma db push` aplicado em 
 (`data/cozisteel.db`). tsc limpo, lint 57 problemas (mesma contagem, 0 novos), 421/421 testes (nenhum
 teste novo nesta fase — só schema, sem lógica), build limpo, PM2 reconstruído e reiniciado. Nenhuma
 rota, serviço ou UI nova ainda — só a fundação de dados para a Fase 2.
+
+## Verificação (Fase 2)
+
+`catalogPublicService` (allowlist explícita de campos, nunca `costPrice`/estoque/BOM; `price` só
+exposto quando `catalogPriceMode = "exibir"`) + `product.repository.ts` (`findManyPublicCatalog`,
+`findPublicDetailById`, `findCatalogCategories`, `isPubliclyVisible`). 3 rotas públicas novas
+(`GET /api/public/catalog`, `GET /api/public/catalog/[productId]`, `GET /api/public/catalog/categories`)
++ 1 rota de imagem pública (`GET /api/public/uploads/[...path]`, irmã da rota autenticada existente —
+só serve imagem de produto com `showInCatalog=true`, checado antes de ler o arquivo mesmo com o path
+exato). 2 páginas públicas (`/catalogo`, `/catalogo/[productId]`), fora do SPA autenticado, mesmo
+princípio do `/orcamento/[token]` (ADR-025).
+
+**Lacuna encontrada e fechada nesta mesma fase**: não havia nenhuma forma de um colaborador marcar um
+Produto para aparecer no catálogo — sem isso, a Fase 2 nunca teria nenhum produto pra mostrar.
+Adicionados os 6 campos novos ao formulário de Produtos (`produto-form-fields.tsx`: switches "Exibir
+no catálogo"/"Em destaque"/"Permitir personalização", ordem de exibição, modo de preço, descrição
+comercial) + `createProductSchema`/`product.service.ts::create()` atualizados (o `update()` já
+aceitava os campos novos de graça, por ser um passthrough genérico que só exclui campos de relação).
+
+Verificação: tsc limpo, lint 58 problemas (+1, mesmo padrão de fetch-em-efeito já aceito em toda a
+iniciativa — `catalogo/page.tsx`), 429/429 testes (8 novos em `tests/catalog-public.test.ts`: filtro
+`showInCatalog`/`active`, busca, categoria, ordenação por destaque, 404 pra produto oculto/inativo/
+inexistente, gating de preço por `catalogPriceMode`, ausência de campo interno na serialização
+pública, categorias vazias excluídas). Build limpo, com as 4 rotas públicas + as 2 páginas registradas
+corretamente. PM2 reconstruído e reiniciado, testado ao vivo (`/catalogo` responde 200, API devolve
+lista vazia — correto, nenhum produto foi habilitado pro catálogo em produção ainda).

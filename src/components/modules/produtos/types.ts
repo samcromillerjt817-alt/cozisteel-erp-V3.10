@@ -46,12 +46,21 @@ export interface ProductFormData {
   family: string
   line: string
   notes: string
+  // Catálogo Digital Público (ADR-026) — nada aparece publicamente até showInCatalog ser marcado.
+  showInCatalog: boolean
+  catalogOrder: number
+  catalogFeatured: boolean
+  catalogDescription: string
+  catalogPriceMode: string
+  catalogAllowCustomization: boolean
 }
 
 export const EMPTY_PRODUCT_FORM: ProductFormData = {
   internalCode: '', name: '', description: '', categoryId: '', materialId: '', unit: 'UN',
   costPrice: 0, salePrice: 0, width: 0, height: 0, length: 0, thickness: 0, weight: 0,
   ncm: '', ipi: 0, icms: 0, finish: '', family: '', line: '', notes: '',
+  showInCatalog: false, catalogOrder: 0, catalogFeatured: false, catalogDescription: '',
+  catalogPriceMode: 'sob_consulta', catalogAllowCustomization: true,
 }
 
 export interface ProductListItem extends ProductListRow {
@@ -71,6 +80,12 @@ export interface ProductListItem extends ProductListRow {
   family?: string
   line?: string
   notes?: string
+  showInCatalog?: boolean
+  catalogOrder?: number
+  catalogFeatured?: boolean
+  catalogDescription?: string
+  catalogPriceMode?: string
+  catalogAllowCustomization?: boolean
 }
 
 /** A linha da listagem já traz todos os campos do formulário (mesmo comportamento de antes desta
@@ -99,5 +114,11 @@ export function productToFormData(product: ProductListItem): ProductFormData {
     family: product.family || '',
     line: product.line || '',
     notes: product.notes || '',
+    showInCatalog: product.showInCatalog || false,
+    catalogOrder: product.catalogOrder || 0,
+    catalogFeatured: product.catalogFeatured || false,
+    catalogDescription: product.catalogDescription || '',
+    catalogPriceMode: product.catalogPriceMode || 'sob_consulta',
+    catalogAllowCustomization: product.catalogAllowCustomization ?? true,
   }
 }
