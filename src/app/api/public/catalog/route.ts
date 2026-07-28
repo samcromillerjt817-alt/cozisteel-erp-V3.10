@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { ok, parsePagination, handleRouteError } from '@/lib/api-utils'
 import { catalogPublicService } from '@/app/services/catalog-public.service'
+import { rateLimit } from '@/lib/rate-limit'
 
 const VALID_SORTS = ['name_asc', 'name_desc', 'destaque'] as const
 
@@ -10,6 +11,7 @@ const VALID_SORTS = ['name_asc', 'name_desc', 'destaque'] as const
  */
 export async function GET(req: NextRequest) {
   try {
+    await rateLimit(req, { keyPrefix: 'public-catalog-browse', points: 60, durationSeconds: 60 })
     const { searchParams } = new URL(req.url)
     const { page, limit } = parsePagination(searchParams)
     const search = searchParams.get('search') || ''

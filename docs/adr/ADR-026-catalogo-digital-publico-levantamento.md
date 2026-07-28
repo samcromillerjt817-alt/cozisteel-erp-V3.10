@@ -1,6 +1,6 @@
 # ADR-026 — Catálogo Digital Público (Levantamento)
 
-- **Status**: Fases 1, 2, 3 e 4 implementadas e verificadas — Fase 5 (segurança de produção) ainda não iniciada
+- **Status**: Fases 1-5 implementadas e verificadas — Fase 6 (refinamentos) fica pra sob demanda, conforme uso real
 - **Data**: 2026-07-29
 - **Origem**: pedido explícito do usuário para uma nova linha de evolução — um catálogo digital público
   (link único, sem login) onde um cliente monta uma "cesta" de produtos com personalizações e envia uma
@@ -472,3 +472,37 @@ completos + 404 pra id inexistente, `archive()` nunca altera o Orçamento vincul
 `reassignAndStage()` reatribui responsável/etapa sem apagar itens — o teste que expôs o problema do
 `update()`). Build limpo com `/api/catalog-requests` (+ `[id]`, `/archive`, `/assignable-users`) e
 `/api/quotes/[id]/triagem` registrados. PM2 reconstruído e reiniciado.
+
+## Verificação (Fase 5)
+
+**Anexos**: decisão do usuário — adiado pra uma fase futura. A Fase 3 nunca implementou upload de
+arquivo pro carrinho (só campos de texto), então "allowlist de upload" não tinha nada pra proteger
+ainda; registrado aqui como pendência explícita, não como lacuna silenciosa.
+
+**Rate limiting** (primeira vez que existe em qualquer rota deste projeto — nem o link do ADR-025
+tinha): nova dependência `rate-limiter-flexible` (`RateLimiterMemory`, sem Redis — decisão do usuário,
+adequada à instância única PM2/SQLite). Helper `src/lib/rate-limit.ts`, chaveado por IP
+(`x-forwarded-for`), lança `TooManyRequestsException` (429, classe nova em `exceptions/index.ts`).
+Aplicado em: `GET /api/public/catalog`/`[productId]`/`categories` (60/60s — navegação), 
+`GET /api/public/uploads/[...path]` (120/60s — mais generoso, uma ficha de produto carrega várias
+imagens de uma vez), `POST /api/public/catalog-requests` (5/60s — cria registro real, mais restrito).
+**Também fechado retroativamente**: os 2 endpoints públicos do ADR-025
+(`GET`/`POST /api/public/quotes/[token]`, 30/60s e 5/60s) — era o único gap de segurança documentado
+e não resolvido naquele ADR, agora reaproveita o mesmo mecanismo.
+
+**Validação de CPF/CNPJ**: achado durante a implementação — `isValidCpf`/`isValidCnpj`/
+`isValidCpfCnpj` **já existiam** em `src/lib/masks.ts` (de trabalho anterior desta mesma sessão,
+branch `cep-cnpj-lookup`), mas eram usados só no frontend (`cnpj-input.tsx`), nunca validados
+server-side em lugar nenhum do sistema. `submitCatalogRequestSchema.clientCpfCnpj` agora usa
+`isValidCpfCnpj` via `.refine()` — campo vazio continua válido (identificação sem documento é
+permitida), só rejeita dígito verificador incorreto.
+
+**CAPTCHA**: deliberadamente **não implementado** — decisão original (Parte 8) já era condicional
+("só se o rate limit sozinho não bastar"). Sem evidência de abuso real ainda, adicionar CAPTCHA
+agora seria fricção especulativa. Registrado como decisão consciente, não como pendência esquecida —
+revisitar se o rate limiting (Fase 5) se mostrar insuficiente em uso real.
+
+Verificação: tsc limpo, lint 59 problemas (mesma contagem, 0 novos — mudanças desta fase são todas
+backend, sem componente novo). 446/446 testes (5 novos em `tests/catalog-fase5-security.test.ts`:
+rate limit bloqueia a Nª+1 requisição, isola por IP, aceita CPF/CNPJ com dígito válido, rejeita dígito
+inválido, aceita campo vazio). Build limpo, PM2 reconstruído e reiniciado, testado ao vivo.

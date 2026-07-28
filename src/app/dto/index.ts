@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { BadRequestException } from '@/app/exceptions'
+import { isValidCpfCnpj } from '@/lib/masks'
 
 export const createQuoteItemSchema = z.object({
   productId: z.string().optional(),
@@ -431,7 +432,9 @@ export const catalogRequestItemSchema = z.object({
 export const submitCatalogRequestSchema = z.object({
   idempotencyKey: z.string().min(10).max(100),
   clientName: z.string().min(1, 'Nome ou razão social é obrigatório').max(200),
-  clientCpfCnpj: z.string().max(20).default(''),
+  // ADR-026, Fase 5 — dígito verificador validado server-side (rota pública, entrada não confiável).
+  // Campo vazio é aceito (identificação sem documento) — `isValidCpfCnpj` já trata isso como válido.
+  clientCpfCnpj: z.string().max(20).default('').refine(isValidCpfCnpj, 'CPF ou CNPJ inválido'),
   clientContact: z.string().max(200).default(''),
   clientEmail: z.string().max(200).default(''),
   clientPhone: z.string().max(30).default(''),

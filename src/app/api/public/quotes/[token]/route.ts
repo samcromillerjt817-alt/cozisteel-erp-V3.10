@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { ok, badRequest, handleRouteError } from '@/lib/api-utils'
 import { quoteService } from '@/app/services/quote.service'
+import { rateLimit } from '@/lib/rate-limit'
 
 type RouteContext = { params: Promise<{ token: string }> }
 
@@ -50,8 +51,11 @@ function toPublicView(quote: Awaited<ReturnType<typeof quoteService.getByPublicT
   }
 }
 
-export async function GET(_req: NextRequest, ctx: RouteContext) {
+export async function GET(req: NextRequest, ctx: RouteContext) {
   try {
+    // ADR-026, Fase 5 — fecha a lacuna de rate limiting já documentada no ADR-025 (era o único gap
+    // conhecido não resolvido naquele momento; agora reaproveita o mesmo mecanismo do Catálogo Digital).
+    await rateLimit(req, { keyPrefix: 'public-quote-view', points: 30, durationSeconds: 60 })
     const { token } = await ctx.params
     const quote = await quoteService.getByPublicToken(token)
     return ok(toPublicView(quote))
@@ -62,6 +66,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
 
 export async function POST(req: NextRequest, ctx: RouteContext) {
   try {
+    await rateLimit(req, { keyPrefix: 'public-quote-confirm', points: 5, durationSeconds: 60 })
     const { token } = await ctx.params
     const { decision } = await req.json()
     if (decision !== 'approved' && decision !== 'rejected') {

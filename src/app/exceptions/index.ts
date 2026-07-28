@@ -35,6 +35,13 @@ export class ConflictException extends AppError {
   }
 }
 
+export class TooManyRequestsException extends AppError {
+  constructor(message = 'Muitas requisições — tente novamente em instantes') {
+    super(message, 429)
+    this.name = 'TooManyRequestsException'
+  }
+}
+
 export function handleError(error: unknown) {
   if (error instanceof AppError) {
     return { message: error.message, status: error.status }
