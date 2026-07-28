@@ -1,6 +1,6 @@
 # ADR-026 — Catálogo Digital Público (Levantamento)
 
-- **Status**: Fases 1-5 implementadas e verificadas — Fase 6 (refinamentos) fica pra sob demanda, conforme uso real
+- **Status**: **FECHADO — Catálogo Digital Público definitivo** (decisão do usuário, 2026-07-29). Fases 1-5 implementadas e verificadas, redesign visual comercial (Codex CLI) e responsividade mobile aplicados. Fase 6/evoluções futuras só sob demanda explícita.
 - **Data**: 2026-07-29
 - **Origem**: pedido explícito do usuário para uma nova linha de evolução — um catálogo digital público
   (link único, sem login) onde um cliente monta uma "cesta" de produtos com personalizações e envia uma
@@ -522,3 +522,45 @@ páginas. Revisão própria confirmou: `git diff --stat` só nas 3 páginas espe
 Verificação: tsc limpo, lint 59 problemas (mesma contagem, 0 novos), 446/446 testes (nenhum teste
 quebrou — confirma que o contrato de API e o comportamento não mudaram), build limpo, PM2
 reconstruído e reiniciado, testado ao vivo.
+
+## Addendum — responsividade mobile e fechamento (2026-07-29)
+
+Revisão manual das 3 páginas em busca de grids fixos sem quebra pra tela pequena (não achou nenhuma
+ferramenta de screenshot mobile disponível no ambiente — análise feita lendo as classes Tailwind
+diretamente). 2 pontos reais de aperto encontrados e corrigidos:
+
+- `catalogo/[productId]/page.tsx`: galeria de miniaturas (`grid-cols-5` fixo) → `grid-cols-3
+  sm:grid-cols-5` — 5 colunas em ~340px de largura de tela deixava cada miniatura com ~59px.
+- Diálogo "Adicionar à cesta" (mesma página): os 3 grids de personalização (`grid-cols-3` pra
+  largura/altura/comprimento, `grid-cols-2` pra material/acabamento e voltagem/lado) não tinham
+  nenhuma quebra — em ~279px de largura útil do diálogo (largura do Dialog padrão do shadcn menos
+  padding), 3 colunas deixavam ~85px por campo, cabendo mal o rótulo "Comprimento (cm)". Todos os 3
+  grids agora usam `grid-cols-N sm:grid-cols-M` (2→3, 1→2, 1→2), com o campo "Comprimento" ocupando
+  a linha inteira em telas bem pequenas (`col-span-2 sm:col-span-1`).
+
+O resto das 3 páginas já usava o padrão mobile-first correto (`grid-cols-1 sm:...`) desde o redesign
+via Codex — não precisou de mudança.
+
+**Decisão do usuário: este é o Catálogo Digital Público definitivo.** Fase 6 (refinamentos) e
+qualquer evolução futura (Parte 15) ficam em espera, sem trabalho programado — só entram se
+houver pedido explícito.
+
+### O que fica pendente/fora de escopo, por decisão explícita (não é lacuna esquecida)
+
+- **Anexos** (desenhos/fotos de referência no carrinho) — usuário decidiu adiar na Fase 5; nunca
+  implementado, `Attachment` genérico já existe pronto pra reaproveitar quando for pedido.
+- **CAPTCHA** — decisão original já era condicional ("só se o rate limit não bastar"); sem
+  evidência de abuso real, não implementado.
+- **Links por vendedor/campanha/cliente** — só existe 1 link único (`/catalogo`) pra todo mundo;
+  `CatalogRequest.sourceLink` já reservado no schema pra isso, sem código ainda.
+- **Preço visível por produto** — todo produto começa em "sob consulta"; o campo
+  `catalogPriceMode` já suporta "exibir"/"faixa", só precisa ser ligado produto a produto pelo
+  colaborador quando fizer sentido (não é um bug, é a configuração padrão escolhida).
+- **Analytics de catálogo** (visualizações, produtos mais vistos, taxa de conversão) — não
+  implementado, mencionado só como evolução futura possível na Parte 15.
+- **Rate limiting em memória** — `RateLimiterMemory` não sobrevive a um restart do PM2 nem escala
+  pra múltiplas instâncias; decisão consciente do usuário (Parte 16), adequada ao deploy atual
+  (instância única).
+
+Verificação (mobile): tsc limpo, lint 59 problemas (mesma contagem, 0 novos), 446/446 testes, build
+limpo, PM2 reconstruído e reiniciado.

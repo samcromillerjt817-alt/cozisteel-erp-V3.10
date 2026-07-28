@@ -160,7 +160,7 @@ export default function CatalogoProductPage({ params }: { params: Promise<{ prod
               <div className="absolute bottom-5 right-5 rounded-full bg-white/90 p-2.5 text-slate-600 opacity-0 shadow-md backdrop-blur transition-opacity group-hover:opacity-100"><Maximize2 className="h-4 w-4" /></div>
             </div>
             {product.images.length > 1 && (
-              <div className="grid grid-cols-5 gap-3">
+              <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
                 {product.images.slice(1).map((img) => (
                   <div key={img.id} className="relative aspect-square overflow-hidden rounded-xl border-2 border-transparent bg-white shadow-sm transition-all hover:border-primary">
                     <Image src={img.url} alt={product.name} fill className="object-cover transition-transform hover:scale-105" unoptimized />
@@ -211,16 +211,16 @@ export default function CatalogoProductPage({ params }: { params: Promise<{ prod
                       </div>
                       {product.allowsCustomization && (
                         <>
-                          <div className="grid grid-cols-3 gap-2">
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                             <div className="space-y-1.5"><Label>Largura (cm)</Label><Input type="number" value={form.width} onChange={(e) => setForm({ ...form, width: e.target.value })} /></div>
                             <div className="space-y-1.5"><Label>Altura (cm)</Label><Input type="number" value={form.height} onChange={(e) => setForm({ ...form, height: e.target.value })} /></div>
-                            <div className="space-y-1.5"><Label>Comprimento (cm)</Label><Input type="number" value={form.length} onChange={(e) => setForm({ ...form, length: e.target.value })} /></div>
+                            <div className="space-y-1.5 col-span-2 sm:col-span-1"><Label>Comprimento (cm)</Label><Input type="number" value={form.length} onChange={(e) => setForm({ ...form, length: e.target.value })} /></div>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             <div className="space-y-1.5"><Label>Material</Label><Input value={form.material} onChange={(e) => setForm({ ...form, material: e.target.value })} /></div>
                             <div className="space-y-1.5"><Label>Acabamento</Label><Input value={form.finish} onChange={(e) => setForm({ ...form, finish: e.target.value })} /></div>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             <div className="space-y-1.5"><Label>Voltagem</Label><Input value={form.voltage} onChange={(e) => setForm({ ...form, voltage: e.target.value })} placeholder="Ex.: 220V" /></div>
                             <div className="space-y-1.5"><Label>Lado de operação</Label><Input value={form.operationSide} onChange={(e) => setForm({ ...form, operationSide: e.target.value })} placeholder="Ex.: esquerdo" /></div>
                           </div>
