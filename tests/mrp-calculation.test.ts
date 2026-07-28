@@ -4,6 +4,13 @@ import { bomService } from '@/app/services/bom.service'
 import { mrpCalculationService } from '@/app/services/mrp-calculation.service'
 import { createTestUser, createTestProduct, createTestMaterial, createTestSupplier } from './helpers/fixtures'
 
+function futureBrDate(daysFromNow: number): string {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + daysFromNow)
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+}
+
 /**
  * Fase 6, Subetapa 2 (ADR-007): motor de cálculo do MRP — função pura, nada é persistido aqui
  * (só leitura). Cobre os 10 cenários obrigatórios da especificação aprovada.
@@ -33,12 +40,13 @@ describe('MRP — Motor de Cálculo (Subetapa 2)', () => {
     return revision
   }
 
-  async function openOrder(userId: string, productId: string, quantity: number, bomRevisionId: string | null) {
+  async function openOrder(userId: string, productId: string, quantity: number, bomRevisionId: string | null, dueDate = '') {
     orderCounter += 1
     const order = await db.productionOrder.create({
       data: {
         number: `OP-MRP-CALC-${orderCounter}`,
         date: '01/01/2026',
+        dueDate,
         status: 'planned',
         productId,
         quantity,
@@ -393,5 +401,117 @@ describe('MRP — Motor de Cálculo (Subetapa 2)', () => {
 
     expect(originalSuggestion?.quantityNeeded).toBe(10) // 2 * 5, da revisão A congelada
     expect(novoSuggestion).toBeUndefined() // a revisão B nunca deveria ter sido usada para esta OP
+  })
+
+  it('11. Estoque mínimo somado ao shortfall: sugestão cobre a demanda das OPs E a reposição de segurança', async () => {
+    const user = await createTestUser('mrp-min-stock')
+    createdUserIds.push(user.id)
+    const product = await createTestProduct('mrp-min-stock')
+    createdProductIds.push(product.id)
+    const material = await createTestMaterial('mrp-min-stock')
+    createdMaterialIds.push(material.id)
+    await db.material.update({ where: { id: material.id }, data: { stockQty: 8, minStockQty: 5 } })
+
+    const revision = await releasedRevision(product.id, user.id, 'A')
+    await bomService.addLine(revision.id, {
+      lineType: 'material', materialId: material.id, componentProductId: null,
+      quantity: 1, unit: 'KG', scrapPct: 0, order: 0, notes: '',
+    })
+    await bomService.changeStatus(revision.id, 'released', user.id)
+
+    await openOrder(user.id, product.id, 10, revision.id)
+
+    const result = await mrpCalculationService.calculate()
+    const suggestion = result.suggestions.find((s) => s.materialId === material.id)
+
+    // needed=10, minStockQty=5, available=8 → shortfall = (10+5) - 0 - 8 = 7, não 2
+    expect(suggestion?.minStockQty).toBe(5)
+    expect(suggestion?.quantityShortfall).toBe(7)
+  })
+
+  it('12. Prazo da OP de origem vira neededByDate; prazo do fornecedor preferencial vira suggestedOrderByDate', async () => {
+    const user = await createTestUser('mrp-due-date')
+    createdUserIds.push(user.id)
+    const product = await createTestProduct('mrp-due-date')
+    createdProductIds.push(product.id)
+    const material = await createTestMaterial('mrp-due-date')
+    createdMaterialIds.push(material.id)
+    const supplier = await createTestSupplier('mrp-due-date')
+    createdSupplierIds.push(supplier.id)
+    await db.supplierMaterial.create({
+      data: { supplierId: supplier.id, materialId: material.id, isPreferred: true, leadTimeDays: 10 },
+    })
+
+    const revision = await releasedRevision(product.id, user.id, 'A')
+    await bomService.addLine(revision.id, {
+      lineType: 'material', materialId: material.id, componentProductId: null,
+      quantity: 1, unit: 'KG', scrapPct: 0, order: 0, notes: '',
+    })
+    await bomService.changeStatus(revision.id, 'released', user.id)
+
+    const dueDate = futureBrDate(30)
+    await openOrder(user.id, product.id, 5, revision.id, dueDate)
+
+    const result = await mrpCalculationService.calculate()
+    const suggestion = result.suggestions.find((s) => s.materialId === material.id)
+
+    expect(suggestion?.leadTimeDays).toBe(10)
+    expect(suggestion?.neededByDate).toBe(dueDate)
+    expect(suggestion?.suggestedOrderByDate).toBe(futureBrDate(30 - 10))
+    expect(suggestion?.isLate).toBe(false)
+  })
+
+  it('13. suggestedOrderByDate já passado: isLate marcado', async () => {
+    const user = await createTestUser('mrp-late')
+    createdUserIds.push(user.id)
+    const product = await createTestProduct('mrp-late')
+    createdProductIds.push(product.id)
+    const material = await createTestMaterial('mrp-late')
+    createdMaterialIds.push(material.id)
+    const supplier = await createTestSupplier('mrp-late')
+    createdSupplierIds.push(supplier.id)
+    await db.supplierMaterial.create({
+      data: { supplierId: supplier.id, materialId: material.id, isPreferred: true, leadTimeDays: 30 },
+    })
+
+    const revision = await releasedRevision(product.id, user.id, 'A')
+    await bomService.addLine(revision.id, {
+      lineType: 'material', materialId: material.id, componentProductId: null,
+      quantity: 1, unit: 'KG', scrapPct: 0, order: 0, notes: '',
+    })
+    await bomService.changeStatus(revision.id, 'released', user.id)
+
+    // Prazo da OP em 5 dias, mas o fornecedor leva 30 — já deveria ter sido comprado no passado.
+    await openOrder(user.id, product.id, 5, revision.id, futureBrDate(5))
+
+    const result = await mrpCalculationService.calculate()
+    const suggestion = result.suggestions.find((s) => s.materialId === material.id)
+
+    expect(suggestion?.isLate).toBe(true)
+  })
+
+  it('14. Sem prazo definido em nenhuma OP de origem: neededByDate/suggestedOrderByDate ficam nulos, isLate falso', async () => {
+    const user = await createTestUser('mrp-no-due-date')
+    createdUserIds.push(user.id)
+    const product = await createTestProduct('mrp-no-due-date')
+    createdProductIds.push(product.id)
+    const material = await createTestMaterial('mrp-no-due-date')
+    createdMaterialIds.push(material.id)
+
+    const revision = await releasedRevision(product.id, user.id, 'A')
+    await bomService.addLine(revision.id, {
+      lineType: 'material', materialId: material.id, componentProductId: null,
+      quantity: 1, unit: 'KG', scrapPct: 0, order: 0, notes: '',
+    })
+    await bomService.changeStatus(revision.id, 'released', user.id)
+
+    await openOrder(user.id, product.id, 5, revision.id) // dueDate = '' (padrão)
+
+    const result = await mrpCalculationService.calculate()
+    const suggestion = result.suggestions.find((s) => s.materialId === material.id)
+
+    expect(suggestion?.neededByDate).toBeNull()
+    expect(suggestion?.suggestedOrderByDate).toBeNull()
+    expect(suggestion?.isLate).toBe(false)
   })
 })

@@ -498,14 +498,73 @@ componente `production-batches-section.tsx`), 364/364 testes (5 novos), build li
 confirmadas no manifesto). **Item 2 da sequência (estorno) agora completo — os dois casos mapeados no
 levantamento (recebimento de compra e produção) estão implementados e testados.**
 
+## PARTE 10 — Item 3 da sequência implementado: MRP exposto (2026-07-28)
+
+Confirmando o diagnóstico da Parte 2 (item 11): o motor já era sofisticado (netting multinível,
+reserva/estoque livre/em produção/em compras, decisão compra-vs-produção, aprovação humana já
+desenhada) — faltavam só as 3 lacunas de cálculo e a exposição por rota/UI, nunca reconstruir o motor.
+
+**As 3 lacunas de cálculo, em `mrp-calculation.service.ts`**:
+1. **Estoque mínimo/segurança**: `minStockQty` (material e produto) agora soma à necessidade bruta
+   antes do cálculo da falta — `shortfall = max(0, needed + minStockQty - reservedQty - available)`,
+   em vez de ignorar o campo por completo.
+2. **Prazo do fornecedor**: `leadTimeDays` — **achado real durante a implementação**: o campo não
+   existe no model `Material` (só em `Supplier`, `SupplierMaterial` e `PurchaseOrderItem`); o motor
+   originalmente escrito nesta rodada lia `material.leadTimeDays` via um cast `as {...}` que mascarava
+   o erro de tipo — o campo vinha sempre `undefined` do Prisma, e `undefined > 0` é `false` em JS, então
+   `leadTimeDays` silenciosamente virava `null` para todo material, nunca disparando o cálculo de
+   `suggestedOrderByDate`. Corrigido antes de qualquer commit: o prazo agora vem do mesmo
+   `SupplierMaterial` preferencial já consultado para `supplierId`/`supplierNameSnapshot` (`isPreferred:
+   true`), de onde o campo realmente existe. Coberto por teste (cenário 12 de `mrp-calculation.test.ts`
+   força `leadTimeDays: 10` no fornecedor preferencial e confirma que a sugestão o carrega).
+3. **Data de ruptura**: `neededByDate` (a mais cedo entre as OPs de origem que já têm `dueDate`
+   definido — nunca uma previsão estatística de consumo, que o sistema não tem dado para sustentar) e
+   `suggestedOrderByDate` (`neededByDate - leadTimeDays`, só para sugestões de compra com ambos
+   definidos), com `isLate` sinalizando quando essa data já passou e a sugestão ainda está pendente.
+
+**Schema (aditivo)**: `MrpSuggestion` ganha `minStockQty`, `leadTimeDays`, `suggestedOrderByDate`,
+`isLate` — e passa a **popular de verdade** `neededByDate`, coluna que já existia desde uma fase
+anterior mas nunca era escrita por `mrp-run.repository.ts persist()` (mesmo padrão do achado de
+Faturamento na Parte 7: campo pronto no schema, nunca conectado).
+
+**Exposição** — primeira vez que o MRP tem qualquer rota de API:
+- `POST /api/mrp/runs` (`producao:update`) — dispara uma execução via `mrpExecutionService.run()`.
+- `GET /api/mrp/suggestions` (autenticado) — lista sugestões pendentes de TODAS as execuções já
+  rodadas, não só a última (mesmo critério do widget `producao.sugestoes-mrp-por-status` do Dashboard).
+- `POST /api/mrp/suggestions/[id]/approve` e `.../dismiss` (`producao:update`) — reexpõem
+  `mrpSuggestionService.approve()`/`dismiss()`, que já existiam e já eram testados desde a Fase 7
+  (ADR-009), só sem nenhuma forma de chamá-los.
+
+**UI**: nova aba "MRP (Sugestões)" na página de Produção (`Tabs`, mesmo padrão já usado em
+Estoque/Financeiro/Orçamentos), com botão "Rodar MRP" e tabela das sugestões pendentes — item, tipo
+(comprar/produzir), necessário, disponível, estoque mínimo, falta, fornecedor, prazo, necessário até,
+comprar até, e um badge "Atrasado" quando `isLate`. Ação "Aprovar" fica desabilitada para sugestões de
+produção, refletindo o bloqueio já existente em `mrpSuggestionService.approve()` ("sugestões de
+produção ainda não têm destino automatizado") em vez de esconder ou mentir sobre a capacidade real.
+
+**Fora de escopo, deliberado** (mesmo diagnóstico da Parte 2): sugestão de transferência entre
+depósitos (não existe o conceito de múltiplos depósitos no schema), scheduler automático (a aprovação
+humana continua sendo a única forma de uma sugestão virar Requisição), destino automatizado para
+sugestões de produção (segue exigindo criação manual da OP).
+
+9 testes novos (4 em `mrp-calculation.test.ts` cobrindo `minStockQty`/`neededByDate`/
+`suggestedOrderByDate`/`isLate` isoladamente na função pura, 1 em `mrp-execution.test.ts` confirmando
+que os 5 campos realmente persistem via `mrpRunRepository.persist()`).
+
+**Verificação**: tsc limpo, lint 48→49 (+1 real, mesmo padrão de fetch-em-efeito já aceito nas Partes
+8/9 — o novo componente `mrp-section.tsx`), 369/369 testes (9 novos), build limpo (4 rotas novas
+confirmadas no manifesto: `/api/mrp/runs`, `/api/mrp/suggestions`, `/api/mrp/suggestions/[id]/approve`,
+`/api/mrp/suggestions/[id]/dismiss`). **Item 3 da sequência (MRP) completo.**
+
 ## Conclusão
 
 Esta rodada mudou uma suposição importante: vários itens que pareciam "faltando" no pedido original já
-têm boa parte da engenharia pronta e só nunca foram conectados — Faturamento é o caso mais gritante
-(existe, testado, zero rota), seguido por MRP (motor sofisticado, zero UI) e BOM formal (quase
-completo). É exatamente por isso que a sequência de implementação real (Parte 6) prioriza esses três
-primeiro, à frente inclusive de itens que apareciam mais cedo na proposta original. As 6 decisões
-pendentes foram todas resolvidas (Parte 5), e os itens 1 (Faturamento, Parte 7) e 2 (Estorno —
-recebimento de compra e produção, Partes 8 e 9) da sequência já estão completos e testados, incluindo
-o caso mais arriscado de todo o levantamento (estorno de produção). Próximo passo: item 3 da Parte 6 —
-completar a exposição do MRP.
+têm boa parte da engenharia pronta e só nunca foram conectados — Faturamento foi o caso mais gritante
+(existia, testado, zero rota), seguido por MRP (motor sofisticado, zero UI, Parte 10) e BOM formal
+(quase completo). É exatamente por isso que a sequência de implementação real (Parte 6) prioriza esses
+três primeiro, à frente inclusive de itens que apareciam mais cedo na proposta original. As 6 decisões
+pendentes foram todas resolvidas (Parte 5), e os itens 1 (Faturamento, Parte 7), 2 (Estorno —
+recebimento de compra e produção, Partes 8 e 9) e 3 (MRP exposto, Parte 10) da sequência já estão
+completos e testados, incluindo o caso mais arriscado de todo o levantamento (estorno de produção) e um
+bug real de tipo encontrado e corrigido antes do commit (`leadTimeDays` nunca lido de verdade). Próximo
+passo: item 4 da Parte 6 — completar a BOM formal.

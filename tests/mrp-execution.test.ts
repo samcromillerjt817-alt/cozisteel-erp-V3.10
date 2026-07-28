@@ -4,7 +4,14 @@ import { bomService } from '@/app/services/bom.service'
 import { mrpExecutionService } from '@/app/services/mrp-execution.service'
 import { mrpRunRepository } from '@/app/repositories/mrp-run.repository'
 import type { MrpCalculationResult } from '@/app/services/mrp-calculation.service'
-import { createTestUser, createTestProduct, createTestMaterial } from './helpers/fixtures'
+import { createTestUser, createTestProduct, createTestMaterial, createTestSupplier } from './helpers/fixtures'
+
+function futureBrDate(daysFromNow: number): string {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + daysFromNow)
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+}
 
 /**
  * Fase 6, Subetapa 3 (ADR-007): execução e persistência. `mrp-execution.service.ts` orquestra;
@@ -19,12 +26,14 @@ describe('MRP — Execução e Persistência (Subetapa 3)', () => {
   const createdRevisionIds: string[] = []
   const createdOrderIds: string[] = []
   const createdRunIds: string[] = []
+  const createdSupplierIds: string[] = []
   let orderCounter = 0
 
   afterAll(async () => {
     await db.mrpRun.deleteMany({ where: { id: { in: createdRunIds } } }) // cascade: MrpSuggestion -> MrpSuggestionSource
     await db.productionOrder.deleteMany({ where: { id: { in: createdOrderIds } } })
     await db.bomRevision.deleteMany({ where: { id: { in: createdRevisionIds } } })
+    await db.supplier.deleteMany({ where: { id: { in: createdSupplierIds } } })
     await db.material.deleteMany({ where: { id: { in: createdMaterialIds } } })
     await db.product.deleteMany({ where: { id: { in: createdProductIds } } })
     await db.statusHistory.deleteMany({ where: { userId: { in: createdUserIds } } })
@@ -37,10 +46,10 @@ describe('MRP — Execução e Persistência (Subetapa 3)', () => {
     return revision
   }
 
-  async function openOrder(userId: string, productId: string, quantity: number, bomRevisionId: string | null) {
+  async function openOrder(userId: string, productId: string, quantity: number, bomRevisionId: string | null, dueDate = '') {
     orderCounter += 1
     const order = await db.productionOrder.create({
-      data: { number: `OP-MRP-EXEC-${orderCounter}`, date: '01/01/2026', status: 'planned', productId, quantity, userId, bomRevisionId },
+      data: { number: `OP-MRP-EXEC-${orderCounter}`, date: '01/01/2026', dueDate, status: 'planned', productId, quantity, userId, bomRevisionId },
     })
     createdOrderIds.push(order.id)
     return order
@@ -164,6 +173,42 @@ describe('MRP — Execução e Persistência (Subetapa 3)', () => {
     expect(orderIds).toEqual([orderA.id, orderB.id].sort())
   })
 
+  it('5b. Persiste as 3 lacunas do ADR-023 (item 3): minStockQty, leadTimeDays, neededByDate, suggestedOrderByDate, isLate', async () => {
+    const user = await createTestUser('mrp-exec-gaps')
+    createdUserIds.push(user.id)
+    const product = await createTestProduct('mrp-exec-gaps')
+    createdProductIds.push(product.id)
+    const material = await createTestMaterial('mrp-exec-gaps')
+    createdMaterialIds.push(material.id)
+    await db.material.update({ where: { id: material.id }, data: { minStockQty: 5 } })
+    const supplier = await createTestSupplier('mrp-exec-gaps')
+    createdSupplierIds.push(supplier.id)
+    await db.supplierMaterial.create({
+      data: { supplierId: supplier.id, materialId: material.id, isPreferred: true, leadTimeDays: 30 },
+    })
+
+    const revision = await releasedRevision(product.id, user.id, 'A')
+    await bomService.addLine(revision.id, {
+      lineType: 'material', materialId: material.id, componentProductId: null,
+      quantity: 1, unit: 'KG', scrapPct: 0, order: 0, notes: '',
+    })
+    await bomService.changeStatus(revision.id, 'released', user.id)
+
+    // Prazo da OP em 5 dias, mas o fornecedor leva 30 — já deveria ter sido comprado no passado (isLate).
+    await openOrder(user.id, product.id, 5, revision.id, futureBrDate(5))
+
+    const run = (await mrpExecutionService.run(user.id)) as { id: string }
+    createdRunIds.push(run.id)
+
+    const persisted = await db.mrpSuggestion.findFirst({ where: { mrpRunId: run.id, materialId: material.id } })
+
+    expect(persisted?.minStockQty).toBe(5)
+    expect(persisted?.leadTimeDays).toBe(30)
+    expect(persisted?.neededByDate).not.toBeNull()
+    expect(persisted?.suggestedOrderByDate).not.toBeNull()
+    expect(persisted?.isLate).toBe(true)
+  })
+
   it('5. Falha durante a persistência desfaz TUDO — nenhum MrpRun/MrpSuggestion parcial fica salvo', async () => {
     const user = await createTestUser('mrp-exec-rollback')
     createdUserIds.push(user.id)
@@ -186,6 +231,11 @@ describe('MRP — Execução e Persistência (Subetapa 3)', () => {
           supplierId: null,
           supplierNameSnapshot: null,
           sources: [{ productionOrderId: 'nao-existe-esta-op', quantity: 10 }], // FK inválida de propósito
+          minStockQty: 0,
+          leadTimeDays: null,
+          neededByDate: null,
+          suggestedOrderByDate: null,
+          isLate: false,
         },
       ],
     }

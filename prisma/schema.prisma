@@ -636,9 +636,17 @@ model MrpSuggestion {
 
   supplierId   String?
   supplier     Supplier? @relation(fields: [supplierId], references: [id])
-  neededByDate DateTime? // menor dueDate entre as OPs de origem — informativo nesta fase
+  neededByDate DateTime? // menor dueDate entre as OPs de origem que já têm prazo definido (ADR-023, item 3)
   status       String    @default("pending") // "pending" | "accepted" | "dismissed" — só "pending" gravado nesta fase
   createdAt    DateTime  @default(now())
+
+  // ADR-023 (item 3, "completar a exposição do MRP") — 3 lacunas de cálculo que o motor nunca
+  // considerava: estoque mínimo/segurança, prazo do fornecedor preferencial, e a data em que a
+  // falta vira problema de verdade (nunca uma previsão estatística de consumo).
+  minStockQty          Float     @default(0) // estoque mínimo do item no momento da sugestão
+  leadTimeDays         Int? // prazo do fornecedor preferencial (só material, suggestionType "purchase")
+  suggestedOrderByDate DateTime? // neededByDate - leadTimeDays, só quando ambos existem
+  isLate               Boolean   @default(false) // suggestedOrderByDate já passou e a sugestão ainda está pendente
 
   productTypeSnapshot  String? // Product.productType no momento da sugestão (só quando itemType = "product")
   supplierNameSnapshot String? // nome do fornecedor sugerido no momento (corporateName || tradeName)

@@ -18,6 +18,10 @@ interface MrpSuggestionRecord {
  * (Fase 6) continua sendo só inteligência, nunca um executor automático.
  */
 class MrpSuggestionService {
+  async listPending() {
+    return mrpSuggestionRepository.findManyByStatus('pending')
+  }
+
   async approve(id: string, userId: string) {
     const suggestion = (await mrpSuggestionRepository.findByIdWithMaterial(id)) as MrpSuggestionRecord | null
     if (!suggestion) throw new NotFoundException('Sugestão do MRP não encontrada')
