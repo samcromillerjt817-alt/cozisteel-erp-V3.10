@@ -27,7 +27,7 @@ async function ensureDefaultAdminUser() {
     data: {
       username: "admin",
       name: "Administrador",
-      email: "admin@cozisteel.com.br",
+      email: "admin@mobsteel.com.br",
       password: hashedPassword,
       role: "admin",
       active: true,

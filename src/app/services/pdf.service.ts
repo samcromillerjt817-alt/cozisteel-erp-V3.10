@@ -6,8 +6,9 @@ import autoTable, { type CellHookData } from 'jspdf-autotable'
 import fs from 'fs'
 import path from 'path'
 
-// ── Identidade visual Cozisteel ──────────────────────────────────────────
-const BRAND_RED: [number, number, number] = [178, 17, 25]      // #B21119 — cor exata extraída da logo oficial
+// ── Identidade visual Mobsteel (renomeação — Cozisteel era um nome provisório; Mobsteel é o
+// nome oficial da empresa, 2026-07-29) ──────────────────────────────────────────
+const BRAND_RED: [number, number, number] = [172, 43, 34]      // #AC2B22 — tom aproximado extraído da logo oficial Mobsteel (gradiente metálico, sem hex único exato)
 const BRAND_DARK: [number, number, number] = [26, 26, 26]      // "card" escuro (dados da empresa)
 const BRAND_GRAY: [number, number, number] = [100, 100, 100]
 const BRAND_LIGHT: [number, number, number] = [247, 247, 247]  // fundo do card claro (dados do cliente)
@@ -102,8 +103,8 @@ async function getCompanyInfo(): Promise<CompanyInfo> {
   const map: Record<string, string> = {}
   for (const r of rows) map[r.key] = r.value
   return {
-    name: map['company.name'] || 'COZISTEEL',
-    tradeName: map['company.tradeName'] || 'COZISTEEL',
+    name: map['company.name'] || 'MOBSTEEL',
+    tradeName: map['company.tradeName'] || 'MOBSTEEL',
     cnpj: map['company.cnpj'] || '',
     ie: map['company.ie'] || '',
     address: map['company.address'] || '',
@@ -117,7 +118,7 @@ async function getCompanyInfo(): Promise<CompanyInfo> {
 }
 
 /**
- * Desenha o cabeçalho padrão Cozisteel: logo real + título do documento + número,
+ * Desenha o cabeçalho padrão Mobsteel: logo real + título do documento + número,
  * com uma faixa de destaque na cor institucional. Retorna o Y onde o conteúdo pode começar.
  */
 function drawHeader(doc: jsPDF, docTitle: string, docNumber?: string): number {
@@ -125,15 +126,16 @@ function drawHeader(doc: jsPDF, docTitle: string, docNumber?: string): number {
   const logo = getLogoBase64()
 
   if (logo) {
-    // logo cortada (sem margem branca) 308x215 (~1.432:1) — 32mm de largura fica proporcional e legível
-    const logoWidth = 32
-    const logoHeight = logoWidth / (308 / 215)
+    // logo cortada (sem margem branca) 422x142 (~2.972:1, formato bem mais largo que a antiga
+    // Cozisteel) — altura fixa de 14mm fica proporcional e não invade o título à direita.
+    const logoHeight = 14
+    const logoWidth = logoHeight * (422 / 142)
     doc.addImage(logo, 'PNG', 14, 10, logoWidth, logoHeight)
   } else {
     doc.setFontSize(20)
     doc.setFont(BRAND_FONT, 'normal')
     doc.setTextColor(...BRAND_RED)
-    doc.text('COZISTEEL', 14, 22)
+    doc.text('MOBSTEEL', 14, 22)
     doc.setTextColor(0, 0, 0)
   }
 
@@ -158,7 +160,7 @@ function drawHeader(doc: jsPDF, docTitle: string, docNumber?: string): number {
   return 44
 }
 
-/** Desenha o rodapé padrão Cozisteel em todas as páginas do documento. */
+/** Desenha o rodapé padrão Mobsteel em todas as páginas do documento. */
 function drawFooter(doc: jsPDF, extraLine?: string) {
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
@@ -173,7 +175,7 @@ function drawFooter(doc: jsPDF, extraLine?: string) {
     doc.setFontSize(7)
     doc.setFont(BRAND_FONT, 'normal')
     doc.setTextColor(...BRAND_GRAY)
-    doc.text('COZISTEEL — Instalações Comerciais', 14, pageHeight - 11)
+    doc.text('MOBSTEEL — Equipamentos Industriais', 14, pageHeight - 11)
     if (extraLine) doc.text(extraLine, 14, pageHeight - 7)
     doc.text(`Página ${i} de ${pageCount}`, pageWidth - 14, pageHeight - 11, { align: 'right' })
     doc.text(`Gerado em ${new Date().toLocaleDateString('pt-BR')}`, pageWidth - 14, pageHeight - 7, { align: 'right' })
@@ -255,13 +257,13 @@ function drawBrandFooterBar(doc: jsPDF, y: number) {
   doc.setFontSize(9)
   doc.setTextColor(255, 255, 255)
   doc.setCharSpace(0.4)
-  doc.text('COZISTEEL — SOLUÇÕES EM AÇO INOXIDÁVEL', pageWidth / 2, y + 12.7, { align: 'center' })
+  doc.text('MOBSTEEL — EQUIPAMENTOS INDUSTRIAIS', pageWidth / 2, y + 12.7, { align: 'center' })
   doc.setCharSpace(0)
   doc.setTextColor(0, 0, 0)
 }
 
 /**
- * Estilo padrão de tabela na identidade Cozisteel (cabeçalho em grafite, não vermelho — vermelho fica
+ * Estilo padrão de tabela na identidade Mobsteel (cabeçalho em grafite, não vermelho — vermelho fica
  * reservado a destaques pontuais: logo, títulos de seção, total. Um bloco sólido vermelho cobrindo a
  * tabela inteira lê como alerta, não como "documento profissional", pelas mesmas convenções que um
  * cabeçalho vermelho de erro/urgência usaria). `fontStyle: 'normal'` no cabeçalho é deliberado:
@@ -276,7 +278,7 @@ const brandTableStyles = {
   alternateRowStyles: { fillColor: [250, 245, 245] as [number, number, number] },
 }
 
-/** Título de seção no padrão Cozisteel (barra fininha vermelha à esquerda do texto). */
+/** Título de seção no padrão Mobsteel (barra fininha vermelha à esquerda do texto). */
 function sectionTitle(doc: jsPDF, text: string, x: number, y: number) {
   doc.setFillColor(...BRAND_RED)
   doc.rect(x, y - 3.2, 1.2, 4.2, 'F')

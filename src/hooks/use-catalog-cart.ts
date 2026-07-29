@@ -20,7 +20,7 @@ export interface CatalogCartItem {
   notes: string
 }
 
-const STORAGE_KEY = 'cozisteel-catalogo-cesta'
+const STORAGE_KEY = 'mobsteel-catalogo-cesta'
 
 function readCart(): CatalogCartItem[] {
   if (typeof window === 'undefined') return []

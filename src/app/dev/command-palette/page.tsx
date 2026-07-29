@@ -119,7 +119,7 @@ export default function CommandPaletteDemoPage() {
 
   if (status === 'loading') return null
   if (status !== 'authenticated') {
-    return <div className="max-w-md mx-auto p-8 text-center text-muted-foreground">Faça login no Cozisteel ERP para acessar esta página de validação.</div>
+    return <div className="max-w-md mx-auto p-8 text-center text-muted-foreground">Faça login no Mobsteel ERP para acessar esta página de validação.</div>
   }
 
   return <CommandPaletteDemoContent />

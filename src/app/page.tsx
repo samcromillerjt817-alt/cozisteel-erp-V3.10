@@ -517,10 +517,9 @@ export default function ERPPage() {
         <Card className="w-full max-w-sm card-app rounded-2xl border-slate-200 shadow-lg">
           <CardContent className="p-8 space-y-6">
             <div className="flex flex-col items-center space-y-2">
-              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
-                <ShieldCheck className="w-8 h-8 text-primary" />
-              </div>
-              <h1 className="text-2xl font-bold tracking-tight">COZISTEEL ERP</h1>
+              {/* eslint-disable-next-line @next/next/no-img-element -- ativo local estático */}
+              <img src="/logo-icon.png" alt="Mobsteel" className="w-14 h-14 object-contain" />
+              <h1 className="text-2xl font-bold tracking-tight">MOBSTEEL ERP</h1>
               <p className="text-sm text-muted-foreground">Sistema de Gestao Empresarial</p>
             </div>
             <div className="space-y-4">
@@ -556,10 +555,10 @@ export default function ERPPage() {
       <div className={`p-4 border-b flex ${collapsed ? 'flex-col items-center gap-2' : 'items-center justify-between'}`}>
         <div className={`flex items-center gap-2.5 min-w-0 ${collapsed ? 'flex-col gap-1' : ''}`}>
           {/* eslint-disable-next-line @next/next/no-img-element -- ativo local estático, sem necessidade do otimizador do next/image aqui */}
-          <img src="/logo-icon.png" alt="Cozisteel" className="w-9 h-9 object-contain shrink-0" />
+          <img src="/logo-icon.png" alt="Mobsteel" className="w-9 h-9 object-contain shrink-0" />
           {!collapsed && (
             <div className="min-w-0">
-              <h2 className="font-bold text-lg text-primary leading-tight">COZISTEEL</h2>
+              <h2 className="font-bold text-lg text-primary leading-tight">MOBSTEEL</h2>
               <p className="text-xs text-muted-foreground">ERP v4.0</p>
             </div>
           )}
@@ -666,7 +665,11 @@ export default function ERPPage() {
             {renderNav()}
           </SheetContent>
         </Sheet>
-        <span className="font-bold text-lg text-primary">COZISTEEL</span>
+        <div className="flex items-center gap-2">
+          {/* eslint-disable-next-line @next/next/no-img-element -- ativo local estático */}
+          <img src="/logo-icon.png" alt="Mobsteel" className="w-6 h-6 object-contain md:hidden" />
+          <span className="font-bold text-lg text-primary">MOBSTEEL</span>
+        </div>
         <div className="hidden md:flex flex-1 max-w-md mx-auto">
           <button
             type="button"
@@ -704,7 +707,7 @@ export default function ERPPage() {
               atual navega; o último segmento (a tela em que você já está) fica como texto simples,
               convenção padrão de breadcrumb. */}
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-            <button type="button" onClick={() => setActiveModule('dashboard')} className="hover:text-foreground hover:underline">COZISTEEL ERP</button>
+            <button type="button" onClick={() => setActiveModule('dashboard')} className="hover:text-foreground hover:underline">MOBSTEEL ERP</button>
             <ChevronRight className="w-4 h-4" />
             {activeModule === 'configuracoes' ? (
               <button type="button" onClick={() => setConfigSub('empresa')} className="hover:text-foreground hover:underline font-medium">{breadcrumbMap[activeModule]}</button>

@@ -83,7 +83,7 @@ export default function CatalogoPage() {
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div>
-            <Link href="/catalogo" className="text-xl font-black tracking-tight text-slate-900">Cozisteel</Link>
+            <Link href="/catalogo" className="text-xl font-black tracking-tight text-slate-900">Mobsteel</Link>
             <p className="hidden text-xs text-slate-500 sm:block">Soluções profissionais em aço inox</p>
           </div>
           <Link href="/catalogo/carrinho">

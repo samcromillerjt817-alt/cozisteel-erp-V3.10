@@ -37,7 +37,7 @@ describe('MaterialService.list — filtro "Só estoque baixo" (lowStock) na list
       paginate: true,
       page: 1,
       limit: 20,
-    }) as { data: Array<{ name: string; stockQty: number; minStockQty: number }>; total: number }
+    }) as unknown as { data: Array<{ name: string; stockQty: number; minStockQty: number }>; total: number }
 
     expect(result.total).toBe(2)
     expect(result.data.every((m) => m.stockQty <= m.minStockQty)).toBe(true)
@@ -53,7 +53,7 @@ describe('MaterialService.list — filtro "Só estoque baixo" (lowStock) na list
       paginate: true,
       page: 1,
       limit: 20,
-    }) as { data: unknown[]; total: number }
+    }) as unknown as { data: unknown[]; total: number }
 
     expect(result.total).toBe(4)
   })
@@ -61,7 +61,7 @@ describe('MaterialService.list — filtro "Só estoque baixo" (lowStock) na list
   it('3. paginação funciona corretamente sobre o resultado JÁ filtrado (não sobre o total da tabela)', async () => {
     const page1 = await materialService.list({
       search: suffix, active: null, categoryId: '', lowStock: true, paginate: true, page: 1, limit: 1,
-    }) as { data: Array<{ name: string }>; total: number; totalPages: number }
+    }) as unknown as { data: Array<{ name: string }>; total: number; totalPages: number }
 
     expect(page1.total).toBe(2) // total é o total FILTRADO (2 materiais baixos), não os 4 da tabela
     expect(page1.totalPages).toBe(2)
@@ -69,7 +69,7 @@ describe('MaterialService.list — filtro "Só estoque baixo" (lowStock) na list
 
     const page2 = await materialService.list({
       search: suffix, active: null, categoryId: '', lowStock: true, paginate: true, page: 2, limit: 1,
-    }) as { data: Array<{ name: string }> }
+    }) as unknown as { data: Array<{ name: string }> }
 
     expect(page2.data.length).toBe(1)
     expect(page2.data[0].name).not.toBe(page1.data[0].name) // páginas diferentes, itens diferentes

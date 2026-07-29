@@ -15,8 +15,8 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Cozisteel ERP v4.0",
-  description: "Sistema de gerenciamento empresarial - Cozisteel Equipamentos Inoxidaveis",
+  title: "Mobsteel ERP v4.0",
+  description: "Sistema de gerenciamento empresarial - Mobsteel Equipamentos Industriais",
 };
 
 export default function RootLayout({

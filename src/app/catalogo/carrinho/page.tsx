@@ -101,7 +101,7 @@ export default function CarrinhoPage() {
     <div className="min-h-screen bg-slate-50/70">
       <header className="border-b bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
-          <Link href="/catalogo" className="text-xl font-black tracking-tight text-slate-900">Cozisteel</Link>
+          <Link href="/catalogo" className="text-xl font-black tracking-tight text-slate-900">Mobsteel</Link>
           <div className="flex items-center gap-2 text-xs font-medium text-slate-500"><LockKeyhole className="h-4 w-4 text-primary" /> Ambiente seguro</div>
         </div>
       </header>

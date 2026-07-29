@@ -137,7 +137,7 @@ export default function CatalogoProductPage({ params }: { params: Promise<{ prod
     <div className="min-h-screen bg-slate-50/70">
       <header className="border-b bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
-          <Link href="/catalogo" className="text-xl font-black tracking-tight text-slate-900">Cozisteel</Link>
+          <Link href="/catalogo" className="text-xl font-black tracking-tight text-slate-900">Mobsteel</Link>
           <Badge variant="secondary" className="hidden sm:inline-flex">Catálogo profissional</Badge>
         </div>
       </header>
