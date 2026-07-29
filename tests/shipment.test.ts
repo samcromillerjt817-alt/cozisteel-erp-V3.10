@@ -216,4 +216,57 @@ describe('Expedição (ADR-023, item 6)', () => {
       shipmentService.update(shipment.id, { carrier: 'C', vehiclePlate: '', driverName: '', scheduledDate: null, proofDocument: '', notes: '' })
     ).rejects.toThrow(/rascunho ou em separação/)
   })
+
+  /**
+   * Achado numa avaliação end-to-end (2026-07-29): `new Date("05/09/2026")` era interpretado como
+   * mm/dd/aaaa americano (9 de maio) em vez de 5 de setembro. `parseApiDate` (src/lib/format.ts)
+   * corrige isso aceitando tanto ISO (o que `<input type="date">` já envia) quanto dd/mm/aaaa.
+   */
+  it('9. scheduledDate aceita ISO (aaaa-mm-dd) sem ambiguidade', async () => {
+    const { user, salesOrder, itemId } = await createSalesOrder('shipment-date-iso', 10)
+    await salesOrderService.changeStatus(salesOrder.id, 'in_production', user.id)
+    await salesOrderService.changeStatus(salesOrder.id, 'ready_for_shipping', user.id)
+
+    const shipment = (await shipmentService.create(
+      salesOrder.id,
+      { carrier: '', vehiclePlate: '', driverName: '', scheduledDate: '2026-09-05', notes: '', items: [{ salesOrderItemId: itemId, quantity: 5 }] },
+      user.id
+    )) as { id: string; scheduledDate: Date }
+    createdShipmentIds.push(shipment.id)
+
+    expect(shipment.scheduledDate.getUTCMonth()).toBe(8) // setembro (0-indexed)
+    expect(shipment.scheduledDate.getUTCDate()).toBe(5)
+  })
+
+  it('10. scheduledDate aceita dd/mm/aaaa sem confundir com mm/dd (bug corrigido)', async () => {
+    const { user, salesOrder, itemId } = await createSalesOrder('shipment-date-br', 10)
+    await salesOrderService.changeStatus(salesOrder.id, 'in_production', user.id)
+    await salesOrderService.changeStatus(salesOrder.id, 'ready_for_shipping', user.id)
+
+    const shipment = (await shipmentService.create(
+      salesOrder.id,
+      { carrier: '', vehiclePlate: '', driverName: '', scheduledDate: '05/09/2026', notes: '', items: [{ salesOrderItemId: itemId, quantity: 5 }] },
+      user.id
+    )) as { id: string; scheduledDate: Date }
+    createdShipmentIds.push(shipment.id)
+
+    // 05/09/2026 é 5 de SETEMBRO (mês 9, índice 8) — nunca 9 de maio (o bug antigo interpretava
+    // como mm/dd americano).
+    expect(shipment.scheduledDate.getMonth()).toBe(8)
+    expect(shipment.scheduledDate.getDate()).toBe(5)
+  })
+
+  it('11. scheduledDate inválida é rejeitada com erro claro, não silenciosamente aceita', async () => {
+    const { user, salesOrder, itemId } = await createSalesOrder('shipment-date-invalid', 10)
+    await salesOrderService.changeStatus(salesOrder.id, 'in_production', user.id)
+    await salesOrderService.changeStatus(salesOrder.id, 'ready_for_shipping', user.id)
+
+    await expect(
+      shipmentService.create(
+        salesOrder.id,
+        { carrier: '', vehiclePlate: '', driverName: '', scheduledDate: 'nao é uma data', notes: '', items: [{ salesOrderItemId: itemId, quantity: 5 }] },
+        user.id
+      )
+    ).rejects.toThrow(/Data prevista inválida/)
+  })
 })

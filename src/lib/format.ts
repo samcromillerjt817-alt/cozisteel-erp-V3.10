@@ -30,6 +30,24 @@ export function parseBrDate(value: string): Date | null {
   return new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]))
 }
 
+/**
+ * Parser de data pra campos de API que recebem uma string de data de fora (nunca `new Date(string)`
+ * direto num valor vindo do cliente — `new Date("05/09/2026")` é interpretado como mm/dd/aaaa
+ * americano pelo motor JS, virando 9 de maio em vez de 5 de setembro; achado real numa avaliação
+ * end-to-end, 2026-07-29). Aceita os 2 formatos que legitimamente chegam à API hoje: ISO
+ * (`aaaa-mm-dd`, o que `<input type="date">` e as telas de Financeiro já enviam) e `dd/mm/aaaa` (a
+ * convenção usada no resto do sistema, caso um chamador futuro — app mobile, script, integração —
+ * envie nesse formato em vez de ISO). Devolve `null` pra qualquer formato não reconhecido ou data
+ * inválida, em vez de silenciosamente devolver `Invalid Date`.
+ */
+export function parseApiDate(value: string): Date | null {
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+    const parsed = new Date(value)
+    return isNaN(parsed.getTime()) ? null : parsed
+  }
+  return parseBrDate(value)
+}
+
 export const statusLabels: Record<string, string> = {
   draft: 'Rascunho',
   sent: 'Enviado',

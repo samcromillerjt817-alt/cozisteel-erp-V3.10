@@ -7,7 +7,21 @@ import { auditService } from '@/app/services/audit.service'
 import { statusHistoryService } from '@/app/services/status-history.service'
 import { NotFoundException, BadRequestException } from '@/app/exceptions'
 import { checkTransition } from '@/lib/status-machine'
+import { parseApiDate } from '@/lib/format'
 import type { CreateShipmentDto, UpdateShipmentDto } from '@/app/dto'
+
+/**
+ * `new Date(string)` direto num valor vindo do cliente interpretava "05/09/2026" (5 de setembro)
+ * como mm/dd/aaaa americano, virando 9 de maio — achado numa avaliação end-to-end (2026-07-29).
+ * `parseApiDate` aceita ISO (o que `<input type="date">` já envia hoje) e dd/mm/aaaa, e nunca
+ * confunde os dois.
+ */
+function parseScheduledDate(value: string | null | undefined): Date | null {
+  if (!value) return null
+  const parsed = parseApiDate(value)
+  if (!parsed) throw new BadRequestException('Data prevista inválida — use aaaa-mm-dd ou dd/mm/aaaa')
+  return parsed
+}
 
 interface ShippableItem {
   id: string
@@ -130,7 +144,7 @@ class ShipmentService {
           carrier: data.carrier,
           vehiclePlate: data.vehiclePlate,
           driverName: data.driverName,
-          scheduledDate: data.scheduledDate ? new Date(data.scheduledDate) : null,
+          scheduledDate: parseScheduledDate(data.scheduledDate),
           notes: data.notes,
           userId,
           items: { create: lineItems },
@@ -166,7 +180,7 @@ class ShipmentService {
       carrier: data.carrier,
       vehiclePlate: data.vehiclePlate,
       driverName: data.driverName,
-      scheduledDate: data.scheduledDate ? new Date(data.scheduledDate) : null,
+      scheduledDate: parseScheduledDate(data.scheduledDate),
       proofDocument: data.proofDocument,
       notes: data.notes,
     })
