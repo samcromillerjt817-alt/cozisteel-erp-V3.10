@@ -553,13 +553,17 @@ export default function ERPPage() {
   // com `title` nativo como tooltip; sub-menu de Configurações e rodapé de usuário viram compactos.
   const renderNav = (collapsed = false) => (
     <nav className="flex flex-col h-full">
-      <div className={`p-4 border-b flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
-        {!collapsed && (
-          <div>
-            <h2 className="font-bold text-lg text-primary">COZISTEEL</h2>
-            <p className="text-xs text-muted-foreground">ERP v4.0</p>
-          </div>
-        )}
+      <div className={`p-4 border-b flex ${collapsed ? 'flex-col items-center gap-2' : 'items-center justify-between'}`}>
+        <div className={`flex items-center gap-2.5 min-w-0 ${collapsed ? 'flex-col gap-1' : ''}`}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- ativo local estático, sem necessidade do otimizador do next/image aqui */}
+          <img src="/logo-icon.png" alt="Cozisteel" className="w-9 h-9 object-contain shrink-0" />
+          {!collapsed && (
+            <div className="min-w-0">
+              <h2 className="font-bold text-lg text-primary leading-tight">COZISTEEL</h2>
+              <p className="text-xs text-muted-foreground">ERP v4.0</p>
+            </div>
+          )}
+        </div>
         <Button
           variant="ghost" size="icon" className="hidden md:inline-flex shrink-0"
           onClick={() => setSidebarCollapsed((v) => !v)}
