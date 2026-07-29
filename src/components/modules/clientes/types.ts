@@ -39,12 +39,14 @@ const FORM_FIELD_KEYS = [
 
 // O formulário sempre trabalha com `string` (o campo de CNPJ/CPF nunca perde valor por causa da
 // máscara) — só `ClientRecord.cpfCnpj` é nullable, refletindo o schema; por isso o override abaixo.
-export type ClientFormData = Omit<Pick<ClientRecord, (typeof FORM_FIELD_KEYS)[number]>, 'cpfCnpj'> & { cpfCnpj: string }
+// `active` fica fora de `FORM_FIELD_KEYS` (que assume string) e é tratado à parte, com default `true`
+// (ADR-022, Fase UX-6, achado #24 — campo já existia no schema/DTO, nunca exposto no formulário).
+export type ClientFormData = Omit<Pick<ClientRecord, (typeof FORM_FIELD_KEYS)[number]>, 'cpfCnpj'> & { cpfCnpj: string; active: boolean }
 
 export const EMPTY_CLIENT_FORM: ClientFormData = FORM_FIELD_KEYS.reduce((acc, key) => {
   acc[key] = ''
   return acc
-}, {} as ClientFormData)
+}, { active: true } as ClientFormData)
 
 /**
  * Converte um `ClientRecord` completo (sempre buscado por id via `GET /api/clients/[id]`, nunca a
@@ -60,5 +62,5 @@ export function clientToFormData(client: ClientRecord): ClientFormData {
   return FORM_FIELD_KEYS.reduce((acc, key) => {
     acc[key] = client[key] || ''
     return acc
-  }, {} as ClientFormData)
+  }, { active: client.active } as ClientFormData)
 }

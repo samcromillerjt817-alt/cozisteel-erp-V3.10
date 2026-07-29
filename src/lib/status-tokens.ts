@@ -37,6 +37,9 @@ export type StatusDomain =
   | 'userStatus'
   | 'bom'
   | 'financeiro'
+  | 'invoice'
+  | 'shipment'
+  | 'catalogRequest'
 
 export const domainStatusCategory: Record<StatusDomain, Record<string, StatusCategory>> = {
   quote: {
@@ -55,8 +58,14 @@ export const domainStatusCategory: Record<StatusDomain, Record<string, StatusCat
   productionOrder: {
     planned: 'pending', in_progress: 'info', paused: 'warning', completed: 'completed', cancelled: 'cancelled',
   },
+  // ADR-023 (item 6, Decisão #3) — ready_for_shipping/partially_fulfilled novos; completed agora só
+  // é alcançado via recalculateFulfillment (100% expedido), nunca escolhido manualmente.
   salesOrder: {
-    open: 'pending', in_production: 'info', completed: 'completed', cancelled: 'cancelled',
+    open: 'pending', in_production: 'info', ready_for_shipping: 'info', partially_fulfilled: 'warning',
+    completed: 'completed', cancelled: 'cancelled',
+  },
+  shipment: {
+    draft: 'pending', picking: 'info', ready: 'info', shipped: 'warning', delivered: 'completed', cancelled: 'cancelled',
   },
   stockMovement: {
     IN: 'success', OUT: 'error', ADJUST: 'warning',
@@ -70,15 +79,24 @@ export const domainStatusCategory: Record<StatusDomain, Record<string, StatusCat
   userStatus: {
     active: 'success', inactive: 'cancelled',
   },
-  // Nenhuma tela ainda renderiza status de BOM via `StatusBadge` (não há UI de BOM nesta fase) —
-  // entrada adicionada por completude/future-proofing (achado da auditoria), não corrige um bug visível.
+  // ADR-023 (item 4) — primeira tela real usando este domínio (entrada existia por completude desde
+  // antes, sem nenhuma UI de BOM). `pending_approval` adicionado junto com o status novo, opcional.
   bom: {
-    draft: 'pending', released: 'success', obsolete: 'cancelled',
+    draft: 'pending', pending_approval: 'warning', released: 'success', obsolete: 'cancelled',
   },
   // Fase 12 (Financeiro), Subetapa 7-UI — mesmo domínio de status para Contas a Pagar e a Receber
   // (os dois modelos usam exatamente o mesmo vocabulário, `financial-account.service.ts`).
   financeiro: {
     open: 'pending', partially_paid: 'warning', paid: 'success', cancelled: 'cancelled',
+  },
+  // ADR-023 (Decisão #2, Faturamento) — só 2 estados: fatura nasce sempre emitida, sem rascunho.
+  invoice: {
+    issued: 'success', cancelled: 'cancelled',
+  },
+  // ADR-026 (Fase 4) — ciclo de vida do INTAKE bruto da solicitação, não confundir com o status
+  // comercial do Orçamento gerado (domínio `quote`) — são propositalmente máquinas separadas.
+  catalogRequest: {
+    recebida: 'pending', em_triagem: 'info', convertida: 'success', arquivada: 'cancelled',
   },
 }
 

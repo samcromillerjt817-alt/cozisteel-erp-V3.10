@@ -68,10 +68,11 @@ model AuditLog {
 // consulta complexa nesta fase.
 model StatusHistory {
   id         String   @id @default(cuid())
-  entityType String // "quote" | "sales_order" | "production_order" | "requisition" | "purchase_order" | "bom_revision"
+  entityType String // "quote" | "sales_order" | "production_order" | "requisition" | "purchase_order" | "bom_revision" | "shipment"
   entityId   String
   fromStatus String
   toStatus   String
+  reason     String   @default("") // motivo da transição, texto livre — opcional (ADR-023, item 4). Vazio para toda transição anterior a esta mudança e para quem não informar.
   userId     String
   user       User     @relation(fields: [userId], references: [id])
   createdAt  DateTime @default(now())
@@ -108,6 +109,12 @@ model User {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  // Bloqueio de conta por força bruta (ADR-027) — complementa o rate limit por IP: um atacante
+  // trocando de IP ainda esbarra neste limite, por username, sobrevive a restart do PM2 (guardado
+  // no banco, não em memória).
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
   quotes                    Quote[]
   auditLogs                 AuditLog[]
   sequences                 NumberSequence[]
@@ -127,6 +134,10 @@ model User {
   receipts                  Receipt[]
   accountPayables           AccountPayable[]
   payments                  Payment[]
+  approvalRecords           ApprovalRecord[]
+  shipments                 Shipment[]
+  periodClosingsClosed      PeriodClosing[]            @relation("PeriodClosingClosedBy")
+  periodClosingsReopened    PeriodClosing[]            @relation("PeriodClosingReopenedBy")
 
   @@index([role])
   @@index([active])
@@ -154,42 +165,43 @@ model NumberSequence {
 // ── CLIENTES ─────────────────────────────────────────────
 
 model Client {
-  id            String   @id @default(cuid())
-  type          String   @default("company") // company, person
-  corporateName String   @default("") // Razão Social
-  tradeName     String   @default("") // Nome Fantasia
+  id                String   @id @default(cuid())
+  type              String   @default("company") // company, person
+  corporateName     String   @default("") // Razão Social
+  tradeName         String   @default("") // Nome Fantasia
   // Nullable (não `@default("")`): permite `@unique` real — múltiplos clientes sem documento
   // compartilhariam a mesma string vazia e violariam a constraint; `NULL` é o único valor que o
   // SQL nunca considera colidente em índice único. Normalização (''→null) fica no Service.
-  cpfCnpj       String?  @unique
-  ie            String   @default("") // Inscrição Estadual
-  im            String   @default("") // Inscrição Municipal
-  email         String   @default("")
-  phone         String   @default("")
-  phone2        String   @default("")
-  contactName   String   @default("")
-  contactPhone  String   @default("")
-  contactEmail  String   @default("")
-  zipCode       String   @default("")
-  address       String   @default("")
-  number        String   @default("")
-  complement    String   @default("")
-  neighborhood  String   @default("")
-  city          String   @default("")
-  state         String   @default("")
-  notes         String   @default("")
-  internalCode  String   @default("")
+  cpfCnpj           String?  @unique
+  ie                String   @default("") // Inscrição Estadual
+  im                String   @default("") // Inscrição Municipal
+  email             String   @default("")
+  phone             String   @default("")
+  phone2            String   @default("")
+  contactName       String   @default("")
+  contactPhone      String   @default("")
+  contactEmail      String   @default("")
+  zipCode           String   @default("")
+  address           String   @default("")
+  number            String   @default("")
+  complement        String   @default("")
+  neighborhood      String   @default("")
+  city              String   @default("")
+  state             String   @default("")
+  notes             String   @default("")
+  internalCode      String   @default("")
   // Campos inteligentes (Fase 13, Lote 4, ADR-015) — preenchidos automaticamente pela busca de CNPJ
   // (BrasilAPI), permanecem editáveis como os demais campos autopreenchidos deste cadastro.
-  situacaoCadastral String @default("") // ex: "ATIVA" (descricao_situacao_cadastral da Receita Federal)
-  cnaeCode          String @default("") // CNAE fiscal principal (código numérico)
-  cnaeDescription   String @default("") // CNAE fiscal principal (descrição)
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  situacaoCadastral String   @default("") // ex: "ATIVA" (descricao_situacao_cadastral da Receita Federal)
+  cnaeCode          String   @default("") // CNAE fiscal principal (código numérico)
+  cnaeDescription   String   @default("") // CNAE fiscal principal (descrição)
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  quotes      Quote[]
-  salesOrders SalesOrder[]
+  quotes          Quote[]
+  salesOrders     SalesOrder[]
+  catalogRequests CatalogRequest[] // ADR-026
 
   @@index([corporateName])
   @@index([active])
@@ -249,6 +261,7 @@ model Material {
   materialReservations MaterialReservation[] @relation("MaterialReservationMaterial")
   mrpSuggestions       MrpSuggestion[] // sugestões de compra geradas para este material (Fase 6, ADR-007)
   materialBatches      MaterialBatch[] // lotes recebidos deste material (Fase 10, ADR-013)
+  bomLineSubstitutions BomLineSubstitute[] // este material listado como substituto de alguma linha (ADR-023, item 4)
 
   @@index([internalCode])
   @@index([categoryId])
@@ -258,37 +271,37 @@ model Material {
 // ── FORNECEDORES ─────────────────────────────────────────
 
 model Supplier {
-  id            String   @id @default(cuid())
-  internalCode  String   @default("")
-  corporateName String   @default("") // Razão Social
-  tradeName     String   @default("") // Nome Fantasia
+  id                String   @id @default(cuid())
+  internalCode      String   @default("")
+  corporateName     String   @default("") // Razão Social
+  tradeName         String   @default("") // Nome Fantasia
   // Nullable (não `@default("")`): mesmo motivo do Client.cpfCnpj — permite `@unique` real sem
   // colidir múltiplos fornecedores sem documento na mesma string vazia. Normalização no Service.
-  cpfCnpj       String?  @unique
-  ie            String   @default("")
-  email         String   @default("")
-  phone         String   @default("")
-  phone2        String   @default("")
-  contactName   String   @default("")
-  contactPhone  String   @default("")
-  contactEmail  String   @default("")
-  zipCode       String   @default("")
-  address       String   @default("")
-  number        String   @default("")
-  complement    String   @default("")
-  neighborhood  String   @default("")
-  city          String   @default("")
-  state         String   @default("")
-  paymentTerms  String   @default("") // condições de pagamento padrão
-  leadTimeDays  Int      @default(0) // prazo médio de entrega, em dias
-  notes         String   @default("")
+  cpfCnpj           String?  @unique
+  ie                String   @default("")
+  email             String   @default("")
+  phone             String   @default("")
+  phone2            String   @default("")
+  contactName       String   @default("")
+  contactPhone      String   @default("")
+  contactEmail      String   @default("")
+  zipCode           String   @default("")
+  address           String   @default("")
+  number            String   @default("")
+  complement        String   @default("")
+  neighborhood      String   @default("")
+  city              String   @default("")
+  state             String   @default("")
+  paymentTerms      String   @default("") // condições de pagamento padrão
+  leadTimeDays      Int      @default(0) // prazo médio de entrega, em dias
+  notes             String   @default("")
   // Campos inteligentes (Fase 13, Lote 4, ADR-015) — mesmo padrão de Client, ver comentário lá.
-  situacaoCadastral String @default("")
-  cnaeCode          String @default("")
-  cnaeDescription   String @default("")
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  situacaoCadastral String   @default("")
+  cnaeCode          String   @default("")
+  cnaeDescription   String   @default("")
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   materials        SupplierMaterial[]
   requisitionItems RequisitionItem[]
@@ -374,6 +387,15 @@ model Product {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  // Controle de exibição no Catálogo Digital Público (ADR-026) — nada aparece publicamente até
+  // showInCatalog ser explicitamente marcado; defaults seguros (não expõe nada por acidente).
+  showInCatalog             Boolean @default(false)
+  catalogOrder              Int     @default(0)
+  catalogFeatured           Boolean @default(false)
+  catalogDescription        String  @default("") // descrição comercial, distinta de `description` (uso interno)
+  catalogPriceMode          String  @default("sob_consulta") // sob_consulta, exibir, faixa
+  catalogAllowCustomization Boolean @default(true)
+
   quoteItems           QuoteItem[]
   salesOrderItems      SalesOrderItem[]
   images               ProductImage[]
@@ -392,11 +414,13 @@ model Product {
   materialReservations MaterialReservation[] @relation("MaterialReservationProduct")
   mrpSuggestions       MrpSuggestion[] // sugestões de compra/produção geradas para este produto (Fase 6, ADR-007)
   productBatches       ProductBatch[] // lotes produzidos deste produto (Fase 10, ADR-013)
+  catalogRequestItems  CatalogRequestItem[] // itens de solicitações do Catálogo Digital Público (ADR-026)
 
   @@index([internalCode])
   @@index([sku])
   @@index([categoryId])
   @@index([active])
+  @@index([showInCatalog])
 }
 
 // ── BOM (Lista de Materiais) ────────────────────────────
@@ -425,7 +449,7 @@ model BomRevision {
   productId     String
   product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
   revisionCode  String // "A", "B", "01"... convenção da empresa, não fixada aqui
-  status        String    @default("draft") // draft, released, obsolete
+  status        String    @default("draft") // draft, pending_approval, released, obsolete (pending_approval opcional — ADR-023, item 4: draft ainda pode ir direto a released, mesmo comportamento de antes)
   effectiveFrom DateTime?
   notes         String    @default("")
   createdById   String
@@ -464,9 +488,30 @@ model BomLine {
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
 
+  substitutes BomLineSubstitute[] // materiais substitutos aceitos para esta linha (ADR-023, item 4) — só informativo nesta versão, não consumido por MRP/Reserva/Produção
+
   @@index([bomRevisionId])
   @@index([materialId])
   @@index([componentProductId])
+}
+
+// Material substituto aceito para uma linha de material de uma BomRevision (ADR-023, item 4) —
+// conceito que não existia em nenhum lugar do schema. Só documental/informativo nesta versão: MRP,
+// Reserva de Material e consumo de Produção continuam usando exclusivamente `BomLine.materialId`,
+// nunca escolhendo automaticamente entre os substitutos — isso seria uma mudança de comportamento
+// muito maior, fora do escopo de só "existir o conceito" pedido no levantamento.
+model BomLineSubstitute {
+  id         String   @id @default(cuid())
+  bomLineId  String
+  bomLine    BomLine  @relation(fields: [bomLineId], references: [id], onDelete: Cascade)
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+  notes      String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@unique([bomLineId, materialId])
+  @@index([bomLineId])
+  @@index([materialId])
 }
 
 // Catálogo mestre de tipos de operação — só o "o quê" (nome/descrição), reaproveitável entre
@@ -636,9 +681,17 @@ model MrpSuggestion {
 
   supplierId   String?
   supplier     Supplier? @relation(fields: [supplierId], references: [id])
-  neededByDate DateTime? // menor dueDate entre as OPs de origem — informativo nesta fase
+  neededByDate DateTime? // menor dueDate entre as OPs de origem que já têm prazo definido (ADR-023, item 3)
   status       String    @default("pending") // "pending" | "accepted" | "dismissed" — só "pending" gravado nesta fase
   createdAt    DateTime  @default(now())
+
+  // ADR-023 (item 3, "completar a exposição do MRP") — 3 lacunas de cálculo que o motor nunca
+  // considerava: estoque mínimo/segurança, prazo do fornecedor preferencial, e a data em que a
+  // falta vira problema de verdade (nunca uma previsão estatística de consumo).
+  minStockQty          Float     @default(0) // estoque mínimo do item no momento da sugestão
+  leadTimeDays         Int? // prazo do fornecedor preferencial (só material, suggestionType "purchase")
+  suggestedOrderByDate DateTime? // neededByDate - leadTimeDays, só quando ambos existem
+  isLate               Boolean   @default(false) // suggestedOrderByDate já passou e a sugestão ainda está pendente
 
   productTypeSnapshot  String? // Product.productType no momento da sugestão (só quando itemType = "product")
   supplierNameSnapshot String? // nome do fornecedor sugerido no momento (corporateName || tradeName)
@@ -690,7 +743,13 @@ model ProductImage {
 model SalesOrder {
   id            String   @id @default(cuid())
   number        String   @unique
-  status        String   @default("open") // open, in_production, completed, cancelled
+  // ADR-023 (item 6, Decisão #3): open, in_production, ready_for_shipping, partially_fulfilled,
+  // completed, cancelled. "ready_for_shipping" ainda é transição manual; "partially_fulfilled" e o
+  // novo sentido de "completed" (só quando 100% expedido) passam a ser calculados automaticamente
+  // por `salesOrderService.recalculateFulfillment()` a partir das quantidades somadas de Shipment,
+  // nunca escolhidos manualmente pelo usuário — só quem estava disponível antes desta mudança
+  // (open/in_production/cancelled) continua alcançável por `changeStatus()`.
+  status        String   @default("open")
   date          String
   quoteId       String   @unique // 1 orçamento -> no máximo 1 pedido de venda
   quote         Quote    @relation(fields: [quoteId], references: [id])
@@ -712,6 +771,7 @@ model SalesOrder {
   items            SalesOrderItem[]
   productionOrders ProductionOrder[]
   invoices         Invoice[] // Fase 12, ADR-016 — 1 Pedido de Venda pode gerar N faturas (faturamento parcial)
+  shipments        Shipment[] // ADR-023 (item 6) — 1 Pedido de Venda pode gerar N expedições (entrega parcial)
 
   @@index([quoteId])
   @@index([clientId])
@@ -733,8 +793,55 @@ model SalesOrderItem {
   total        Float      @default(0)
   order        Int        @default(0)
 
+  invoiceItems  InvoiceItem[]
+  shipmentItems ShipmentItem[] // ADR-023 (item 6)
+
   @@index([salesOrderId])
   @@index([productId])
+}
+
+// ── EXPEDIÇÃO (ADR-023, item 6, Decisão #3) ─────────────
+// Máquina de estados PRÓPRIA, separada da do Pedido de Venda de propósito — produção e expedição são
+// processos diferentes, com ritmos e responsáveis diferentes; misturar os dois num único enum forçaria
+// estados artificiais ("expedido parcial") no lugar errado. Várias Shipments por Pedido (entregas
+// parciais reais, não um placeholder) — quem determina se o Pedido está parcial ou totalmente atendido
+// são as quantidades somadas de todas as Shipments não canceladas, nunca um status escolhido à mão.
+
+model Shipment {
+  id            String     @id @default(cuid())
+  number        String     @unique // via NumberingService "expedicao"
+  salesOrderId  String
+  salesOrder    SalesOrder @relation(fields: [salesOrderId], references: [id])
+  status        String     @default("draft") // draft, picking, ready, shipped, delivered, cancelled
+  carrier       String     @default("") // transportadora
+  vehiclePlate  String     @default("") // veículo
+  driverName    String     @default("") // motorista
+  scheduledDate DateTime? // data prevista de saída
+  shippedAt     DateTime? // data efetiva de saída — marca o momento em que a quantidade passa a contar como atendida
+  deliveredAt   DateTime? // data efetiva de entrega
+  proofDocument String     @default("") // comprovante de entrega — caminho/URL, texto livre nesta versão (sem upload dedicado)
+  notes         String     @default("")
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  userId        String
+  user          User       @relation(fields: [userId], references: [id])
+
+  items ShipmentItem[]
+
+  @@index([salesOrderId])
+  @@index([status])
+}
+
+model ShipmentItem {
+  id               String         @id @default(cuid())
+  shipmentId       String
+  shipment         Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  salesOrderItemId String
+  salesOrderItem   SalesOrderItem @relation(fields: [salesOrderItemId], references: [id])
+  quantity         Float // quantidade expedida nesta remessa, para este item
+
+  @@index([shipmentId])
+  @@index([salesOrderItemId])
 }
 
 // ── REQUISIÇÕES DE MATÉRIA-PRIMA (compra ao fornecedor) ─
@@ -900,11 +1007,20 @@ model StockMovement {
   materialBatchId String? // lote diretamente originado/afetado por este movimento (Fase 10, ADR-013) — nullable, só preenchido quando o material é lotControlled
   materialBatch   MaterialBatch? @relation(fields: [materialBatchId], references: [id])
 
+  // ADR-023, Decisão #1 (Estorno) — `reversedAt` marca que ESTE movimento já foi estornado (impede
+  // estornar de novo); `reversalOfId` marca que ESTE movimento É o estorno de outro (impede estornar
+  // um estorno). Os dois lados da mesma auto-relação, nunca confundidos.
+  reversedAt   DateTime?
+  reversalOfId String?
+  reversalOf   StockMovement?  @relation("MovementReversal", fields: [reversalOfId], references: [id])
+  reversals    StockMovement[] @relation("MovementReversal")
+
   @@index([materialId])
   @@index([productId])
   @@index([itemType])
   @@index([createdAt])
   @@index([materialBatchId])
+  @@index([reversalOfId])
   @@index([type]) // Fase 11, ADR-017 — volume de movimentação por tipo (IN/OUT/ADJUST/RESERVE/RELEASE)
 }
 
@@ -946,13 +1062,21 @@ model Quote {
   approvedBy         String?
   approvedAt         DateTime?
   sentAt             DateTime?
+  publicToken        String?   @unique // legado — links já enviados antes da migração pra hash (auditoria de segurança, 2ª rodada); nunca mais escrito em texto puro a partir de agora, só lido como fallback
+  publicTokenHash    String?   @unique // sha256 do token do link público — token bruto nunca persiste, só é revelado uma vez na resposta do envio
+  clientRespondedAt  DateTime? // quando o cliente confirmou (aprovou/recusou) via o link público
+  origin             String    @default("manual") // manual, catalogo_digital (ADR-026)
+  internalStage      String? // aguardando_triagem, analise_comercial, analise_tecnica, aguardando_cliente,
+  // em_elaboracao — só relevante enquanto status = draft; puramente informativo
+  // pra fila de triagem do Catálogo Digital (ADR-026), sem checkTransition()
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   userId             String
   user               User      @relation(fields: [userId], references: [id])
 
-  items      QuoteItem[]
-  salesOrder SalesOrder?
+  items          QuoteItem[]
+  salesOrder     SalesOrder?
+  catalogRequest CatalogRequest? // inverse — FK física vive em CatalogRequest.quoteId (ADR-026)
 
   @@unique([number, version])
   @@index([status])
@@ -960,6 +1084,7 @@ model Quote {
   @@index([userId])
   @@index([date])
   @@index([createdAt]) // Fase 11, ADR-017 — indicadores comerciais filtrados por período (Subetapa 2)
+  @@index([origin]) // ADR-026 — fila de triagem filtra por origem (catalogo_digital)
 }
 
 model QuoteItem {
@@ -983,6 +1108,63 @@ model QuoteItem {
   createdAt   DateTime @default(now())
 
   @@index([quoteId])
+  @@index([productId])
+}
+
+// ── CATÁLOGO DIGITAL PÚBLICO (ADR-026) ──────────────────
+// Registro fiel do que o cliente efetivamente submeteu pelo link público — nunca alterado depois da
+// criação. O Orçamento gerado a partir dela (CatalogRequest.quoteId) é o objeto de trabalho real da
+// equipe (preço, ajustes, aprovação) e segue a máquina de status já existente do Orçamento, sem nenhuma
+// lógica paralela.
+
+model CatalogRequest {
+  id             String   @id @default(cuid())
+  protocol       String   @unique
+  status         String   @default("recebida") // recebida, em_triagem, convertida, arquivada
+  clientId       String?
+  client         Client?  @relation(fields: [clientId], references: [id])
+  clientName     String   @default("")
+  clientCpfCnpj  String   @default("")
+  clientContact  String   @default("") // nome do responsável
+  clientEmail    String   @default("")
+  clientPhone    String   @default("")
+  clientCity     String   @default("")
+  clientState    String   @default("")
+  clientCompany  String   @default("")
+  generalNotes   String   @default("") // prazo, local de instalação, entrega, observações gerais da solicitação
+  sourceLink     String   @default("") // reservado — link por vendedor/campanha/cliente (fora de escopo v1)
+  archivedReason String   @default("")
+  idempotencyKey String?  @unique // chave gerada no cliente (ADR-026, Fase 3) — reenvio da mesma chave devolve o resultado já existente, nunca duplica
+  quoteId        String?  @unique
+  quote          Quote?   @relation(fields: [quoteId], references: [id])
+  createdAt      DateTime @default(now())
+
+  items CatalogRequestItem[]
+
+  @@index([status])
+  @@index([clientId])
+}
+
+model CatalogRequestItem {
+  id               String         @id @default(cuid())
+  catalogRequestId String
+  catalogRequest   CatalogRequest @relation(fields: [catalogRequestId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product        @relation(fields: [productId], references: [id])
+  quantity         Float          @default(1)
+  width            Float?
+  height           Float?
+  length           Float?
+  material         String         @default("")
+  finish           String         @default("")
+  voltage          String         @default("")
+  operationSide    String         @default("")
+  accessories      String         @default("")
+  modifications    String         @default("")
+  notes            String         @default("")
+  isCustomized     Boolean        @default(false)
+
+  @@index([catalogRequestId])
   @@index([productId])
 }
 
@@ -1076,6 +1258,11 @@ model ProductBatch {
   // Onde este lote (quando ele mesmo é um subconjunto) foi consumido por uma OP de nível superior.
   consumedAsComponentIn BatchConsumption[] @relation("ProductBatchConsumedAsComponent")
 
+  // ADR-023, Decisão #1 (Estorno) — marca que esta rodada de produção já foi estornada (impede
+  // estornar de novo). Só existe para lotes lotControlled (única situação em que este modelo é
+  // criado), o que já garante que só rodadas com rastreabilidade completa podem ser estornadas.
+  reversedAt DateTime?
+
   @@index([productId])
   @@index([productionOrderId])
   @@index([producedAt]) // Fase 11, ADR-017 — volume produzido por período, todos os produtos
@@ -1112,39 +1299,72 @@ model BatchConsumption {
 // parcial (`upsertPayableFromPurchaseOrder`, idempotente, nunca duplicado: `purchaseOrderId @unique`).
 
 model Invoice {
-  id           String   @id @default(cuid())
-  number       String   @unique // via NumberingService "nota_fiscal"
+  id           String     @id @default(cuid())
+  number       String     @unique // via NumberingService "nota_fiscal"
   salesOrderId String
   salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id])
+  // ADR-023, Decisão #2 (ligar o Faturamento já existente) — fatura nasce sempre emitida (sem estado
+  // de rascunho, não pedido pelo usuário); "cancelled" só é permitido enquanto a Conta a Receber ainda
+  // não teve nenhum recebimento (reaproveita a mesma guarda de `cancelReceivable`), depois disso exige
+  // estorno financeiro (fora de escopo desta rodada).
+  status       String     @default("issued") // issued, cancelled
   total        Float
   issuedAt     DateTime
-  notes        String   @default("")
-  createdAt    DateTime @default(now())
+  cancelledAt  DateTime?
+  notes        String     @default("")
+  createdAt    DateTime   @default(now())
   userId       String
-  user         User     @relation(fields: [userId], references: [id])
+  user         User       @relation(fields: [userId], references: [id])
 
+  items             InvoiceItem[]
   accountReceivable AccountReceivable?
 
   @@index([salesOrderId])
+  @@index([status])
+}
+
+// ADR-023, Decisão #2 — antes só existia `Invoice.total` agregado, sem linhas; sem isso, faturamento
+// parcial de verdade (quantidade por item) era impossível de rastrear. Uma linha por
+// `SalesOrderItem` faturado, com a quantidade e o preço unitário CONGELADOS no momento da emissão
+// (preço nunca editável nesta tela — só a quantidade, por decisão do usuário).
+model InvoiceItem {
+  id               String         @id @default(cuid())
+  invoiceId        String
+  invoice          Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  salesOrderItemId String
+  salesOrderItem   SalesOrderItem @relation(fields: [salesOrderItemId], references: [id])
+  quantity         Float
+  unitPrice        Float
+  total            Float
+
+  @@index([invoiceId])
+  @@index([salesOrderItemId])
 }
 
 model AccountReceivable {
-  id        String   @id @default(cuid())
-  number    String   @unique // via NumberingService "titulo_receber"
-  invoiceId String   @unique // 1 Invoice -> no máximo 1 título a receber
-  invoice   Invoice  @relation(fields: [invoiceId], references: [id])
-  amount    Float
-  dueDate   DateTime
-  status    String   @default("open") // open, partially_paid, paid, cancelled
-  notes     String   @default("")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  id             String   @id @default(cuid())
+  number         String   @unique // via NumberingService "titulo_receber"
+  invoiceId      String   @unique // 1 Invoice -> no máximo 1 título a receber
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id])
+  amount         Float
+  dueDate        DateTime
+  // ADR-023 (item 6, Decisão #5) — período econômico/contábil do lançamento, NUNCA confundido com
+  // dueDate (obrigação prevista) nem com Receipt.paidAt (caixa realizado). Preenchido automaticamente
+  // com a data da fatura no momento da criação; alterar depois exige `financeiro:manage` + motivo
+  // (ver `periodClosingService`/`updateCompetenceDate`). O Fluxo de Caixa continua usando
+  // dueDate/paidAt normalmente — competência não substitui a visão de caixa.
+  competenceDate DateTime @default(now())
+  status         String   @default("open") // open, partially_paid, paid, cancelled
+  notes          String   @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
 
   receipts Receipt[]
 
   @@index([status])
+  @@index([competenceDate])
 }
 
 model Receipt {
@@ -1168,6 +1388,9 @@ model AccountPayable {
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
   amount          Float
   dueDate         DateTime
+  // ADR-023 (item 6, Decisão #5) — mesmo conceito de AccountReceivable.competenceDate. Preenchido
+  // automaticamente com a data do recebimento do pedido de compra no momento da criação do título.
+  competenceDate  DateTime      @default(now())
   status          String        @default("open") // open, partially_paid, paid, cancelled
   notes           String        @default("")
   createdAt       DateTime      @default(now())
@@ -1178,6 +1401,7 @@ model AccountPayable {
   payments Payment[]
 
   @@index([status])
+  @@index([competenceDate])
 }
 
 model Payment {
@@ -1192,4 +1416,70 @@ model Payment {
   user             User           @relation(fields: [userId], references: [id])
 
   @@index([accountPayableId])
+}
+
+// ── ALÇADA DE APROVAÇÃO (ADR-023, item 5) ───────────────
+// Motor genuinamente configurável: tipo de documento, faixa de valor, perfil aprovador, quantidade de
+// aprovações exigidas, permitir ou não autoaprovação, ordem entre regras concorrentes, vigência.
+// Enquanto nenhuma ApprovalRule existir para um documentType, a política implícita em código
+// (approval.service.ts) preserva o comportamento de antes desta mudança: 1 aprovação, sem faixa de
+// valor, qualquer aprovador com permissão de módulo aprova, autoaprovação permitida — mas mesmo esse
+// caminho passa pelo motor novo (`recordApproval`), nunca por um atalho paralelo (decisão do usuário).
+model ApprovalRule {
+  id                String   @id @default(cuid())
+  documentType      String // "quote" | "requisition" | "purchase_order"
+  minValue          Float? // null = sem piso
+  maxValue          Float? // null = sem teto
+  approverRole      String? // null = qualquer papel com permissão de módulo já aprova
+  requiredApprovals Int      @default(1)
+  allowSelfApproval Boolean  @default(true) // true preserva o comportamento atual — nada bloqueia autoaprovação hoje
+  order             Int      @default(0) // menor = avaliada primeiro entre regras concorrentes do mesmo documentType
+  active            Boolean  @default(true)
+  notes             String   @default("")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  approvals ApprovalRecord[]
+
+  @@index([documentType])
+  @@index([active])
+}
+
+// Cada aprovação individual dada por um usuário contra um documento — quando o total bate
+// `requiredApprovals` da regra aplicável, o Service de origem (Orçamento/Requisição/Pedido de Compra)
+// libera a transição de status de verdade.
+model ApprovalRecord {
+  id             String       @id @default(cuid())
+  approvalRuleId String
+  approvalRule   ApprovalRule @relation(fields: [approvalRuleId], references: [id])
+  documentType   String
+  documentId     String
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@unique([approvalRuleId, documentId, userId])
+  @@index([documentType, documentId])
+}
+
+// ── FECHAMENTO MENSAL (ADR-023, item 6, Decisão #5) ─────
+// Trava por competência (não por vencimento/pagamento) — bloqueia inclusão, alteração, cancelamento e
+// baixa retroativa de Contas a Pagar/Receber cuja `competenceDate` caia dentro de um período fechado.
+// Uma linha por período ("YYYY-MM"); reabrir não apaga a linha, só marca `reopened` — fechar de novo
+// sobrescreve `closedAt`/`closedById`. Histórico de quem fechou/reabriu quando já vive no `AuditLog`
+// genérico (achado do levantamento, item 13) — esta tabela só guarda o ESTADO atual do período.
+model PeriodClosing {
+  id           String    @id @default(cuid())
+  period       String    @unique // "YYYY-MM"
+  status       String    @default("closed") // closed, reopened
+  closedAt     DateTime  @default(now())
+  closedById   String
+  closedBy     User      @relation("PeriodClosingClosedBy", fields: [closedById], references: [id])
+  reopenedAt   DateTime?
+  reopenedById String?
+  reopenedBy   User?     @relation("PeriodClosingReopenedBy", fields: [reopenedById], references: [id])
+  notes        String    @default("")
+
+  @@index([period])
+  @@index([status])
 }

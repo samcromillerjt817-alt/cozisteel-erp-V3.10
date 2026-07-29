@@ -108,12 +108,12 @@ describe('Dashboard Compras — widgets reais (Subetapa 4)', () => {
     await db.user.delete({ where: { id: userId } })
   })
 
-  it('catálogo confirma Comercial+Produção+Estoque+Compras implementados (46 entradas destas 4 categorias)', () => {
+  it('catálogo confirma Comercial+Produção+Estoque+Compras implementados (47 entradas destas 4 categorias)', () => {
     const implementedIds = new Set(getImplementedWidgets().map((w) => w.id))
     const expectedIds = DASHBOARD_WIDGET_CATALOG.filter((e) => ['comercial', 'producao', 'estoque', 'compras'].includes(e.categoria))
-    // 46 desde o ADR-019 Subetapa 7.5: +2 (`compras.valor-total-po-periodo` e
-    // `estoque.valor-total-estoque`, headlines agregados pro Resumo por Módulo da Diretoria).
-    expect(expectedIds.length).toBe(46)
+    // 47 desde o ADR-025 addendum: +1 (`comercial.orcamentos-confirmados-cliente`, alerta de
+    // confirmação de orçamento pelo cliente via link público).
+    expect(expectedIds.length).toBe(47)
     for (const entry of expectedIds) expect(implementedIds.has(entry.id)).toBe(true)
   })
 

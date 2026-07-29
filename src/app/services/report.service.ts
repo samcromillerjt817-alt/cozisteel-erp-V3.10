@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { REPORT_SUMMARY_LABELS, REPORT_SUMMARY_MONEY_KEYS } from '@/lib/report-labels'
 import { formatCurrency } from '@/lib/format'
@@ -5,7 +6,7 @@ import { formatCurrency } from '@/lib/format'
 export const REPORT_TITLES: Record<string, string> = {
   sales: 'RELATÓRIO DE VENDAS (ORÇAMENTOS)',
   production: 'RELATÓRIO DE PRODUÇÃO',
-  purchases: 'RELATÓRIO DE COMPRAS',
+  purchases: 'RELATÓRIO DE REQUISIÇÕES DE COMPRA',
   stock: 'RELATÓRIO DE ESTOQUE',
 }
 
@@ -40,6 +41,29 @@ function parseBrDate(d: string): Date | null {
   return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]))
 }
 
+/** aaaammdd — mesma ordem de dígitos do dd/mm/aaaa reorganizada, só pra comparação lexicográfica
+ * segura (nunca exibido, nunca gravado). */
+function isoCompact(d: Date): string {
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * ADR-022 (Fase UX-7, achado #13) — filtro de período movido pra query: `date` é `String` no schema
+ * (dd/mm/aaaa, nunca `DateTime`), então comparar `>=`/`<=` direto na string original dá ordem errada
+ * (ex.: "01/12/2026" < "15/01/2026" por ordem lexicográfica, mas 15/01 vem antes na realidade). A saída
+ * SQL reordena os dígitos pra aaaammdd via `substr()` antes de comparar — a mesma transformação de
+ * `isoCompact`, só do lado do banco. `table`/`column` nunca vêm de entrada do usuário (só os 3
+ * literais chamados abaixo), e os limites de data são parâmetros ligados (`Prisma.sql`), não
+ * concatenação de string — não há superfície de SQL injection aqui.
+ */
+function dateRangeSql(table: string, fromDate: Date | null, toDate: Date | null): Prisma.Sql {
+  const col = Prisma.raw(`(substr("${table}"."date",7,4) || substr("${table}"."date",4,2) || substr("${table}"."date",1,2))`)
+  if (fromDate && toDate) return Prisma.sql`${col} BETWEEN ${isoCompact(fromDate)} AND ${isoCompact(toDate)}`
+  if (fromDate) return Prisma.sql`${col} >= ${isoCompact(fromDate)}`
+  if (toDate) return Prisma.sql`${col} <= ${isoCompact(toDate)}`
+  return Prisma.sql`1=1`
+}
+
 export interface ReportResult {
   rows: Record<string, unknown>[]
   summary: Record<string, unknown>
@@ -48,65 +72,66 @@ export interface ReportResult {
 export async function getReportData(type: string, from: string, to: string, status: string): Promise<ReportResult | null> {
   const fromDate = from ? parseBrDate(from) : null
   const toDate = to ? parseBrDate(to) : null
-  const inRange = (dateStr: string) => {
-    if (!fromDate && !toDate) return true
-    const d = parseBrDate(dateStr)
-    if (!d) return true
-    if (fromDate && d < fromDate) return false
-    if (toDate && d > toDate) return false
-    return true
-  }
 
   if (type === 'sales') {
+    const statusSql = status ? Prisma.sql`AND "status" = ${status}` : Prisma.empty
+    const matched = await db.$queryRaw<{ id: string }[]>(
+      Prisma.sql`SELECT "id" FROM "Quote" WHERE ${dateRangeSql('Quote', fromDate, toDate)} ${statusSql}`
+    )
     const quotes = await db.quote.findMany({
-      where: status ? { status } : undefined,
+      where: { id: { in: matched.map((m) => m.id) } },
       include: { client: { select: { corporateName: true } } },
       orderBy: { createdAt: 'desc' },
     })
-    const filtered = quotes.filter((q) => inRange(q.date))
-    const rows = filtered.map((q) => ({
+    const rows = quotes.map((q) => ({
       Numero: q.number, Cliente: q.clientName || q.client?.corporateName || '-', Data: q.date,
       Status: q.status, Subtotal: q.subtotal, Desconto: q.discountTotal, Total: q.total,
     }))
     return {
       rows,
       summary: {
-        totalQuotes: filtered.length,
-        totalValue: filtered.reduce((s, q) => s + q.total, 0),
-        approvedValue: filtered.filter((q) => q.status === 'approved').reduce((s, q) => s + q.total, 0),
+        totalQuotes: quotes.length,
+        totalValue: quotes.reduce((s, q) => s + q.total, 0),
+        approvedValue: quotes.filter((q) => q.status === 'approved').reduce((s, q) => s + q.total, 0),
       },
     }
   }
 
   if (type === 'production') {
+    const statusSql = status ? Prisma.sql`AND "status" = ${status}` : Prisma.empty
+    const matched = await db.$queryRaw<{ id: string }[]>(
+      Prisma.sql`SELECT "id" FROM "ProductionOrder" WHERE ${dateRangeSql('ProductionOrder', fromDate, toDate)} ${statusSql}`
+    )
     const orders = await db.productionOrder.findMany({
-      where: status ? { status } : undefined,
+      where: { id: { in: matched.map((m) => m.id) } },
       include: { product: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })
-    const filtered = orders.filter((o) => inRange(o.date))
-    const rows = filtered.map((o) => ({
+    const rows = orders.map((o) => ({
       Numero: o.number, Produto: o.productName || o.product?.name || '-', Data: o.date,
       Quantidade: o.quantity, Unidade: o.unit, Status: o.status, Prioridade: o.priority,
     }))
     return {
       rows,
       summary: {
-        totalOrders: filtered.length,
-        completed: filtered.filter((o) => o.status === 'completed').length,
-        inProgress: filtered.filter((o) => o.status !== 'completed' && o.status !== 'cancelled').length,
+        totalOrders: orders.length,
+        completed: orders.filter((o) => o.status === 'completed').length,
+        inProgress: orders.filter((o) => o.status !== 'completed' && o.status !== 'cancelled').length,
       },
     }
   }
 
   if (type === 'purchases') {
+    const statusSql = status ? Prisma.sql`AND "status" = ${status}` : Prisma.empty
+    const matched = await db.$queryRaw<{ id: string }[]>(
+      Prisma.sql`SELECT "id" FROM "Requisition" WHERE ${dateRangeSql('Requisition', fromDate, toDate)} ${statusSql}`
+    )
     const requisitions = await db.requisition.findMany({
-      where: status ? { status } : undefined,
+      where: { id: { in: matched.map((m) => m.id) } },
       include: { items: { include: { material: true, supplier: true } } },
       orderBy: { createdAt: 'desc' },
     })
-    const filtered = requisitions.filter((r) => inRange(r.date))
-    const rows = filtered.flatMap((r) =>
+    const rows = requisitions.flatMap((r) =>
       r.items.map((i) => ({
         Requisicao: r.number, Data: r.date, Status: r.status, Material: i.material.name,
         Fornecedor: i.supplier?.corporateName || i.supplier?.tradeName || 'A definir',
@@ -116,7 +141,7 @@ export async function getReportData(type: string, from: string, to: string, stat
     return {
       rows,
       summary: {
-        totalRequisitions: filtered.length,
+        totalRequisitions: requisitions.length,
         totalEstimated: rows.reduce((s, r: any) => s + (r.Total || 0), 0),
       },
     }

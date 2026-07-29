@@ -1,5 +1,5 @@
 export type Role = 'admin' | 'manager' | 'user' | 'viewer' | 'comercial' | 'producao' | 'compras' | 'estoque' | 'financeiro'
-export type Module = 'usuarios' | 'orcamentos' | 'produtos' | 'clientes' | 'categorias' | 'materiais' | 'sistema' | 'configuracoes' | 'sequencias' | 'auditoria' | 'dashboard' | 'fornecedores' | 'requisicoes' | 'producao' | 'estoque' | 'relatorios' | 'compras' | 'financeiro'
+export type Module = 'usuarios' | 'orcamentos' | 'produtos' | 'clientes' | 'categorias' | 'materiais' | 'sistema' | 'configuracoes' | 'sequencias' | 'auditoria' | 'dashboard' | 'fornecedores' | 'requisicoes' | 'producao' | 'estoque' | 'relatorios' | 'compras' | 'financeiro' | 'catalogo'
 export type Action = 'create' | 'read' | 'update' | 'delete' | 'manage' | 'export'
 import { ForbiddenException } from '@/app/exceptions'
 
@@ -23,6 +23,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     relatorios: ['create', 'read', 'update', 'delete', 'manage', 'export'],
     compras: ['create', 'read', 'update', 'delete', 'manage', 'export'],
     financeiro: ['create', 'read', 'update', 'delete', 'manage', 'export'],
+    catalogo: ['create', 'read', 'update', 'delete', 'manage', 'export'],
   },
   manager: {
     usuarios: ['read'],
@@ -43,6 +44,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     relatorios: ['create', 'read', 'update', 'export'],
     compras: ['create', 'read', 'update', 'delete', 'export'],
     financeiro: ['create', 'read', 'update', 'delete', 'export'],
+    catalogo: ['create', 'read', 'update', 'delete', 'export'],
   },
   user: {
     usuarios: ['read'],
@@ -63,6 +65,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     relatorios: ['read'],
     compras: ['read'],
     financeiro: ['read'],
+    catalogo: [],
   },
   viewer: {
     usuarios: [],
@@ -83,6 +86,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     relatorios: ['read'],
     compras: ['read'],
     financeiro: ['read'],
+    catalogo: [],
   },
   comercial: {
     usuarios: [],
@@ -103,6 +107,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     relatorios: ['read', 'export'],
     compras: [],
     financeiro: ['read'],
+    catalogo: ['create', 'read', 'update', 'delete', 'export'],
   },
   producao: {
     usuarios: [],
@@ -123,6 +128,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     relatorios: ['read'],
     compras: ['read'],
     financeiro: ['read'],
+    catalogo: [],
   },
   compras: {
     usuarios: [],
@@ -143,6 +149,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     relatorios: ['read', 'export'],
     compras: ['create', 'read', 'update', 'delete', 'manage', 'export'],
     financeiro: ['read'],
+    catalogo: [],
   },
   estoque: {
     usuarios: [],
@@ -163,6 +170,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     relatorios: ['read', 'export'],
     compras: ['read', 'update'],
     financeiro: ['read'],
+    catalogo: [],
   },
   financeiro: {
     usuarios: [],
@@ -183,6 +191,7 @@ const PERMISSIONS: Record<Role, Record<Module, Action[]>> = {
     relatorios: ['create', 'read', 'update', 'delete', 'manage', 'export'],
     compras: ['read', 'export'],
     financeiro: ['create', 'read', 'update', 'delete', 'manage', 'export'],
+    catalogo: [],
   },
 }
 

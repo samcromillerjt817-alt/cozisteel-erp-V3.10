@@ -4,10 +4,12 @@ import { useState } from 'react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { DashboardProfileView } from '@/components/dashboard/dashboard-profile-view'
 import { DashboardDiretoriaView } from '@/components/dashboard/dashboard-diretoria-view'
+import { DashboardCentroOperacoesView } from '@/components/dashboard/dashboard-centro-operacoes-view'
 import { getAccessibleProfiles } from '@/app/services/dashboard-access.service'
 import type { DashboardProfile } from '@/app/services/dashboard-types'
 
 const PROFILE_LABELS: Record<DashboardProfile, string> = {
+  'centro-operacoes': 'Centro de Operações',
   diretoria: 'Diretoria',
   comercial: 'Comercial',
   pcp: 'PCP',
@@ -48,7 +50,9 @@ export function DashboardTabs({ role, onNavigate }: { role: string; onNavigate: 
       </div>
       {profiles.map((profile) => (
         <TabsContent key={profile} value={profile} className="mt-4">
-          {profile === 'diretoria' ? (
+          {profile === 'centro-operacoes' ? (
+            <DashboardCentroOperacoesView onNavigate={onNavigate} />
+          ) : profile === 'diretoria' ? (
             <DashboardDiretoriaView onNavigate={onNavigate} />
           ) : (
             <DashboardProfileView profile={profile} onNavigate={onNavigate} />

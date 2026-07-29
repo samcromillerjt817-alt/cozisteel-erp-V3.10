@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Power } from 'lucide-react'
 import { PageHeader } from '@/components/platform/page-header'
 import { FilterBar } from '@/components/platform/filter-bar'
 import { DataTable, type DataTableColumn } from '@/components/platform/data-table'
 import { FormDialog } from '@/components/domain/form-dialog'
 import { SearchInput } from '@/components/domain/search-input'
+import { StatusBadge } from '@/components/domain/status-badge'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/domain/confirm-dialog'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
@@ -37,6 +38,9 @@ export function ClientesPage({ onCatalogChanged }: ClientesPageProps) {
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search)
+  // ADR-022 (Fase UX-6, achado #24) — por padrão a lista some com clientes inativados (mesma regra do
+  // backend em `client.service.ts`); este checkbox é o único jeito de trazê-los de volta.
+  const [showInactive, setShowInactive] = useState(false)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
 
@@ -50,6 +54,7 @@ export function ClientesPage({ onCatalogChanged }: ClientesPageProps) {
     try {
       const params = new URLSearchParams()
       if (debouncedSearch) params.set('search', debouncedSearch)
+      if (showInactive) params.set('includeInactive', 'true')
       params.set('page', String(page))
       params.set('limit', String(PAGE_SIZE))
       const r = await fetch(`/api/clients?${params}`)
@@ -63,7 +68,7 @@ export function ClientesPage({ onCatalogChanged }: ClientesPageProps) {
     } finally {
       setLoading(false)
     }
-  }, [debouncedSearch, page])
+  }, [debouncedSearch, showInactive, page])
 
   useEffect(() => {
     load()
@@ -72,6 +77,11 @@ export function ClientesPage({ onCatalogChanged }: ClientesPageProps) {
   function handleSearchChange(value: string) {
     setSearch(value)
     setPage(1) // reação direta ao evento de digitação, não a um efeito observando o valor debounced
+  }
+
+  function handleShowInactiveChange(checked: boolean) {
+    setShowInactive(checked)
+    setPage(1)
   }
 
   function openNew() {
@@ -123,6 +133,32 @@ export function ClientesPage({ onCatalogChanged }: ClientesPageProps) {
     }
   }
 
+  /** Alterna `active` sem abrir o formulário inteiro — ação rápida para o caso comum (cliente que
+   * parou de comprar, mas tem histórico de orçamentos e não pode ser excluído). Reusa o mesmo
+   * `PUT /api/clients/[id]`, sem endpoint dedicado. */
+  async function toggleActive(client: ClientRecord) {
+    const next = !client.active
+    if (!(await confirmAction({
+      title: next ? 'Reativar cliente' : 'Inativar cliente',
+      description: next
+        ? `Reativar "${client.corporateName || client.tradeName}"? Ele volta a aparecer nas listas e seletores por padrão.`
+        : `Inativar "${client.corporateName || client.tradeName}"? Ele deixa de aparecer na lista e no seletor de Orçamentos por padrão, mas o histórico é preservado.`,
+    }))) return
+    try {
+      const r = await fetch(`/api/clients/${client.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: next }) })
+      if (r.ok) {
+        toast.success(next ? 'Cliente reativado!' : 'Cliente inativado!')
+        load()
+        onCatalogChanged?.()
+      } else {
+        const err = await r.json()
+        toast.error(err.error || 'Erro ao atualizar cliente')
+      }
+    } catch {
+      toast.error('Erro ao atualizar cliente')
+    }
+  }
+
   async function remove(id: string) {
     if (!(await confirmAction({ description: 'Deseja realmente excluir este cliente?', destructive: true }))) return
     try {
@@ -145,14 +181,25 @@ export function ClientesPage({ onCatalogChanged }: ClientesPageProps) {
     { id: 'cpfCnpj', header: 'CNPJ / CPF', cell: (c) => c.cpfCnpj || '-' },
     { id: 'city', header: 'Cidade / UF', cell: (c) => (c.city ? `${c.city}/${c.state}` : '-'), hideBelow: 'md' },
     { id: 'phone', header: 'Telefone', cell: (c) => c.phone || '-', hideBelow: 'sm' },
+    {
+      id: 'active',
+      header: 'Status',
+      // Reusa o domínio `userStatus` (mesmo par active/inactive → success/cancelled) em vez de
+      // duplicar a mesma entrada em status-tokens.ts para um segundo domínio idêntico.
+      cell: (c) => <StatusBadge domain="userStatus" status={c.active ? 'active' : 'inactive'} label={c.active ? 'Ativo' : 'Inativo'} />,
+    },
   ]
 
   return (
     <div className="space-y-4">
       <PageHeader title="Clientes" actions={<Button onClick={openNew}><Plus className="w-4 h-4" /> Novo</Button>} />
 
-      <FilterBar>
+      <FilterBar onClear={() => { setSearch(''); setShowInactive(false); setPage(1) }}>
         <SearchInput value={search} onChange={handleSearchChange} />
+        <label className="flex items-center gap-2 text-sm px-3 border rounded-md h-9">
+          <input type="checkbox" checked={showInactive} onChange={(e) => handleShowInactiveChange(e.target.checked)} />
+          Mostrar inativos
+        </label>
       </FilterBar>
 
       <DataTable
@@ -161,8 +208,10 @@ export function ClientesPage({ onCatalogChanged }: ClientesPageProps) {
         getRowId={(c) => c.id}
         loading={loading}
         emptyMessage="Nenhum cliente encontrado"
+        emptyAction={{ label: 'Cadastrar o primeiro cliente', onClick: openNew }}
         rowActions={[
-          { label: 'Editar', icon: <Pencil />, onClick: (c) => openEdit(c.id) },
+          { label: 'Editar', icon: <Pencil />, onClick: (c) => openEdit(c.id), primary: true },
+          { label: (c) => (c.active ? 'Inativar' : 'Reativar'), icon: <Power />, onClick: (c) => toggleActive(c) },
           { label: 'Excluir', icon: <Trash2 />, variant: 'destructive', onClick: (c) => remove(c.id) },
         ]}
         pagination={{ page, pageSize: PAGE_SIZE, total, onPageChange: setPage }}

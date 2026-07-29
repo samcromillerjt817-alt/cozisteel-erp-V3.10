@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { BadRequestException } from '@/app/exceptions'
+import { isValidCpfCnpj } from '@/lib/masks'
 
 export const createQuoteItemSchema = z.object({
   productId: z.string().optional(),
@@ -67,6 +68,12 @@ export const createProductSchema = z.object({
   family: z.string().default(''),
   line: z.string().default(''),
   notes: z.string().default(''),
+  showInCatalog: z.boolean().default(false),
+  catalogOrder: z.number().default(0),
+  catalogFeatured: z.boolean().default(false),
+  catalogDescription: z.string().default(''),
+  catalogPriceMode: z.string().default('sob_consulta'),
+  catalogAllowCustomization: z.boolean().default(true),
 })
 
 export const createClientSchema = z.object({
@@ -94,6 +101,10 @@ export const createClientSchema = z.object({
   situacaoCadastral: z.string().default(''),
   cnaeCode: z.string().default(''),
   cnaeDescription: z.string().default(''),
+  // ADR-022 (Fase UX-6/7) — sem isso, o switch "Cliente ativo" do formulário de criação era ignorado
+  // silenciosamente: Zod descarta campos não declarados no schema, então `active: false` nunca chegava
+  // ao Prisma, que aplica seu próprio default `true` (achado do /codex review antes do fechamento).
+  active: z.boolean().default(true),
 })
 
 export const createMaterialSchema = z.object({
@@ -213,6 +224,70 @@ export const produceProductionOrderSchema = z.object({
   clientRequestId: z.string().optional(),
 })
 
+// ADR-023 (Decisão #2, Faturamento) — só a quantidade é informada pela tela; preço unitário é sempre
+// o do próprio `SalesOrderItem`, nunca editável na emissão da fatura.
+export const createInvoiceItemSchema = z.object({
+  salesOrderItemId: z.string(),
+  quantity: z.number().min(0),
+})
+
+export const createInvoiceSchema = z.object({
+  items: z.array(createInvoiceItemSchema).min(1, 'Informe ao menos um item a faturar'),
+  notes: z.string().default(''),
+})
+
+// ADR-023 (Decisão #1, Estorno) — motivo é sempre obrigatório, nunca opcional.
+export const reverseStockMovementSchema = z.object({
+  reason: z.string().min(1, 'Informe o motivo do estorno'),
+})
+
+// ADR-023 (item 6, Decisão #3, Expedição)
+
+export const createShipmentItemSchema = z.object({
+  salesOrderItemId: z.string(),
+  quantity: z.number().positive('Quantidade deve ser maior que zero'),
+})
+
+export const createShipmentSchema = z.object({
+  carrier: z.string().default(''),
+  vehiclePlate: z.string().default(''),
+  driverName: z.string().default(''),
+  scheduledDate: z.string().optional().nullable(),
+  notes: z.string().default(''),
+  items: z.array(createShipmentItemSchema).min(1, 'Informe ao menos um item a expedir'),
+})
+
+export const updateShipmentSchema = z.object({
+  carrier: z.string().default(''),
+  vehiclePlate: z.string().default(''),
+  driverName: z.string().default(''),
+  scheduledDate: z.string().optional().nullable(),
+  proofDocument: z.string().default(''),
+  notes: z.string().default(''),
+})
+
+export const SHIPMENT_STATUSES = ['draft', 'picking', 'ready', 'shipped', 'delivered', 'cancelled'] as const
+
+export const changeShipmentStatusSchema = z.object({
+  status: z.enum(SHIPMENT_STATUSES),
+})
+
+// ADR-023 (item 6, Decisão #5, Fechamento Mensal)
+
+export const periodClosingSchema = z.object({
+  period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Formato esperado: AAAA-MM'),
+  notes: z.string().default(''),
+})
+
+export const periodReopenSchema = z.object({
+  reason: z.string().min(1, 'Informe o motivo da reabertura'),
+})
+
+export const updateCompetenceDateSchema = z.object({
+  competenceDate: z.string().min(1, 'Informe a nova data de competência'),
+  reason: z.string().min(1, 'Informe o motivo da alteração'),
+})
+
 export const updatePurchaseOrderSchema = z.object({
   expectedDate: z.string().optional(),
   paymentTerms: z.string().optional(),
@@ -279,6 +354,34 @@ export const productOperationSchema = z.object({
   notes: z.string().default(''),
 })
 
+// ADR-023 (item 4, "completar a BOM formal")
+
+export const changeBomRevisionStatusSchema = z.object({
+  status: z.enum(['draft', 'pending_approval', 'released', 'obsolete']),
+  reason: z.string().default(''),
+})
+
+export const bomLineSubstituteSchema = z.object({
+  materialId: z.string().min(1, 'Matéria-prima é obrigatória'),
+  notes: z.string().default(''),
+})
+
+// ADR-023 (item 5, "motor de alçadas configurável")
+
+export const APPROVAL_DOCUMENT_TYPES = ['quote', 'requisition', 'purchase_order'] as const
+
+export const approvalRuleSchema = z.object({
+  documentType: z.enum(APPROVAL_DOCUMENT_TYPES),
+  minValue: z.number().min(0).optional().nullable(),
+  maxValue: z.number().min(0).optional().nullable(),
+  approverRole: z.string().optional().nullable(),
+  requiredApprovals: z.number().int().min(1).default(1),
+  allowSelfApproval: z.boolean().default(true),
+  order: z.number().int().min(0).default(0),
+  active: z.boolean().default(true),
+  notes: z.string().default(''),
+})
+
 export type CreateQuoteDto = z.infer<typeof createQuoteSchema>
 export type UpdateQuoteDto = z.infer<typeof updateQuoteSchema>
 export type CreateProductDto = z.infer<typeof createProductSchema>
@@ -297,6 +400,52 @@ export type CreateBomRevisionDto = z.infer<typeof createBomRevisionSchema>
 export type BomLineDto = z.infer<typeof bomLineSchema>
 export type CreateOperationTypeDto = z.infer<typeof createOperationTypeSchema>
 export type ProductOperationDto = z.infer<typeof productOperationSchema>
+export type ChangeBomRevisionStatusDto = z.infer<typeof changeBomRevisionStatusSchema>
+export type BomLineSubstituteDto = z.infer<typeof bomLineSubstituteSchema>
+export type ApprovalRuleDto = z.infer<typeof approvalRuleSchema>
+export type CreateInvoiceDto = z.infer<typeof createInvoiceSchema>
+export type ReverseStockMovementDto = z.infer<typeof reverseStockMovementSchema>
+export type CreateShipmentDto = z.infer<typeof createShipmentSchema>
+export type UpdateShipmentDto = z.infer<typeof updateShipmentSchema>
+export type ChangeShipmentStatusDto = z.infer<typeof changeShipmentStatusSchema>
+export type PeriodClosingDto = z.infer<typeof periodClosingSchema>
+export type PeriodReopenDto = z.infer<typeof periodReopenSchema>
+export type UpdateCompetenceDateDto = z.infer<typeof updateCompetenceDateSchema>
+
+// Catálogo Digital Público (ADR-026, Fase 3) — entrada não confiável (rota pública, sem autenticação),
+// por isso todo campo de texto tem limite de tamanho explícito (defesa contra payload abusivo).
+export const catalogRequestItemSchema = z.object({
+  productId: z.string().min(1),
+  quantity: z.number().min(0.01).max(100000),
+  width: z.number().min(0).max(100000).optional(),
+  height: z.number().min(0).max(100000).optional(),
+  length: z.number().min(0).max(100000).optional(),
+  material: z.string().max(200).default(''),
+  finish: z.string().max(200).default(''),
+  voltage: z.string().max(50).default(''),
+  operationSide: z.string().max(100).default(''),
+  accessories: z.string().max(1000).default(''),
+  modifications: z.string().max(1000).default(''),
+  notes: z.string().max(1000).default(''),
+})
+
+export const submitCatalogRequestSchema = z.object({
+  idempotencyKey: z.string().min(10).max(100),
+  clientName: z.string().min(1, 'Nome ou razão social é obrigatório').max(200),
+  // ADR-026, Fase 5 — dígito verificador validado server-side (rota pública, entrada não confiável).
+  // Campo vazio é aceito (identificação sem documento) — `isValidCpfCnpj` já trata isso como válido.
+  clientCpfCnpj: z.string().max(20).default('').refine(isValidCpfCnpj, 'CPF ou CNPJ inválido'),
+  clientContact: z.string().max(200).default(''),
+  clientEmail: z.string().max(200).default(''),
+  clientPhone: z.string().max(30).default(''),
+  clientCity: z.string().max(100).default(''),
+  clientState: z.string().max(2).default(''),
+  clientCompany: z.string().max(200).default(''),
+  generalNotes: z.string().max(2000).default(''),
+  items: z.array(catalogRequestItemSchema).min(1, 'A solicitação precisa ter ao menos 1 item').max(50),
+})
+
+export type SubmitCatalogRequestDto = z.infer<typeof submitCatalogRequestSchema>
 
 export function validateDto<T>(schema: z.ZodType<T>, data: unknown): T {
   const result = schema.safeParse(data)

@@ -1,3 +1,4 @@
+import { db } from '@/lib/db'
 import { productionOrderRepository } from '@/app/repositories/production-order.repository'
 import { bomRevisionRepository } from '@/app/repositories/bom-revision.repository'
 import { bomLineRepository } from '@/app/repositories/bom-line.repository'
@@ -6,11 +7,15 @@ import { numberingService } from '@/app/services/numbering.service'
 import { materialReservationService } from '@/app/services/material-reservation.service'
 import { reservationReconciliationService } from '@/app/services/reservation-reconciliation.service'
 import { statusHistoryService } from '@/app/services/status-history.service'
+import { auditService } from '@/app/services/audit.service'
 import { NotFoundException, BadRequestException } from '@/app/exceptions'
 import { checkTransition } from '@/lib/status-machine'
 import { domainEvents, DOMAIN_EVENTS } from '@/lib/domain-events'
 import type { OrdemProducaoCriadaPayload, OrdemProducaoFinalizadaPayload, ProducaoParcialRealizadaPayload } from '@/lib/domain-events'
 import { formatDate } from '@/lib/format'
+import type { Prisma } from '@prisma/client'
+
+type DbClient = typeof db | Prisma.TransactionClient
 
 interface ConsumptionLine {
   lineType: string
@@ -130,8 +135,8 @@ class ProductionOrderService {
     return order
   }
 
-  private async findActiveBomRevisionId(productId: string): Promise<string | null> {
-    const revision = (await bomRevisionRepository.findActiveByProduct(productId)) as { id: string } | null
+  private async findActiveBomRevisionId(productId: string, client: DbClient = db): Promise<string | null> {
+    const revision = (await bomRevisionRepository.findActiveByProduct(productId, client)) as { id: string } | null
     return revision?.id ?? null
   }
 
@@ -266,6 +271,79 @@ class ProductionOrderService {
   }
 
   /**
+   * ADR-023 (Decisão #1, Estorno) — reverte UMA rodada de produção (`ProductBatch`), o caso mais
+   * arriscado dos 4 mapeados no levantamento. Só existe para produto lotControlled (única situação em
+   * que `ProductBatch` é criado — se não existe lote, não há como reverter uma rodada específica com
+   * segurança). Recusa sem cascata quando o lote já foi consumido como componente de outra OP, nomeando
+   * a(s) OP(s) e o(s) produto(s) gerados — mesmo espírito da Decisão #1 já aplicado ao estorno de
+   * recebimento de compra.
+   *
+   * **Limitação conhecida, documentada de propósito (não escondida)**: não há hoje nenhuma
+   * rastreabilidade de que o produto acabado desta rodada foi vendido/expedido (Faturamento/Expedição
+   * ainda não têm controle de quantidade por lote) — a única defesa possível aqui é recusar se o saldo
+   * agregado do produto já não comporta a reversão (`stockQty` insuficiente), o que pega o caso mais
+   * grave (nada sobrou) mas não atribui com certeza absoluta que ESTA rodada especificamente ainda
+   * está em estoque intacta quando o saldo é suficiente.
+   */
+  async reverseProduction(productBatchId: string, reason: string, userId: string) {
+    const productBatch = await db.productBatch.findUnique({
+      where: { id: productBatchId },
+      include: {
+        product: { select: { id: true, name: true, stockQty: true } },
+        productionOrder: { select: { id: true, number: true, quantity: true, quantityCompleted: true, status: true } },
+        consumedFrom: { select: { itemType: true, materialBatchId: true, consumedProductBatchId: true, quantityConsumed: true } },
+        consumedAsComponentIn: {
+          include: { productBatch: { include: { productionOrder: { select: { number: true } }, product: { select: { name: true } } } } },
+        },
+      },
+    })
+    if (!productBatch) throw new NotFoundException('Lote de produção não encontrado')
+    if (productBatch.reversedAt) throw new BadRequestException('Esta rodada de produção já foi estornada')
+
+    if (productBatch.consumedAsComponentIn.length > 0) {
+      const opNumbers = [...new Set(productBatch.consumedAsComponentIn.map((c) => c.productBatch.productionOrder.number))]
+      const productNames = [...new Set(productBatch.consumedAsComponentIn.map((c) => c.productBatch.product.name))]
+      throw new BadRequestException(
+        `Não é possível estornar: o lote ${productBatch.batchNumber} já foi consumido como componente` +
+        (opNumbers.length ? ` na(s) Ordem(ns) de Produção ${opNumbers.join(', ')}` : '') +
+        (productNames.length ? `, gerando ${productNames.join(', ')}` : '') +
+        '. Para reverter esse caso, é necessária uma correção administrativa especializada (Central de Administração), não um estorno comum.'
+      )
+    }
+    if (productBatch.product.stockQty < productBatch.quantityProduced - 1e-9) {
+      throw new BadRequestException(
+        `Não é possível estornar: o saldo atual de "${productBatch.product.name}" (${productBatch.product.stockQty}) já é menor do que a quantidade desta rodada (${productBatch.quantityProduced}) — parte do lote já saiu do estoque por outro caminho (venda, ajuste). Contate um administrador para analisar o caso.`
+      )
+    }
+
+    const updatedOrder = await productionOrderRepository.reverseProduction(
+      productBatch,
+      productBatch.productionOrder,
+      reason,
+      userId
+    )
+
+    await auditService.log({
+      userId,
+      action: 'PATCH',
+      module: 'producao',
+      entityId: productBatch.productionOrder.id,
+      entityName: productBatch.productionOrder.number,
+      details: `Estorno da rodada de produção (lote ${productBatch.batchNumber}, ${productBatch.quantityProduced} un.) na OP ${productBatch.productionOrder.number}${reason ? ` — motivo: ${reason}` : ''}`,
+      beforeValue: { productBatchId: productBatch.id, quantityProduced: productBatch.quantityProduced },
+      afterValue: { quantityCompleted: updatedOrder.quantityCompleted, status: updatedOrder.status },
+    })
+
+    return updatedOrder
+  }
+
+  /** ADR-023 (Decisão #1, Estorno) — lista os lotes já produzidos (um por rodada), para a UI decidir
+   * quais ainda podem ser estornados. */
+  async listProductBatches(productionOrderId: string) {
+    return productionOrderRepository.findProductBatches(productionOrderId)
+  }
+
+  /**
    * Resolve as linhas de consumo de uma OP: `BomLine` da revisão CONGELADA (`bomRevisionId`) quando
    * existir — nunca a revisão ativa agora, mesmo princípio já usado pela Reserva (ADR-006) — ou a
    * receita viva `ProductMaterial`, comportamento herdado para produto sem engenharia formal.
@@ -326,13 +404,25 @@ class ProductionOrderService {
    * Gera uma OP por item (com produto vinculado) de um Orçamento recém-aprovado.
    * Chamada pelo QuoteService (Service-a-Service) — item "avulso" sem productId é
    * ignorado antes de chegar aqui, pois não há o que produzir via OP.
+   *
+   * `client` opcional (auditoria de segurança, 2ª rodada) — quando o chamador já está dentro de
+   * uma `db.$transaction` (confirmação atômica de orçamento por link público, `QuoteService.
+   * confirmByClient`), passar o `tx` garante que a criação de cada OP participa do mesmo
+   * rollback-tudo-ou-nada: se a criação da 2ª OP de 3 falhar, a 1ª (e a mudança de status do
+   * orçamento) também é revertida. Default `client = db` preserva 100% o comportamento de todo
+   * chamador existente (aprovação interna via `changeStatus`), sem transação nenhuma.
    */
-  async createFromApprovedQuote(items: QuoteItemForProduction[], quoteNumber: string, userId: string) {
-    const created = []
+  async createFromApprovedQuote(
+    items: QuoteItemForProduction[],
+    quoteNumber: string,
+    userId: string,
+    client: DbClient = db
+  ) {
+    const created: Array<{ id: string; number: string; productId: string | null; quantity: number }> = []
     for (const item of items) {
-      const number = await numberingService.getNextNumber('op')
-      const bomRevisionId = item.productId ? await this.findActiveBomRevisionId(item.productId) : null
-      const order = (await productionOrderRepository.create({
+      const number = await numberingService.getNextNumber('op', client)
+      const bomRevisionId = item.productId ? await this.findActiveBomRevisionId(item.productId, client) : null
+      const order = (await productionOrderRepository.createWithTx(client, {
         number,
         status: 'planned',
         date: formatDate(new Date()),
@@ -347,7 +437,25 @@ class ProductionOrderService {
         bomRevisionId,
       })) as { id: string; number: string; productId: string | null; quantity: number }
       created.push(order)
+    }
 
+    // Efeitos secundários (evento sem consumidor + reserva de material, Fase 5/ADR-006) leem a OP
+    // recém-criada por fora — se `client` ainda for uma transação aberta, essa leitura aconteceria
+    // ANTES do commit e não a enxergaria (conexão separada). Por isso só rodam aqui quando
+    // `client === db` (fluxo síncrono de sempre); quando `client` é um `tx`, quem abriu a
+    // transação chama `runPostApprovalSideEffects()` explicitamente depois do commit.
+    if (client === db) await this.runPostApprovalSideEffects(created, userId)
+
+    return created
+  }
+
+  /** Ver comentário de `createFromApprovedQuote` — extraído pra poder rodar depois do commit de
+   *  uma transação externa, sem duplicar a lógica entre os dois chamadores. */
+  async runPostApprovalSideEffects(
+    orders: Array<{ id: string; number: string; productId: string | null; quantity: number }>,
+    userId: string
+  ) {
+    for (const order of orders) {
       // Emitido sem consumidor nesta fase (ADR-003) — preparação para MRP/notificação futuros.
       await domainEvents.publish<OrdemProducaoCriadaPayload, void>(DOMAIN_EVENTS.ORDEM_PRODUCAO_CRIADA, {
         productionOrderId: order.id,
@@ -360,7 +468,6 @@ class ProductionOrderService {
       // Reserva de material (Fase 5, ADR-006) — mesma regra do create() manual.
       await materialReservationService.reserveForProductionOrder(order.id, userId)
     }
-    return created
   }
 }
 

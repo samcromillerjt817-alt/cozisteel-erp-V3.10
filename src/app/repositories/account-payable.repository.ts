@@ -27,8 +27,14 @@ class AccountPayableRepository extends BaseRepository<typeof db.accountPayable> 
     return this.delegate.findUnique({ where: { purchaseOrderId } })
   }
 
-  createFromPurchaseOrder(data: { number: string; purchaseOrderId: string; amount: number; dueDate: Date; userId: string }) {
+  createFromPurchaseOrder(data: { number: string; purchaseOrderId: string; amount: number; dueDate: Date; competenceDate: Date; userId: string }) {
     return this.delegate.create({ data: { ...data, status: 'open' }, include: DETAIL_INCLUDE })
+  }
+
+  /** ADR-023 (item 6, Decisão #5) — alteração manual de competência, sempre com motivo (validado no
+   * Service). Nunca chamado sem passar por `periodClosingService` primeiro. */
+  updateCompetenceDate(id: string, competenceDate: Date) {
+    return this.delegate.update({ where: { id }, data: { competenceDate }, include: DETAIL_INCLUDE })
   }
 
   /** Recalcula `amount` do zero (Σ dos itens recebidos até agora) e reavalia `status` contra

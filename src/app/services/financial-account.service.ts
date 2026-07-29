@@ -3,6 +3,7 @@ import { accountReceivableRepository } from '@/app/repositories/account-receivab
 import { purchaseOrderRepository } from '@/app/repositories/purchase-order.repository'
 import { numberingService } from '@/app/services/numbering.service'
 import { auditService } from '@/app/services/audit.service'
+import { periodClosingService } from '@/app/services/period-closing.service'
 import { resolveDueDate } from '@/lib/payment-terms'
 import { NotFoundException, BadRequestException } from '@/app/exceptions'
 
@@ -11,6 +12,7 @@ interface PayableRecord {
   number: string
   amount: number
   status: string
+  competenceDate: Date
   payments: Array<{ amount: number }>
 }
 
@@ -19,6 +21,7 @@ interface ReceivableRecord {
   number: string
   amount: number
   status: string
+  competenceDate: Date
   receipts: Array<{ amount: number }>
 }
 
@@ -78,6 +81,10 @@ class FinancialAccountService {
 
     if (!existing) {
       const number = await numberingService.getNextNumber('titulo_pagar')
+      // ADR-023 (item 6, Decisão #5) — competência = data do recebimento (este método É o gatilho do
+      // recebimento físico), nunca confundida com o vencimento abaixo.
+      const competenceDate = new Date()
+      await periodClosingService.assertPeriodOpen(competenceDate, 'gerar este título a pagar')
       // Vencimento lido da própria condição de pagamento do pedido (`PAYMENT_TERMS_OPTIONS`, mesmo
       // vocabulário do Comercial/Compras) — não um prazo fixo inventado pelo Financeiro.
       const created = (await accountPayableRepository.createFromPurchaseOrder({
@@ -85,6 +92,7 @@ class FinancialAccountService {
         purchaseOrderId,
         amount,
         dueDate: resolveDueDate(purchaseOrder.paymentTerms),
+        competenceDate,
         userId,
       })) as { id: string; number: string }
 
@@ -99,6 +107,7 @@ class FinancialAccountService {
       return created
     }
 
+    await periodClosingService.assertPeriodOpen(existing.competenceDate, 'atualizar este título a pagar')
     const updated = await accountPayableRepository.updateAmountFromPurchaseOrder(existing.id, amount)
 
     await auditService.log({
@@ -121,6 +130,7 @@ class FinancialAccountService {
       throw new BadRequestException(`Não é possível registrar pagamento num título "${account.status}"`)
     }
     if (amount <= 0) throw new BadRequestException('Valor do pagamento deve ser maior que zero')
+    await periodClosingService.assertPeriodOpen(account.competenceDate, 'registrar este pagamento')
 
     const totalPaid = account.payments.reduce((sum, p) => sum + p.amount, 0)
     const outstanding = account.amount - totalPaid
@@ -142,11 +152,12 @@ class FinancialAccountService {
   }
 
   async cancelPayable(id: string, userId: string) {
-    const account = (await accountPayableRepository.findById(id)) as { id: string; number: string; status: string } | null
+    const account = (await accountPayableRepository.findById(id)) as { id: string; number: string; status: string; competenceDate: Date } | null
     if (!account) throw new NotFoundException('Título a pagar não encontrado')
     if (account.status !== 'open') {
       throw new BadRequestException('Só é possível cancelar um título a pagar que ainda não teve nenhum pagamento registrado')
     }
+    await periodClosingService.assertPeriodOpen(account.competenceDate, 'cancelar este título')
 
     const updated = await accountPayableRepository.updateStatus(id, 'cancelled')
 
@@ -189,12 +200,18 @@ class FinancialAccountService {
     const existing = await accountReceivableRepository.findByInvoiceId(invoiceId)
     if (existing) return existing
 
+    // ADR-023 (item 6, Decisão #5) — competência = data da fatura (este método é chamado no momento
+    // da emissão), nunca confundida com o vencimento acima.
+    const competenceDate = new Date()
+    await periodClosingService.assertPeriodOpen(competenceDate, 'gerar este título a receber')
+
     const number = await numberingService.getNextNumber('titulo_receber')
     const created = (await accountReceivableRepository.createDetailed({
       number,
       invoiceId,
       amount,
       dueDate,
+      competenceDate,
       userId,
     })) as { id: string; number: string }
 
@@ -216,6 +233,7 @@ class FinancialAccountService {
       throw new BadRequestException(`Não é possível registrar recebimento num título "${account.status}"`)
     }
     if (amount <= 0) throw new BadRequestException('Valor do recebimento deve ser maior que zero')
+    await periodClosingService.assertPeriodOpen(account.competenceDate, 'registrar este recebimento')
 
     const totalPaid = account.receipts.reduce((sum, r) => sum + r.amount, 0)
     const outstanding = account.amount - totalPaid
@@ -237,11 +255,12 @@ class FinancialAccountService {
   }
 
   async cancelReceivable(id: string, userId: string) {
-    const account = (await accountReceivableRepository.findById(id)) as { id: string; number: string; status: string } | null
+    const account = (await accountReceivableRepository.findById(id)) as { id: string; number: string; status: string; competenceDate: Date } | null
     if (!account) throw new NotFoundException('Título a receber não encontrado')
     if (account.status !== 'open') {
       throw new BadRequestException('Só é possível cancelar um título a receber que ainda não teve nenhum recebimento registrado')
     }
+    await periodClosingService.assertPeriodOpen(account.competenceDate, 'cancelar este título')
 
     const updated = await accountReceivableRepository.updateStatus(id, 'cancelled')
 
@@ -254,6 +273,39 @@ class FinancialAccountService {
       details: `Título a receber ${account.number} cancelado`,
       beforeValue: { status: account.status },
       afterValue: { status: 'cancelled' },
+    })
+    return updated
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // COMPETÊNCIA (ADR-023, item 6, Decisão #5) — alteração manual, sempre com motivo
+  // ══════════════════════════════════════════════════════════════
+
+  /**
+   * "Alteração manual só com permissão especial e justificativa obrigatória" — gate de permissão
+   * (`financeiro:manage`) fica na rota, motivo obrigatório é validado no DTO. Bloqueia tanto se o
+   * período ATUAL do título estiver fechado (não pode tirar algo de um período já fechado) quanto se
+   * o período NOVO estiver fechado (não pode empurrar algo para dentro de um período já fechado).
+   */
+  async updateCompetenceDate(entityType: 'payable' | 'receivable', id: string, newCompetenceDate: Date, reason: string, userId: string) {
+    const repository = entityType === 'payable' ? accountPayableRepository : accountReceivableRepository
+    const account = (await repository.findById(id)) as { id: string; number: string; competenceDate: Date } | null
+    if (!account) throw new NotFoundException(entityType === 'payable' ? 'Título a pagar não encontrado' : 'Título a receber não encontrado')
+
+    await periodClosingService.assertPeriodOpen(account.competenceDate, 'alterar a competência deste título')
+    await periodClosingService.assertPeriodOpen(newCompetenceDate, 'mover este título para a nova competência')
+
+    const updated = await repository.updateCompetenceDate(id, newCompetenceDate)
+
+    await auditService.log({
+      userId,
+      action: 'PATCH',
+      module: 'financeiro',
+      entityId: id,
+      entityName: account.number,
+      details: `Competência do título ${account.number} alterada manualmente — motivo: ${reason}`,
+      beforeValue: { competenceDate: account.competenceDate },
+      afterValue: { competenceDate: newCompetenceDate },
     })
     return updated
   }

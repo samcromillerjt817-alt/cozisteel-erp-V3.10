@@ -19,8 +19,11 @@ import { ConfiguracoesPage, type ConfigSubModule } from '@/components/modules/co
 import { PedidosPage } from '@/components/modules/pedidos/pedidos-page'
 import { EstoquePage } from '@/components/modules/estoque/estoque-page'
 import { OrcamentosPage } from '@/components/modules/orcamentos/orcamentos-page'
+import { CatalogoRequestsPage } from '@/components/modules/catalogo/catalogo-requests-page'
 import { FinanceiroPage } from '@/components/modules/financeiro/financeiro-page'
 import { NotificationCenter } from '@/components/layout/notification-center'
+import { CommandPalette, type CommandPaletteGroup } from '@/components/platform/command-palette'
+import type { GlobalSearchResult } from '@/app/api/search/route'
 import { ROLE_LABELS as roleLabels } from '@/lib/role-labels'
 import { SearchInput } from '@/components/domain/search-input'
 import {
@@ -28,7 +31,7 @@ import {
   Edit, Copy, Trash2, X, Save, ChevronDown, ChevronRight, Menu,
   UserCog, Building2, Hash, FileOutput, ShieldCheck, Eye, Layers, ShoppingCart,
   SlidersHorizontal, Ban, RefreshCw, Warehouse, ClipboardList, ShoppingBag, Factory,
-  PanelLeftClose, PanelLeftOpen, Wallet, Calculator, Activity, Terminal, Wrench
+  PanelLeftClose, PanelLeftOpen, Wallet, Calculator, Activity, Terminal, Wrench, Globe
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -68,7 +71,7 @@ interface SessionUser { id: string; name: string; role: string; email?: string }
 interface Quote { id: string; number: string; status: string; date: string; clientName: string; total: number; clientId: string; version: number; createdAt: string; items?: QuoteItem[]; salesOrder?: { id: string; number: string } | null }
 interface QuoteItem { id?: string; productId?: string; code: string; description: string; quantity: number; unit: string; unitPrice: number; total: number; weight: number; width: number; height: number; length: number; order: number }
 interface Product { id: string; internalCode: string; name: string; description: string; categoryName: string; materialName: string; costPrice: number; salePrice: number; weight: number; unit?: string; active: boolean; createdAt: string; images?: { id: string; url: string; isPrimary: boolean }[] }
-type ModuleKey = 'dashboard' | 'orcamentos' | 'pedidos' | 'clientes' | 'produtos' | 'materiais' | 'producao' | 'fornecedores' | 'requisicoes' | 'compras' | 'estoque' | 'relatorios' | 'financeiro' | 'usuarios' | 'configuracoes'
+type ModuleKey = 'dashboard' | 'orcamentos' | 'pedidos' | 'clientes' | 'produtos' | 'materiais' | 'producao' | 'fornecedores' | 'requisicoes' | 'compras' | 'estoque' | 'relatorios' | 'financeiro' | 'usuarios' | 'configuracoes' | 'catalogo'
 
 
 /* ══════════════════════════════════════════════════════════════
@@ -104,6 +107,37 @@ export default function ERPPage() {
   useEffect(() => {
     setVisitedModules((prev) => (prev.has(activeModule) ? prev : new Set(prev).add(activeModule)))
   }, [activeModule])
+
+  // ADR-022 (Fase UX-6) — achado novo desta rodada: `CommandPalette` (Ctrl/Cmd+K) e a busca global
+  // (`/api/search`, 7 entidades, RBAC no backend) já existiam prontos desde a Fase 11.5 (Subetapas
+  // 11.5.4/11.5.5), validados só numa página `/dev` isolada — a integração real com o app-shell
+  // (Subetapa 11.5.10, registrada como concluída) nunca chegou a existir neste arquivo. O campo de
+  // busca do header também era só decorativo (`&lt;Input placeholder="Buscar..." /&gt;` sem `value`/
+  // `onChange`, não fazia nada). Ambos corrigidos juntos aqui.
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [paletteQuery, setPaletteQuery] = useState('')
+  const debouncedPaletteQuery = useDebouncedValue(paletteQuery, 300)
+  const [paletteResults, setPaletteResults] = useState<GlobalSearchResult[]>([])
+
+  useEffect(() => {
+    if (debouncedPaletteQuery.trim().length < 2) { setPaletteResults([]); return }
+    let cancelled = false
+    fetch(`/api/search?q=${encodeURIComponent(debouncedPaletteQuery)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: GlobalSearchResult[]) => { if (!cancelled) setPaletteResults(data) })
+      .catch(() => { if (!cancelled) setPaletteResults([]) })
+    return () => { cancelled = true }
+  }, [debouncedPaletteQuery])
+
+  // Sem isso, fechar a paleta com resultado na tela e reabrir mostrava o grupo "Resultados da busca"
+  // antigo até o novo debounce assentar (achado do /codex review antes do fechamento).
+  function handlePaletteOpenChange(open: boolean) {
+    setPaletteOpen(open)
+    if (!open) {
+      setPaletteQuery('')
+      setPaletteResults([])
+    }
+  }
   function keepAliveVisible(key: ModuleKey): boolean {
     return visitedModules.has(key)
   }
@@ -342,6 +376,7 @@ export default function ERPPage() {
     dashboard: 'Dashboard', orcamentos: 'Orcamentos', pedidos: 'Pedidos de Venda', clientes: 'Clientes',
     produtos: 'Produtos', materiais: 'Materias-Primas', producao: 'Producao', usuarios: 'Usuarios', configuracoes: 'Configuracoes',
     fornecedores: 'Fornecedores', requisicoes: 'Requisicoes', compras: 'Compras', estoque: 'Estoque', relatorios: 'Relatorios', financeiro: 'Financeiro',
+    catalogo: 'Catalogo Digital',
     empresa: 'Empresa', numeracao: 'Numeracao', pdf: 'PDF', custeio: 'Custeio', sistema: 'Sistema', atualizacoes: 'Atualizacoes',
     diagnostico: 'Diagnostico', console: 'Console SQL', correcoes: 'Correcoes',
   }
@@ -359,6 +394,7 @@ export default function ERPPage() {
         { key: 'orcamentos', icon: <FileText className="w-5 h-5" />, label: 'Orcamentos' },
         { key: 'pedidos', icon: <ShoppingBag className="w-5 h-5" />, label: 'Pedidos de Venda' },
         { key: 'clientes', icon: <Users className="w-5 h-5" />, label: 'Clientes' },
+        { key: 'catalogo', icon: <Globe className="w-5 h-5" />, label: 'Catalogo Digital' },
       ],
     },
     {
@@ -394,6 +430,9 @@ export default function ERPPage() {
     },
   ]
 
+  // ADR-022 (Fase UX-7, achado #16) — Central de Administração (ADR-021: Diagnóstico/Console SQL/
+  // Correções) ganha hierarquia visual própria dentro de Configurações, separada das abas de negócio,
+  // em vez de aparecer misturada na mesma lista plana.
   const configSubItems: { key: ConfigSubModule; icon: React.ReactNode; label: string }[] = [
     { key: 'empresa', icon: <Building2 className="w-4 h-4" />, label: 'Empresa' },
     { key: 'numeracao', icon: <Hash className="w-4 h-4" />, label: 'Numeracao' },
@@ -401,9 +440,19 @@ export default function ERPPage() {
     { key: 'custeio', icon: <Calculator className="w-4 h-4" />, label: 'Custeio' },
     { key: 'sistema', icon: <ShieldCheck className="w-4 h-4" />, label: 'Sistema' },
     { key: 'atualizacoes', icon: <RefreshCw className="w-4 h-4" />, label: 'Atualizações' },
+  ]
+
+  // Achado #17 — o menu não filtrava por RBAC antes de navegar: Console SQL/Correções apareciam pra
+  // qualquer perfil, só bloqueando o CONTEÚDO depois de clicar (`ConfiguracoesPage` já restringia via
+  // `isAdmin`). Diagnóstico fica de fora do filtro de propósito — a rota só exige permissão de leitura
+  // de `sistema` (`requireModulePermission('sistema', 'read')`), nunca foi admin-only.
+  const adminCenterItems: { key: ConfigSubModule; icon: React.ReactNode; label: string }[] = [
     { key: 'diagnostico', icon: <Activity className="w-4 h-4" />, label: 'Diagnóstico' },
-    { key: 'console', icon: <Terminal className="w-4 h-4" />, label: 'Console SQL' },
-    { key: 'correcoes', icon: <Wrench className="w-4 h-4" />, label: 'Correções' },
+    ...(userRole === 'admin' ? [
+      { key: 'console' as ConfigSubModule, icon: <Terminal className="w-4 h-4" />, label: 'Console SQL' },
+      { key: 'correcoes' as ConfigSubModule, icon: <Wrench className="w-4 h-4" />, label: 'Correções' },
+      { key: 'alcadas' as ConfigSubModule, icon: <ShieldCheck className="w-4 h-4" />, label: 'Alçadas' },
+    ] : []),
   ]
 
   const handleNavClick = (key: ModuleKey) => {
@@ -411,6 +460,40 @@ export default function ERPPage() {
     setMobileMenuOpen(false)
     if (key === 'configuracoes') setConfigSub('empresa')
   }
+
+  // ADR-022 (Fase UX-6) — grupos do CommandPalette: "Navegação" reaproveita o mesmo `navGroups` do
+  // menu lateral (nunca duplica a lista de módulos), filtrado pela mesma `canAccess()` já usada pra
+  // decidir o que aparece no menu. "Resultados da busca" só aparece quando a busca em `/api/search`
+  // devolve algo — `moduleKey` já vem resolvido do backend, então navegar é só `handleNavClick`.
+  const SEARCH_TYPE_LABELS: Record<GlobalSearchResult['type'], string> = {
+    client: 'Cliente', product: 'Produto', material: 'Material', supplier: 'Fornecedor',
+    quote: 'Orçamento', salesOrder: 'Pedido de Venda', productionOrder: 'Ordem de Produção',
+  }
+  const paletteGroups: CommandPaletteGroup[] = [
+    {
+      heading: 'Navegação',
+      items: navGroups
+        .flatMap((g) => g.items)
+        .filter((item) => canAccess(item.key))
+        .map((item) => ({ id: item.key, label: item.label, icon: item.icon, onSelect: () => handleNavClick(item.key) })),
+    },
+    ...(paletteResults.length > 0
+      ? [{
+          heading: 'Resultados da busca',
+          items: paletteResults.map((r) => ({
+            id: `${r.type}-${r.id}`,
+            label: `${r.label}${r.sublabel ? ` — ${r.sublabel}` : ''} (${SEARCH_TYPE_LABELS[r.type]})`,
+            // Sem isso, o cmdk reaplica seu próprio filtro fuzzy client-side sobre `label` — um
+            // resultado que o `/api/search` achou por um campo ausente do label (CNPJ, código interno,
+            // descrição) some da lista mesmo tendo vindo certo do servidor. Incluir a query já digitada
+            // como keyword garante que todo resultado que o servidor devolveu sempre bate no filtro do
+            // cmdk (achado do /codex review antes do fechamento).
+            keywords: [debouncedPaletteQuery],
+            onSelect: () => handleNavClick(r.moduleKey as ModuleKey),
+          })),
+        }]
+      : []),
+  ]
 
   /* ══════════════════════════════════════════════════════════════
      RENDER: LOGIN
@@ -470,13 +553,17 @@ export default function ERPPage() {
   // com `title` nativo como tooltip; sub-menu de Configurações e rodapé de usuário viram compactos.
   const renderNav = (collapsed = false) => (
     <nav className="flex flex-col h-full">
-      <div className={`p-4 border-b flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
-        {!collapsed && (
-          <div>
-            <h2 className="font-bold text-lg text-primary">COZISTEEL</h2>
-            <p className="text-xs text-muted-foreground">ERP v4.0</p>
-          </div>
-        )}
+      <div className={`p-4 border-b flex ${collapsed ? 'flex-col items-center gap-2' : 'items-center justify-between'}`}>
+        <div className={`flex items-center gap-2.5 min-w-0 ${collapsed ? 'flex-col gap-1' : ''}`}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- ativo local estático, sem necessidade do otimizador do next/image aqui */}
+          <img src="/logo-icon.png" alt="Cozisteel" className="w-9 h-9 object-contain shrink-0" />
+          {!collapsed && (
+            <div className="min-w-0">
+              <h2 className="font-bold text-lg text-primary leading-tight">COZISTEEL</h2>
+              <p className="text-xs text-muted-foreground">ERP v4.0</p>
+            </div>
+          )}
+        </div>
         <Button
           variant="ghost" size="icon" className="hidden md:inline-flex shrink-0"
           onClick={() => setSidebarCollapsed((v) => !v)}
@@ -514,6 +601,20 @@ export default function ERPPage() {
           {!collapsed && activeModule === 'configuracoes' && (
             <div className="ml-7 mt-1 space-y-1 border-l-2 border-primary/20 pl-3">
               {configSubItems.map(sub => (
+                <button
+                  key={sub.key}
+                  onClick={() => setConfigSub(sub.key)}
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors text-left ${
+                    configSub === sub.key ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  {sub.icon} {sub.label}
+                </button>
+              ))}
+              <p className="px-3 pt-2 text-[10px] font-semibold tracking-wider text-muted-foreground/70">
+                CENTRAL DE ADMINISTRAÇÃO
+              </p>
+              {adminCenterItems.map(sub => (
                 <button
                   key={sub.key}
                   onClick={() => setConfigSub(sub.key)}
@@ -567,10 +668,15 @@ export default function ERPPage() {
         </Sheet>
         <span className="font-bold text-lg text-primary">COZISTEEL</span>
         <div className="hidden md:flex flex-1 max-w-md mx-auto">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Buscar..." className="pl-9" />
-          </div>
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="relative w-full flex items-center h-9 rounded-md border border-input bg-transparent px-3 text-sm text-muted-foreground hover:bg-accent transition-colors"
+          >
+            <Search className="w-4 h-4 mr-2 shrink-0" />
+            <span className="flex-1 text-left">Buscar...</span>
+            <kbd className="pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">Ctrl+K</kbd>
+          </button>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <NotificationCenter onNavigate={(m) => setActiveModule(m as ModuleKey)} />
@@ -640,6 +746,15 @@ export default function ERPPage() {
                 onConsumeInitialDetail={() => { setPendingOrcamentoDetailId(undefined); setPendingOrcamentoSalesOrder(undefined) }}
               />
             </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════
+              CATÁLOGO DIGITAL MODULE (ADR-026, Fase 4)
+              ═══════════════════════════════════════════════════════ */}
+          {activeModule === 'catalogo' && canAccess('catalogo') && (
+            <CatalogoRequestsPage
+              onNavigateToOrcamento={(quoteId) => { setActiveModule('orcamentos'); setPendingOrcamentoDetailId(quoteId) }}
+            />
           )}
 
           {/* ═══════════════════════════════════════════════════════
@@ -782,6 +897,13 @@ export default function ERPPage() {
           )}
         </main>
       </div>
+
+      <CommandPalette
+        groups={paletteGroups}
+        open={paletteOpen}
+        onOpenChange={handlePaletteOpenChange}
+        onQueryChange={setPaletteQuery}
+      />
     </div>
   )
 }

@@ -1,3 +1,5 @@
+import type { Prisma } from '@prisma/client'
+
 /**
  * Barramento de Eventos de Domínio (Fase 3, ADR-003) — em processo, síncrono, sem fila externa.
  * `publish()` aguarda cada handler em sequência: mesma semântica de erro e ordem que uma chamada
@@ -5,7 +7,7 @@
  * publicador exatamente como propagaria de uma chamada direta).
  */
 
- 
+
 type EventHandler<T = any, R = any> = (payload: T) => Promise<R> | R
 
 class DomainEventBus {
@@ -55,6 +57,13 @@ export const DOMAIN_EVENTS = {
   REQUISICAO_CRIADA: 'requisicao.criada',
   PEDIDO_COMPRA_RECEBIDO: 'pedido_compra.recebido',
   FATURA_EMITIDA: 'fatura.emitida',
+  // Auditoria de segurança (2ª rodada) — a confirmação de orçamento por link público
+  // (`QuoteService.confirmByClient`) precisou virar atômica (transação real), e os efeitos
+  // "secundários" da criação de OP (evento sem consumidor + reserva de material) só podem rodar
+  // DEPOIS que essa transação commitar (leem a OP recém-criada por uma conexão separada). Este
+  // evento é publicado só depois do commit, com as OPs já criadas — sem acoplar QuoteService
+  // diretamente ao ProductionOrderService (mesmo princípio do ADR-003).
+  ORCAMENTO_APROVADO_EFEITOS_POS_COMMIT: 'orcamento.aprovado_efeitos_pos_commit',
 } as const
 
 // ── Contratos de payload — um por evento, contrato compartilhado entre produtor e consumidor ──
@@ -64,6 +73,15 @@ export interface OrcamentoAprovadoPayload {
   quoteNumber: string
   userId: string
   items: Array<{ productId: string | null; description: string; quantity: number; unit: string; notes: string }>
+  // Opcional (auditoria de segurança, 2ª rodada) — presente só quando publicado de dentro de uma
+  // `db.$transaction` (confirmação atômica via link público). Ausente no fluxo síncrono de sempre
+  // (aprovação interna via `changeStatus`), que continua sem transação nenhuma.
+  tx?: Prisma.TransactionClient
+}
+
+export interface OrcamentoAprovadoEfeitosPosCommitPayload {
+  orders: Array<{ id: string; number: string; productId: string | null; quantity: number }>
+  userId: string
 }
 
 export interface OrcamentoConvertidoEmPedidoVendaPayload {

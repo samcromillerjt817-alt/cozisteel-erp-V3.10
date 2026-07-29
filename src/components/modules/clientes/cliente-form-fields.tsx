@@ -1,5 +1,6 @@
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { CnpjInput } from '@/components/form/cnpj-input'
 import { CepInput } from '@/components/form/cep-input'
 import { EmailInput } from '@/components/form/email-input'
@@ -54,6 +55,10 @@ export function ClienteFormFields({ form, onChange }: ClienteFormFieldsProps) {
       <div className="space-y-1.5"><Label>Estado</Label><Input value={form.state} onChange={(e) => set('state', e.target.value)} /></div>
       <div className="space-y-1.5"><Label>Situação Cadastral</Label><Input value={form.situacaoCadastral} onChange={(e) => set('situacaoCadastral', e.target.value)} /></div>
       <div className="space-y-1.5"><Label>CNAE</Label><Input value={form.cnaeDescription} onChange={(e) => set('cnaeDescription', e.target.value)} /></div>
+      <div className="flex items-center gap-3 sm:col-span-2">
+        <Switch checked={form.active} onCheckedChange={(v) => set('active', v)} />
+        <Label>Cliente ativo</Label>
+      </div>
     </div>
   )
 }

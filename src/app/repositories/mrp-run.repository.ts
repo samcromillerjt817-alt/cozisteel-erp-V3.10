@@ -6,6 +6,15 @@ const DETAIL_INCLUDE = {
   suggestions: { include: { sources: true } },
 }
 
+/** dd/mm/aaaa → Date — mesmo padrão duplicado em `mrp-calculation.service.ts` (nenhum utilitário
+ * compartilhado existe hoje pra isso; ver o comentário lá pra justificativa). */
+function parseBrDate(d: string | null): Date | null {
+  if (!d) return null
+  const m = d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (!m) return null
+  return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]))
+}
+
 class MrpRunRepository extends BaseRepository<typeof db.mrpRun> {
   constructor() {
     super(db.mrpRun)
@@ -52,6 +61,11 @@ class MrpRunRepository extends BaseRepository<typeof db.mrpRun> {
             productTypeSnapshot: suggestion.productTypeSnapshot,
             supplierId: suggestion.supplierId,
             supplierNameSnapshot: suggestion.supplierNameSnapshot,
+            minStockQty: suggestion.minStockQty,
+            leadTimeDays: suggestion.leadTimeDays,
+            neededByDate: parseBrDate(suggestion.neededByDate),
+            suggestedOrderByDate: parseBrDate(suggestion.suggestedOrderByDate),
+            isLate: suggestion.isLate,
           },
         })
 

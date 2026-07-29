@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { BaseRepository } from './base.repository'
+import type { Prisma } from '@prisma/client'
 
 const LIST_INCLUDE = {
   createdBy: { select: { id: true, name: true } },
@@ -14,7 +15,12 @@ const DETAIL_INCLUDE = {
     include: {
       material: { select: { id: true, name: true, unit: true } },
       componentProduct: { select: { id: true, name: true, internalCode: true, unit: true } },
+      substitutes: { include: { material: { select: { id: true, name: true, unit: true } } } },
     },
+  },
+  operations: {
+    orderBy: { sequenceOrder: 'asc' as const },
+    include: { operationType: { select: { id: true, name: true } } },
   },
 }
 
@@ -35,8 +41,12 @@ class BomRevisionRepository extends BaseRepository<typeof db.bomRevision> {
     return this.delegate.findUnique({ where: { productId_revisionCode: { productId, revisionCode } } })
   }
 
-  findActiveByProduct(productId: string) {
-    return this.delegate.findFirst({ where: { productId, status: 'released' } })
+  /** `client` opcional (auditoria de segurança, 2ª rodada) — passar o `tx` de uma transação
+   *  interativa aberta (ex.: confirmação atômica de orçamento) evita que esta leitura dispute uma
+   *  conexão separada com a própria transação em aberto, o que travava (deadlock) sob o modelo de
+   *  conexão do SQLite/Prisma. Default `db` preserva todo chamador existente sem transação. */
+  findActiveByProduct(productId: string, client: typeof db | Prisma.TransactionClient = db) {
+    return client.bomRevision.findFirst({ where: { productId, status: 'released' } })
   }
 
   createDraft(data: Record<string, unknown>) {

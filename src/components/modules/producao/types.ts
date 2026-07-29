@@ -81,3 +81,28 @@ export function productionOrderToFormData(order: ProductionOrderListRow): Produc
     salesOrderId: order.salesOrderId || '',
   }
 }
+
+// ADR-023 (item 3, "completar a exposição do MRP") — primeira UI do motor de MRP (Fase 6, ADR-007).
+export const MRP_SUGGESTION_TYPE_LABELS: Record<string, string> = {
+  purchase: 'Comprar', production: 'Produzir',
+}
+
+export interface MrpSuggestionRow {
+  id: string
+  suggestionType: string
+  itemType: string
+  materialId: string | null
+  productId: string | null
+  quantityNeeded: number
+  quantityAvailable: number
+  quantityShortfall: number
+  minStockQty: number
+  leadTimeDays: number | null
+  supplierNameSnapshot: string | null
+  neededByDate: string | null
+  suggestedOrderByDate: string | null
+  isLate: boolean
+  status: string
+  material: { name: string; unit: string } | null
+  product: { name: string; unit: string } | null
+}

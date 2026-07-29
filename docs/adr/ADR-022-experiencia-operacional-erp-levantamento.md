@@ -340,21 +340,46 @@ Nenhuma fase começa sem aprovação explícita da anterior.
 
 ## PARTE 5 — Decisões pendentes (precisam da sua resposta antes de qualquer implementação)
 
-1. **Select inline de status na tabela** (Orçamentos) vs. `DetailDrawer` (padrão declarado permanente
-   no ADR-018): manter a exceção, migrar para o padrão, ou era uma decisão consciente que eu não
-   encontrei registrada?
-2. **Roadmap de status de Produção** ("Planejada→Liberada→...→Encerrada") citado no plano original do
-   projeto nunca foi implementado — os 5 estados reais (`planned/in_progress/paused/completed/
-   cancelled`) ficam como estão, ou o roadmap de 6+ estados deve ser implementado agora?
-3. **Módulo de Qualidade**: não existe hoje, nem parcialmente. O pedido original assumia que existia.
-   Criar do zero é um escopo novo (não uma "revisão") — quer que eu inclua isso no roadmap como uma fase
-   própria, ou fica fora deste levantamento?
-4. **Alçada de aprovação** (Requisições, Compras): quer segunda pessoa obrigatória, limite de valor, ou
-   só reforçar a confirmação visual sem mudar a regra de quem pode aprovar?
+1. ~~**Select inline de status na tabela** (Orçamentos) vs. `DetailDrawer`~~ — **Respondida em
+   2026-07-27**: manter a exceção, documentada conscientemente. Investigação confirmou que dos 5
+   módulos com máquina de estado (Orçamentos/Pedidos/Compras/Requisições/Produção), só Orçamentos muda
+   status inline na linha da `DataTable` (`orcamentos-page.tsx`) em vez de dentro de um `DetailDrawer`
+   (os outros 4 usam `detail.status` dentro do drawer); Orçamentos nem tem `DetailDrawer` — o
+   `FormDialog` de edição cumpre esse papel (inclusive hospedando o `StatusTimeline` desde a Fase UX-2).
+   O risco funcional que normalmente justificaria migrar (aprovar/cancelar sem ver o documento
+   completo) já foi coberto pela Fase UX-1 (`useConfirm()` antes da transição pra `approved`) —
+   migrar para `DetailDrawer` hoje seria consistência arquitetural pura, sem nenhum ganho operacional
+   comprovado. Decisão: **não migrar**.
+2. ~~**Roadmap de status de Produção**~~ — **Não era, de fato, uma decisão pendente**: já estava
+   oficialmente resolvida em `ADR-001-principios-arquiteturais.md`, seção "Separação Comercial/
+   Industrial da Fase 4 original", item "Ciclo de vida da OP em 6 estados" (2026-07-09, **antes** deste
+   levantamento): *"Decisão oficial: a proposta de 6 estados está superada pela modelagem real da Fase
+   2 — encerrada, não será revisitada."* O levantamento original do ADR-022 redescobriu o mesmo gap de
+   forma independente (2.2, achado de Produção) sem cruzar com essa decisão já permanente — corrigido
+   aqui. Os 5 estados reais (`planned/in_progress/paused/completed/cancelled`) permanecem definitivos.
+3. ~~**Módulo de Qualidade**~~ — **Respondida em 2026-07-27**: fica fora de escopo por enquanto.
+   Confirmado que Qualidade nunca fez parte do roadmap oficial de 12 fases e foi explicitamente
+   removida até de uma proposta mais antiga (`ADR-009`, Fase 7, 2026-07-09 — lista de tipos de
+   Requisição revisada de 9 para 6 valores, removendo `TI`/`RH`/`QUALIDADE`); zero traço no código hoje
+   (nenhuma chave de módulo no RBAC, nenhuma tabela, nenhuma rota). `ADR-013` (Fase 10) registrou que o
+   schema de lote foi desenhado com uma futura entidade de inspeção em mente, mas o formato real
+   (inspeção de recebimento? não-conformidade vinculada a lote? certificado de análise? quarentena?)
+   nunca foi definido — não há pedido operacional concreto hoje que justifique escolher entre eles
+   especulativamente. Se surgir uma necessidade real, vira uma fase nova com levantamento próprio, não
+   uma extensão apressada deste ADR.
+4. ~~**Alçada de aprovação** (Requisições, Compras)~~ — **Respondida em 2026-07-27**: manter como está.
+   Só a confirmação visual reforçada, já implementada na Fase UX-1 (ver Parte 6, item 6) — nenhuma nova
+   regra de RBAC (segundo aprovador obrigatório ou alçada por valor). Decisão consciente, não uma
+   omissão: qualquer usuário com permissão de aprovar continua podendo aprovar sozinho, agora sempre
+   com confirmação explícita citando o efeito da transição.
 5. ~~**Escopo inicial de MRP/Reserva/Lote (Fase UX-3)**~~ — **Respondida em 2026-07-26**: começar só
    com telas de consulta (menor risco), nenhuma ação nova (aprovar sugestão, disparar cálculo de MRP).
    Implementado para Reserva de Material e Rastreabilidade por Lote — ver Parte 8. Exposição de MRP
    em si (sugestões + gatilho de execução) fica para uma fase futura, fora do escopo desta rodada.
+
+**Status final (2026-07-27): as 5 decisões originais estão todas resolvidas. Roadmap ADR-022 (Fases
+UX-1 a UX-7) formalmente encerrado — nenhuma decisão pendente bloqueando qualquer parte do que foi
+implementado.**
 
 ---
 
@@ -544,6 +569,149 @@ com o build novo.
 
 **Verificação**: tsc limpo, lint 45 (net zero — mudança é só de texto de string e remoção de arquivo
 morto, nenhum hook novo), 345/345 testes, build limpo.
+
+## PARTE 11 — Fase UX-6 implementada (2026-07-27)
+
+1. **Tooltip em ícone ambíguo + CommandPalette integrada de verdade** — o botão-de-ícone de "mais
+   ações" (kebab menu) do `DataTable` ganhou `Tooltip`+`aria-label="Ações"` (única ação icon-only sem
+   rótulo textual encontrada na auditoria). **Achado novo, mais relevante que o item original**: ao
+   mexer na busca do cabeçalho para adicionar o tooltip, foi descoberto que o `CommandPalette`
+   (Ctrl/Cmd+K) e a busca global (`/api/search`) — que o próprio ADR-018 registra como "concluídos" na
+   Subetapa 11.5.10 — nunca chegaram a ser montados em `page.tsx`: existiam prontos e funcionais desde
+   a Fase 11.5, mas só validados numa página `/dev/command-palette` isolada; o campo de busca visível no
+   cabeçalho do app real era puramente decorativo (`<Input placeholder="Buscar...">`sem `value`/
+   `onChange`). Corrigido: `page.tsx` agora importa `CommandPalette`, monta um grupo "Navegação"
+   (derivado de `navGroups`+`canAccess()`) e um grupo de resultados de busca (debounce 300ms sobre
+   `/api/search`), o botão do cabeçalho abre a paleta em vez de não fazer nada. Este é exatamente o tipo
+   de divergência entre "registrado como pronto" e "realmente ligado" que a Regra de ouro de memória
+   (verificar antes de recomendar) existe para pegar — mas aqui apareceu no código, não numa memória.
+2. **Estados vazios com CTA** — `EmptyTableRow` ganhou prop opcional `action` (renderiza um `Button`);
+   `DataTable` repassa via novo prop `emptyAction`. Aplicado a 8 módulos (Orçamentos, Produção,
+   Clientes, Produtos, Materiais, Fornecedores, Usuários, Requisições) — cada um com o próprio verbo
+   ("Cadastrar o primeiro X" / "Criar o primeiro X"), sem generalizar o texto.
+3. **Ações em lote em 1 módulo real** — `DataTable.bulkActions` existia desde o ADR-018 (Subetapa
+   11.5.2) sem nenhum consumidor real. Primeiro consumidor: Materiais, com "Excluir selecionadas"
+   (`bulkDelete`) — cada exclusão mantém sua própria guarda de negócio no backend (não exclui material
+   vinculado a produto/lote), então o resultado é reportado como parcial por natureza (`Promise.
+   allSettled` + toast "N excluídas, M não puderam"), nunca fingindo tudo-ou-nada. Escopo deliberadamente
+   limitado a 1 módulo (a faixa aprovada era "1-2") — Materiais é o caso mais claro de exclusão em massa
+   recorrente encontrado na auditoria; os demais catálogos (Clientes, Fornecedores, Produtos) não
+   mostraram o mesmo padrão de uso.
+4. **Inativação de Cliente (soft-delete) exposta na UI** — o campo `active` já existia no schema/DTO
+   desde sempre, nunca exposto no formulário nem na listagem. Adicionado: switch "Cliente ativo" no
+   formulário (default `true` para clientes novos); coluna "Status" na tabela (reusa o domínio de cor
+   `userStatus` do `status-tokens.ts` — mesmo par active/inactive → success/cancelled, sem duplicar a
+   entrada para um segundo domínio idêntico); ação rápida "Inativar"/"Reativar" na linha (`PUT` parcial
+   só com `{ active }`, sem abrir o formulário inteiro); filtro "Mostrar inativos" na `FilterBar`.
+   Mudança de contrato mínima e deliberada no backend: `client.service.ts#list` agora filtra
+   `active: true` por padrão (a lista não deve poluir o dia a dia com clientes já inativados) — só
+   inclui inativos quando o novo parâmetro `includeInactive=true` é passado; `DELETE` (exclusão real,
+   já bloqueada por orçamento vinculado) continua existindo lado a lado, sem remoção de capacidade.
+   Efeito de plataforma: `DataTableRowAction.label` passou a aceitar `string | ((row: T) => string)`
+   (mesmo padrão já usado por `disabled?: (row: T) => boolean`) — necessário porque o texto do botão
+   muda conforme o estado da própria linha; nenhum outro módulo precisou mudar.
+5. **Alerta de quitação total no pagamento/recebimento** — `RegisterMovementDialog` abre com o valor
+   pré-preenchido no saldo total (baixa integral é o caso comum), então uma baixa PARCIAL pretendida,
+   mas onde o usuário esqueceu de editar o campo, quitava o título inteiro sem nenhum aviso. Adicionado
+   banner (só aparece quando `amount > 0 && amount === outstanding`): "Este valor quita o saldo total —
+   o título será marcado como Pago. Se a intenção era uma baixa parcial, ajuste o valor acima." Não
+   bloqueia nem muda comportamento — o backend já permite baixa integral de propósito (`financial-
+   account.service.ts` já barra valores acima do saldo); só torna a consequência visível antes de
+   confirmar.
+
+**Verificação**: tsc limpo, lint 46 (+1 real sobre a baseline de 45 — comparado por diff de posição
+exata, não só contagem: os outros 5 warnings que mudaram de linha nesta rodada são o MESMO warning
+pré-existente deslocado pelas linhas inseridas acima dele, não warnings novos; o único net-new é o
+efeito de busca debounced do `CommandPalette` em `page.tsx`, mesmo padrão sistêmico de fetch-em-efeito
+já aceito em todo o resto do app), 345/345 testes, build limpo.
+
+## PARTE 12 — Fase UX-7 implementada (2026-07-27)
+
+Última fase do roadmap original (itens #9, #13, #16, #17, #26 — polimento e organização visual).
+
+1. **Ação primária promovida pra fora do menu "⋮"** — `DataTable` ganhou `DataTableRowAction.primary`:
+   a ação marcada renderiza como botão-ícone visível (com tooltip) ao lado do kebab, que passa a
+   conter só o resto. Aplicado a "Editar" nos 5 catálogos sem transição de estado (Clientes, Produtos,
+   Materiais, Fornecedores, Usuários) — **deliberadamente fora**: módulos com fluxo de aprovação/status
+   (Orçamentos, Produção, Compras, Requisições), onde a ação mais frequente depende do estado do
+   documento, não é sempre a mesma — promover "Editar" ali seria uma escolha arbitrária, não a real
+   ação mais usada.
+2. **Filtro de data de Relatórios movido pra query + resultado paginado** — o achado tinha dois
+   problemas: (a) `report.service.ts` carregava a tabela INTEIRA (`findMany` sem `where` de data) e
+   filtrava em JS depois; (b) o resultado completo ia pro `DataTable` sem paginação. Corrigido: (a)
+   `date` é `String` dd/mm/aaaa no schema (nunca `DateTime`), então uma comparação `>=`/`<=` direto na
+   string original dá ordem errada — a query agora reordena os dígitos via `substr()` SQL (mesma
+   transformação aplicada aos limites do filtro em JS) antes de comparar, primeiro filtrando só os
+   `id`s que batem (raw query parametrizada, nunca concatenação de string) e só então buscando os
+   registros completos via Prisma tipado normal (`findMany` com `include`) — o `SELECT` cru nunca
+   monta a linha inteira, só resolve quais ids entram; (b) `RelatoriosPage` pagina o resultado exibido
+   client-side (`REPORT_PAGE_SIZE = 20`), sem endpoint novo, já que o conjunto que chega agora é só o
+   do período pedido. **Precedente novo, tratado com cautela deliberada**: primeira vez que uma rota
+   "normal" (não a Central de Administração) usa SQL bruto — por isso ganhou cobertura de teste
+   dedicada (`tests/report-service-date-filter.test.ts`, 4 casos: limites inclusive, cruzando virada de
+   ano, combinação com filtro de status, e os 3 tipos de relatório que têm campo de data), já que
+   `report.service.ts` não tinha nenhum teste antes desta mudança.
+3. **Central de Administração com hierarquia visual em Configurações** — o menu lateral de
+   Configurações agora separa as sub-abas de negócio (Empresa/Numeração/PDF/Custeio/Sistema/
+   Atualizações) de um segundo grupo rotulado "CENTRAL DE ADMINISTRAÇÃO" (Diagnóstico/Console SQL/
+   Correções — mesmo escopo do ADR-021), mesmo padrão visual dos rótulos de grupo já usados no menu
+   principal (COMERCIAL/GESTÃO/ADMINISTRAÇÃO).
+4. **Menu filtra por RBAC antes de navegar** — Console SQL e Correções (ambos já restritos a admin no
+   CONTEÚDO, `ConfiguracoesPage`) apareciam no menu pra qualquer perfil, só bloqueando depois do clique
+   com "Acesso restrito a administradores". Agora somem da lista pra quem não é admin. Diagnóstico
+   fica de fora do filtro de propósito — a rota só exige permissão de leitura de `sistema`
+   (`requireModulePermission('sistema', 'read')`), nunca foi admin-only.
+5. **Rótulo ambíguo corrigido** — "Compras (Requisições)" virou "Requisições de Compra" em
+   `REPORT_TYPE_LABELS` e no título do PDF (`RELATÓRIO DE COMPRAS` → `RELATÓRIO DE REQUISIÇÕES DE
+   COMPRA`); o comentário no código que documentava a decisão original (o relatório consulta
+   `Requisition`, não `PurchaseOrder`) foi atualizado, não apagado.
+
+**Verificação**: tsc limpo, lint 46 (net zero sobre a Fase UX-6 — nenhum hook novo introduzido),
+349/349 testes (4 novos, cobrindo especificamente o item 2 acima), build limpo.
+
+## PARTE 13 — Segunda opinião independente via `/codex review` antes do fechamento (2026-07-27)
+
+Antes de declarar o roadmap encerrado, rodado `codex review` (gstack, modelo diferente do Claude)
+contra o diff completo `origin/master...HEAD` (22 arquivos, Fases UX-6/UX-7 + resolução de decisões).
+Achado o binário instalado só tinha o pacote nativo do Windows (faltava `@openai/codex-linux-x64` no
+WSL) — contornado com `npx --yes @openai/codex@latest`; autenticação (`codex login`, OAuth via
+ChatGPT) feita pelo usuário na mesma sessão.
+
+**5 achados, todos [P2], todos confirmados reais ao verificar contra o código (nenhum falso-positivo)
+e corrigidos antes do fechamento**:
+
+1. **`active` ignorado na criação de Cliente** — `createClientSchema` não declarava `active`; `Zod`
+   descarta campos não declarados no `.parse()`, então o switch "Cliente ativo" do formulário de
+   criação (Fase UX-7) nunca chegava ao Prisma, que aplicava seu próprio default `true` independente
+   do que a UI enviasse — um cliente criado com o switch desligado ficava ativo mesmo assim, sem
+   nenhum erro visível. Corrigido adicionando `active: z.boolean().default(true)` ao schema. 2 testes
+   novos (`tests/client-active-create.test.ts`).
+2. **Resultados de busca sumindo da `CommandPalette`** — o `cmdk` reaplica seu próprio filtro fuzzy
+   client-side sobre `value`/`keywords` do `CommandItem`; um resultado que `/api/search` achou por um
+   campo ausente do rótulo exibido (CNPJ, código interno, descrição) desaparecia da lista mesmo tendo
+   vindo certo do servidor. Corrigido incluindo a query já digitada como `keywords` de cada item do
+   grupo "Resultados da busca" — garante que todo resultado devolvido pelo servidor sempre bate no
+   filtro do cliente.
+3. **Estado da paleta não limpava ao fechar** — fechar o Ctrl/Cmd+K com resultado na tela e reabrir
+   mostrava o grupo antigo até o novo debounce assentar. Corrigido: `handlePaletteOpenChange` limpa
+   `paletteQuery`/`paletteResults` ao fechar.
+4. **Seleção em lote perdida ao trocar de página** — `selectedIds` (Materiais) persistia entre páginas,
+   mas `DataTable.selectedRows` deriva só das linhas da página atual — selecionar na página 1, ir pra
+   página 2 e confirmar "Excluir selecionadas" descartava silenciosamente os ids da página 1 (a barra
+   de ação em lote nem mostrava a contagem certa). Corrigido limpando `selectedIds` em toda mudança de
+   página/filtro (`goToPage`, os 3 handlers de filtro, `onClear`) — seleção agora é sempre escopada à
+   view atual, sem ambiguidade.
+5. **Alerta de quitação total com igualdade estrita em `Float`** — `amount === outstanding` podia
+   deixar de disparar em casos reais de baixa integral digitada manualmente, já que `outstanding` vem
+   de uma subtração de `Float` (nunca `Decimal`, decisão de schema da Fase 1) e carrega erro de ponto
+   flutuante. Corrigido para `Math.abs(amount - outstanding) < 0.005` (tolerância de meio centavo).
+
+**Achados 2-5 não ganharam teste dedicado** — nenhum componente React tem cobertura de teste neste
+projeto (convenção já registrada no histórico do ADR-001: cobertura dessa camada é validação
+visual/funcional, não `vitest`); só o achado 1 (lógica de Service/schema) se presta ao mesmo padrão do
+resto da suíte.
+
+**Verificação pós-correção**: tsc limpo, lint 46 (net zero), 351/351 testes (2 novos), build limpo.
 
 ## Conclusão
 

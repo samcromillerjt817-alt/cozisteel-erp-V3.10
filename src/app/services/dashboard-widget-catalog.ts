@@ -41,6 +41,7 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogEntry[] = [
   { id: 'comercial.top-produtos', nome: 'Top produtos mais vendidos/orçados', categoria: 'comercial', perfilPadrao: ['comercial'], ordemPadrao: 70, implementado: true, dependencias: [], faseRoadmap: 'Fase 11 - Subetapa 2', kind: 'detail' },
   { id: 'comercial.clientes-produtos-ativos', nome: 'Clientes/produtos ativos vs. inativos', categoria: 'comercial', perfilPadrao: ['comercial'], ordemPadrao: 80, implementado: true, dependencias: [], faseRoadmap: 'Fase 11 - Subetapa 2', kind: 'detail' },
   { id: 'comercial.orcamentos-vencidos', nome: 'Orçamentos vencidos', categoria: 'comercial', perfilPadrao: ['comercial'], ordemPadrao: 90, implementado: true, dependencias: ['Quote.validUntil é String, sem parser confiável de data'], faseRoadmap: 'Fase 11 - Subetapa 2', kind: 'alert', linkToModule: 'orcamentos' },
+  { id: 'comercial.orcamentos-confirmados-cliente', nome: 'Orçamentos confirmados pelo cliente (link público)', categoria: 'comercial', perfilPadrao: ['comercial'], ordemPadrao: 95, implementado: true, dependencias: [], faseRoadmap: 'ADR-025 addendum', kind: 'alert', linkToModule: 'orcamentos' },
   { id: 'comercial.tempo-criacao-aprovacao', nome: 'Tempo médio criação→aprovação', categoria: 'comercial', perfilPadrao: ['comercial'], ordemPadrao: 100, implementado: true, dependencias: [], faseRoadmap: 'Fase 11 - Subetapa 2', kind: 'detail' },
   { id: 'comercial.tempo-aprovacao-conversao', nome: 'Tempo médio aprovação→conversão em Pedido', categoria: 'comercial', perfilPadrao: ['comercial'], ordemPadrao: 110, implementado: true, dependencias: [], faseRoadmap: 'Fase 11 - Subetapa 2', kind: 'detail' },
   { id: 'comercial.tempo-medio-por-status', nome: 'Tempo médio em cada status (Orçamento/Pedido)', categoria: 'comercial', perfilPadrao: ['comercial'], ordemPadrao: 120, implementado: true, dependencias: ['requer leitura de StatusHistory, hoje só escrita — código novo de agregação'], faseRoadmap: 'Fase 11 - Subetapa 2', kind: 'detail' },
@@ -100,6 +101,11 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogEntry[] = [
   // reaproveitava widgets de Comercial/Compras (Hardening pós-11.5). Também alimenta o card "Financeiro"
   // no Resumo por Módulo da Diretoria.
   { id: 'financeiro.saldo-liquido-em-aberto', nome: 'Saldo líquido em aberto (a receber − a pagar)', categoria: 'financeiro', perfilPadrao: ['financeiro'], ordemPadrao: 10, implementado: true, dependencias: [], faseRoadmap: 'Fase 11 - Subetapa 7.5 (ADR-019)', kind: 'kpi' },
+  // ADR-024 (Centro de Operações, Fase 1) — primeiro alerta nativo do Financeiro (antes só tinha o
+  // KPI de saldo acima). Mesma definição de "vencido" já usada em `financialReportService.
+  // getAccountBalances()` (dueDate < agora, título ainda não quitado) — aqui como contagem de
+  // títulos, não soma monetária.
+  { id: 'financeiro.contas-vencidas', nome: 'Contas vencidas (a pagar + a receber)', categoria: 'financeiro', perfilPadrao: ['financeiro'], ordemPadrao: 20, implementado: true, dependencias: [], faseRoadmap: 'ADR-024 - Centro de Operações, Fase 1', kind: 'alert', linkToModule: 'financeiro' },
 ]
 
 export function getCatalogEntry(id: string): DashboardWidgetCatalogEntry | undefined {

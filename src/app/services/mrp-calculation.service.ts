@@ -29,6 +29,16 @@ export interface MrpCalculatedSuggestion {
   supplierId: string | null
   supplierNameSnapshot: string | null
   sources: MrpDemandSource[]
+  // ADR-023 (item 3 da sequência, "completar a exposição do MRP") — 3 lacunas que o motor nunca
+  // considerava: estoque mínimo/segurança (agora somado ao shortfall, não só a demanda bruta),
+  // prazo do fornecedor (informativo, só para materiais), e a data em que a falta realmente vira
+  // problema (a mais cedo entre as OPs que dependem deste item, nunca uma previsão estatística de
+  // consumo — o motor não tem, e não deveria inventar, uma taxa de consumo histórica).
+  minStockQty: number
+  leadTimeDays: number | null
+  neededByDate: string | null // dd/mm/aaaa, a mais cedo entre as OPs de origem com prazo definido
+  suggestedOrderByDate: string | null // neededByDate - leadTimeDays, só para sugestões de compra
+  isLate: boolean // suggestedOrderByDate já passou e a sugestão ainda está pendente
 }
 
 export interface MrpCalculationResult {
@@ -50,6 +60,20 @@ interface OpenProductionOrderRecord {
   quantity: number
   quantityCompleted: number
   bomRevisionId: string | null
+  dueDate: string
+}
+
+/** dd/mm/aaaa → Date comparável — mesmo padrão já duplicado em `report.service.ts` e nos widgets de
+ * dashboard (nenhum utilitário compartilhado existe hoje para isso; fora de escopo desta mudança
+ * unificar os 3, então segue o mesmo padrão local em vez de introduzir uma dependência nova). */
+function parseBrDate(d: string): Date | null {
+  const m = d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (!m) return null
+  return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]))
+}
+
+function formatBrDate(d: Date): string {
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
 type ItemKey = string // `material:<id>` | `product:<id>`
@@ -157,6 +181,16 @@ class MrpCalculationService {
       openQuantityByProduct.set(op.productId, (openQuantityByProduct.get(op.productId) || 0) + remaining)
     }
 
+    // ADR-023 (item 3) — prazo de cada OP aberta, pra achar a data em que CADA sugestão vira
+    // problema de verdade (a mais cedo entre as OPs que dependem dela), nunca uma previsão de
+    // consumo — só o prazo que já existe, gravado pelo próprio usuário na OP.
+    const dueDateByOrder = new Map<string, string>()
+    for (const op of openOrders) {
+      if (op.dueDate) dueDateByOrder.set(op.id, op.dueDate)
+    }
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
     const suggestions: MrpCalculatedSuggestion[] = []
 
     // ── Passo 2: nivelar e explodir, do nível mais raso ao mais profundo ──
@@ -170,20 +204,24 @@ class MrpCalculationService {
       let reservedQty = 0
       let productType: string | null = null
       let activeRevisionId: string | null = null
+      let minStockQty = 0
+      let leadTimeDays: number | null = null
 
       if (itemType === 'material') {
-        const material = (await materialRepository.findById(id)) as { stockQty: number; reservedQty: number } | null
+        const material = (await materialRepository.findById(id)) as { stockQty: number; reservedQty: number; minStockQty: number } | null
         if (!material) continue
         stockQty = material.stockQty
         reservedQty = material.reservedQty
+        minStockQty = material.minStockQty
       } else {
         const product = (await productRepository.findById(id)) as
-          | { stockQty: number; reservedQty: number; productType: string }
+          | { stockQty: number; reservedQty: number; productType: string; minStockQty: number }
           | null
         if (!product) continue
         stockQty = product.stockQty
         reservedQty = product.reservedQty
         productType = product.productType
+        minStockQty = product.minStockQty
         const revision = (await bomRevisionRepository.findActiveByProduct(id)) as { id: string } | null
         activeRevisionId = revision?.id ?? null
       }
@@ -192,7 +230,9 @@ class MrpCalculationService {
       const onOrder = itemType === 'material' ? await this.calcOnOrderForMaterial(id) : 0
       const inProduction = itemType === 'product' ? openQuantityByProduct.get(id) || 0 : 0
       const available = freeStock + onOrder + inProduction
-      const shortfall = Math.max(0, needed - reservedQty - available)
+      // ADR-023 (item 3) — `minStockQty` somado à necessidade bruta: o shortfall agora cobre não só
+      // a demanda das OPs abertas, mas também repor o estoque de segurança que ela consumiria.
+      const shortfall = Math.max(0, needed + minStockQty - reservedQty - available)
 
       // Item plenamente coberto — não vira sugestão, e não propaga nada mais fundo.
       if (shortfall <= 0) continue
@@ -204,19 +244,41 @@ class MrpCalculationService {
       if (!isFabricable && itemType === 'material') {
         const preferred = (await supplierMaterialRepository.findPreferredForMaterial(id)) as {
           supplierId: string
+          leadTimeDays: number
           supplier: { corporateName: string; tradeName: string }
         } | null
         if (preferred) {
           supplierId = preferred.supplierId
           supplierNameSnapshot = preferred.supplier.corporateName || preferred.supplier.tradeName
+          leadTimeDays = preferred.leadTimeDays > 0 ? preferred.leadTimeDays : null
         }
       }
+
+      const groupedSources = groupSourcesByOrder(demandSources.get(key) || [])
+
+      // ADR-023 (item 3) — data em que a falta vira problema: a mais cedo entre as OPs de origem
+      // que têm prazo definido. Nunca uma previsão estatística de consumo — só o prazo que já
+      // existe. Se nenhuma OP de origem tem prazo, fica `null` (sem dado suficiente pra estimar).
+      let neededByDate: Date | null = null
+      for (const source of groupedSources) {
+        const dueDateStr = dueDateByOrder.get(source.productionOrderId)
+        if (!dueDateStr) continue
+        const parsed = parseBrDate(dueDateStr)
+        if (parsed && (!neededByDate || parsed < neededByDate)) neededByDate = parsed
+      }
+
+      const suggestionType: MrpSuggestionType = isFabricable ? 'production' : 'purchase'
+      let suggestedOrderByDate: Date | null = null
+      if (suggestionType === 'purchase' && leadTimeDays !== null && neededByDate) {
+        suggestedOrderByDate = new Date(neededByDate.getTime() - leadTimeDays * 24 * 60 * 60 * 1000)
+      }
+      const isLate = suggestedOrderByDate !== null && suggestedOrderByDate < today
 
       suggestions.push({
         itemType,
         materialId: itemType === 'material' ? id : null,
         productId: itemType === 'product' ? id : null,
-        suggestionType: isFabricable ? 'production' : 'purchase',
+        suggestionType,
         quantityNeeded: needed,
         quantityAvailable: available,
         quantityReserved: reservedQty,
@@ -224,7 +286,12 @@ class MrpCalculationService {
         productTypeSnapshot: productType,
         supplierId,
         supplierNameSnapshot,
-        sources: groupSourcesByOrder(demandSources.get(key) || []),
+        sources: groupedSources,
+        minStockQty,
+        leadTimeDays,
+        neededByDate: neededByDate ? formatBrDate(neededByDate) : null,
+        suggestedOrderByDate: suggestedOrderByDate ? formatBrDate(suggestedOrderByDate) : null,
+        isLate,
       })
 
       if (isFabricable && activeRevisionId) {

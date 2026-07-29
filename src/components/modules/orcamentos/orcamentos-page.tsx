@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Edit, Copy, FileOutput, Image as ImageIcon, Truck, ShoppingCart, Trash2, X, AlertTriangle } from 'lucide-react'
+import { Plus, Edit, Copy, FileOutput, Image as ImageIcon, Truck, ShoppingCart, Trash2, X, AlertTriangle, Link2, UserPlus } from 'lucide-react'
 import { PageHeader } from '@/components/platform/page-header'
 import { FilterBar } from '@/components/platform/filter-bar'
 import { DataTable, type DataTableColumn } from '@/components/platform/data-table'
@@ -167,6 +167,22 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
     }))
   }
 
+  /** Cria (ou vincula) um Cliente formal a partir dos dados já digitados no orçamento — mantém o
+   * registro de um lead (ex.: vindo do Catálogo Digital) sem precisar re-digitar em Clientes. */
+  async function promoteToClient() {
+    if (!editingId) return
+    try {
+      const r = await fetch(`/api/quotes/${editingId}/promote-to-client`, { method: 'POST' })
+      const json = await r.json()
+      if (!r.ok) { toast.error(json.error || 'Erro ao criar cliente'); return }
+      setForm((prev) => ({ ...prev, clientId: json.clientId }))
+      toast.success(json.created ? 'Cliente criado e vinculado a este orçamento' : 'Orçamento vinculado ao cliente já cadastrado')
+      load()
+    } catch {
+      toast.error('Erro ao criar cliente. Tente novamente.')
+    }
+  }
+
   async function openEdit(id: string, salesOrder: { id: string; number: string } | null = null) {
     try {
       const r = await fetch(`/api/quotes/${id}`)
@@ -235,6 +251,36 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
         })
         const json = await r.json()
         if (!r.ok) { toast.error(json.error || 'Erro ao alterar status'); return }
+        // ADR-023 (item 5) — motor de alçada pode exigir mais de 1 aprovação; enquanto não atingir o
+        // total configurado, o Orçamento continua "sent" de propósito (nenhuma Ordem de Produção é
+        // gerada ainda) e a resposta não traz os campos de sucesso normais.
+        if (json.pendingApproval) {
+          toast.info(`Aprovação registrada: ${json.approvalsGiven} de ${json.approvalsNeeded} necessárias. Aguardando mais aprovações.`)
+          load()
+          return
+        }
+        // Migração de token pra hash (auditoria de segurança, 2ª rodada) — o token bruto do link
+        // público não é mais persistido, só existe nesta resposta, uma única vez. Reenviar (sent →
+        // draft → sent de novo, pelo próprio seletor de status) gera e revela um token novo — não
+        // há como recuperar um link já mostrado antes.
+        if (status === 'sent' && typeof json.publicToken === 'string' && json.publicToken) {
+          const url = `${window.location.origin}/orcamento/${json.publicToken}`
+          showActionResult({
+            title: 'Orçamento enviado',
+            description: 'Copie o link de confirmação agora e envie para o cliente — ele só é exibido nesta tela, uma única vez.',
+            actions: [
+              {
+                label: 'Copiar link de confirmação',
+                onClick: () => { navigator.clipboard.writeText(url); toast.success('Link copiado — envie para o cliente') },
+                variant: 'default',
+              },
+              { label: 'Fechar', onClick: () => {} },
+            ],
+          })
+          load()
+          onDataChanged()
+          return
+        }
         const generated = json.generatedProductionOrders as Array<{ id: string; number: string }> | undefined
         if (generated && generated.length > 0) {
           showActionResult({
@@ -319,9 +365,19 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
       unit: product.unit || items[idx].unit || 'UN',
       unitPrice: product.salePrice || 0,
       weight: product.weight || items[idx].weight || 0,
+      width: product.width || items[idx].width || 0,
+      height: product.height || items[idx].height || 0,
+      length: product.length || items[idx].length || 0,
     }
     items[idx].total = items[idx].quantity * items[idx].unitPrice
     setForm({ ...form, items })
+  }
+
+  function copyClientLink(q: QuoteListRow) {
+    if (!q.publicToken) return
+    const url = `${window.location.origin}/orcamento/${q.publicToken}`
+    navigator.clipboard.writeText(url)
+    toast.success('Link de confirmação copiado — envie para o cliente')
   }
 
   function addItem() {
@@ -392,12 +448,17 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
         getRowId={(q) => q.id}
         loading={loading}
         emptyMessage="Nenhum orçamento encontrado"
+        emptyAction={{ label: 'Criar o primeiro orçamento', onClick: openNew }}
         rowActions={[
           {
             label: 'Converter em Pedido de Venda', icon: <ShoppingCart />, onClick: (q) => convertToOrder(q.id),
             disabled: (q) => q.status !== 'approved' || !!q.salesOrder || pendingStatusIds.has(q.id),
           },
           { label: 'Editar', icon: <Edit />, onClick: (q) => openEdit(q.id, q.salesOrder) },
+          {
+            label: 'Copiar link de confirmação do cliente', icon: <Link2 />, onClick: (q) => copyClientLink(q),
+            disabled: (q) => q.status !== 'sent' || !q.publicToken,
+          },
           { label: 'Duplicar', icon: <Copy />, onClick: (q) => duplicateQuote(q.id) },
           { label: 'PDF Comercial', icon: <FileOutput />, onClick: (q) => window.open(`/api/quotes/${q.id}/pdf?variant=comercial`, '_blank') },
           { label: 'PDF Técnico (com foto)', icon: <ImageIcon />, onClick: (q) => window.open(`/api/quotes/${q.id}/pdf?variant=tecnico`, '_blank') },
@@ -443,6 +504,11 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
                   }))}
                   onSelect={(hit) => selectClient(hit.data)}
                 />
+                {editingId && !form.clientId && form.clientName.trim() && (
+                  <Button type="button" variant="outline" size="sm" className="mt-2" onClick={promoteToClient}>
+                    <UserPlus className="w-4 h-4 mr-1" /> Criar cliente a partir destes dados
+                  </Button>
+                )}
               </div>
               <div className="space-y-1.5"><Label>Nome / Razão Social</Label><Input value={form.clientName} onChange={(e) => setForm({ ...form, clientName: e.target.value })} /></div>
               <div className="space-y-1.5">
@@ -500,7 +566,7 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
                     <QuantityInput className="text-right" value={item.quantity} onChange={(v) => updateItem(idx, 'quantity', v)} />
                     <CurrencyInput value={item.unitPrice} onChange={(v) => updateItem(idx, 'unitPrice', v)} />
                     <span className="text-right font-mono text-sm">{formatCurrency(item.quantity * item.unitPrice)}</span>
-                    <Button variant="ghost" size="icon" onClick={() => removeItem(idx)}><X className="w-4 h-4 text-destructive" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => removeItem(idx)} title="Remover item"><X className="w-4 h-4 text-destructive" /></Button>
                   </div>
                 ))}
               </div>
@@ -550,7 +616,7 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
               </div>
               <div className="space-y-1.5"><Label>Garantia</Label><Input value={form.warranty} onChange={(e) => setForm({ ...form, warranty: e.target.value })} /></div>
               <div className="space-y-1.5"><Label>Validade</Label><DatePicker value={form.validity} onChange={(v) => setForm({ ...form, validity: v })} /></div>
-              <div className="space-y-1.5"><Label>Prazo Entrega</Label><Input value={form.deliveryTime} onChange={(e) => setForm({ ...form, deliveryTime: e.target.value })} /></div>
+              <div className="space-y-1.5"><Label>Prazo Entrega</Label><DatePicker value={form.deliveryTime} onChange={(v) => setForm({ ...form, deliveryTime: v })} /></div>
             </div>
             <div className="mt-3 space-y-1.5">
               <Label>Observações</Label>

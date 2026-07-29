@@ -18,6 +18,8 @@ import { REPORT_TYPE_LABELS, REPORT_SUMMARY_LABELS, REPORT_SUMMARY_MONEY_KEYS, t
 
 type ReportRow = Record<string, unknown> & { __rowId: string }
 
+const REPORT_PAGE_SIZE = 20
+
 const STATUS_LABELS_BY_TYPE: Partial<Record<ReportType, Record<string, string>>> = {
   sales: statusLabels,
   production: PRODUCTION_ORDER_STATUS_LABELS,
@@ -29,17 +31,24 @@ const STATUS_LABELS_BY_TYPE: Partial<Record<ReportType, Record<string, string>>>
  * (`<table>` nativo com colunas calculadas por `Object.keys(rows[0])`) para o `DataTable` — mesmas
  * colunas dinâmicas, agora com loading/empty state padronizados do resto do ERP.
  *
- * **Achado, não corrigido de propósito**: o tipo "Compras (Requisições)" consulta `Requisition`, não
- * `PurchaseOrder` (o módulo Compras, já migrado na Subetapa 11.5.8) — o rótulo já deixa isso explícito
- * no parêntese, não é um bug de UI, é uma decisão de produto anterior a esta subetapa (que tipo de
- * relatório de compras faz sentido — por Requisição ou por Pedido de Compra formal — é uma decisão do
- * usuário, não uma correção de migração).
+ * **Achado, não corrigido de propósito**: o tipo "Requisições de Compra" (rótulo renomeado na Fase
+ * UX-7, achado #26 — antes "Compras (Requisições)", lido por alguns usuários como se incluísse Pedido
+ * de Compra) consulta `Requisition`, não `PurchaseOrder` (o módulo Compras, já migrado na Subetapa
+ * 11.5.8) — decisão de produto anterior a esta subetapa (que tipo de relatório de compras faz sentido
+ * — por Requisição ou por Pedido de Compra formal — é uma decisão do usuário, não uma correção de
+ * migração; o novo rótulo só deixa claro qual dos dois é este).
+ *
+ * ADR-022 (Fase UX-7, achado #13) — o filtro de data foi movido pra query (`report.service.ts` agora
+ * já devolve só as linhas do período pedido, nunca a base inteira); esta tela some com a 2ª metade do
+ * achado, a paginação do resultado exibido — sem endpoint novo, já que o conjunto que chega aqui já
+ * vem filtrado e tipicamente pequeno.
  */
 export function RelatoriosPage() {
   const [reportType, setReportType] = useState<ReportType>('sales')
   const [reportFrom, setReportFrom] = useState('')
   const [reportTo, setReportTo] = useState('')
   const [reportStatus, setReportStatus] = useState('')
+  const [reportPage, setReportPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ReportResult | null>(null)
 
@@ -60,6 +69,7 @@ export function RelatoriosPage() {
   async function generate() {
     setLoading(true)
     setResult(null)
+    setReportPage(1)
     try {
       const r = await fetch(`/api/reports/${reportType}?${queryString()}`)
       const json = await r.json()
@@ -88,6 +98,7 @@ export function RelatoriosPage() {
     ? Object.keys(rawRows[0]).map((key) => ({ id: key, header: key, cell: (row) => String(row[key] ?? '') }))
     : []
   const tableRows: ReportRow[] = rawRows.map((row, idx) => ({ ...row, __rowId: String(idx) }))
+  const pagedRows = tableRows.slice((reportPage - 1) * REPORT_PAGE_SIZE, reportPage * REPORT_PAGE_SIZE)
   const statusOptions = STATUS_LABELS_BY_TYPE[reportType]
 
   return (
@@ -143,9 +154,10 @@ export function RelatoriosPage() {
 
           <DataTable
             columns={columns}
-            rows={tableRows}
+            rows={pagedRows}
             getRowId={(row) => row.__rowId}
             emptyMessage="Nenhum registro encontrado para os filtros selecionados"
+            pagination={{ page: reportPage, pageSize: REPORT_PAGE_SIZE, total: tableRows.length, onPageChange: setReportPage }}
           />
         </>
       )}

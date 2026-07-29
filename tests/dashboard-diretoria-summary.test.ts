@@ -61,7 +61,8 @@ describe('Dashboard Diretoria — síntese por módulo (ADR-019, Subetapa 7.5)',
     await quoteService.changeStatus(quote.id, 'sent', user.id)
     await quoteService.changeStatus(quote.id, 'approved', user.id)
     const salesOrder = (await quoteService.convertToSalesOrder(quote.id, user.id)) as { id: string }
-    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, 1000, user.id)) as { id: string }
+    const item = await db.salesOrderItem.findFirstOrThrow({ where: { salesOrderId: salesOrder.id } })
+    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: item.id, quantity: 1 }], '', user.id)) as { id: string }
     const receivable = (await db.accountReceivable.findUnique({ where: { invoiceId: invoice.id } }))!
     await financialAccountService.registerReceipt(receivable.id, 400, new Date(), '', user.id)
 

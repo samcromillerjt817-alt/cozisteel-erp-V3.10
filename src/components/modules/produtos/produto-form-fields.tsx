@@ -2,6 +2,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Separator } from '@/components/ui/separator'
 import { UnitSelect } from '@/components/form/unit-select'
 import { QuantityInput } from '@/components/form/quantity-input'
 import { CurrencyInput } from '@/components/form/currency-input'
@@ -52,6 +54,41 @@ export function ProdutoFormFields({ form, onChange, categories, materials }: Pro
       <div className="space-y-1.5"><Label>Família</Label><Input value={form.family} onChange={(e) => set('family', e.target.value)} /></div>
       <div className="space-y-1.5"><Label>Linha</Label><Input value={form.line} onChange={(e) => set('line', e.target.value)} /></div>
       <div className="space-y-1 sm:col-span-2"><Label>Observações</Label><Textarea rows={3} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
+
+      <div className="sm:col-span-2"><Separator className="my-1" /></div>
+      <div className="sm:col-span-2 text-sm font-medium text-muted-foreground">Catálogo Digital Público (ADR-026)</div>
+
+      <div className="flex items-center justify-between rounded-md border p-3">
+        <Label htmlFor="showInCatalog">Exibir no catálogo</Label>
+        <Switch id="showInCatalog" checked={form.showInCatalog} onCheckedChange={(v) => set('showInCatalog', v)} />
+      </div>
+      <div className="flex items-center justify-between rounded-md border p-3">
+        <Label htmlFor="catalogFeatured">Produto em destaque</Label>
+        <Switch id="catalogFeatured" checked={form.catalogFeatured} onCheckedChange={(v) => set('catalogFeatured', v)} />
+      </div>
+      <div className="flex items-center justify-between rounded-md border p-3">
+        <Label htmlFor="catalogAllowCustomization">Permitir personalização</Label>
+        <Switch id="catalogAllowCustomization" checked={form.catalogAllowCustomization} onCheckedChange={(v) => set('catalogAllowCustomization', v)} />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Ordem de exibição</Label>
+        <Input type="number" step={1} value={form.catalogOrder} onChange={(e) => set('catalogOrder', parseInt(e.target.value, 10) || 0)} />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Preço no catálogo</Label>
+        <Select value={form.catalogPriceMode} onValueChange={(v) => set('catalogPriceMode', v)}>
+          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="sob_consulta">Sob consulta</SelectItem>
+            <SelectItem value="exibir">Exibir preço de venda</SelectItem>
+            <SelectItem value="faixa">Faixa de preço</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1 sm:col-span-2">
+        <Label>Descrição comercial (catálogo)</Label>
+        <Textarea rows={3} value={form.catalogDescription} onChange={(e) => set('catalogDescription', e.target.value)} placeholder="Texto voltado pro cliente — diferente da descrição interna acima" />
+      </div>
     </div>
   )
 }

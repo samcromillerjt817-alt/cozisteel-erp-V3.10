@@ -6,7 +6,8 @@ import { getDashboard } from '@/app/services/dashboard-widgets.service'
 import { DASHBOARD_WIDGET_CATALOG, getImplementedWidgets, getCatalogEntry } from '@/app/services/dashboard-widget-catalog'
 
 /**
- * Fase 11 (Dashboard e KPIs), Subetapa 2 (ADR-017) — os 14 widgets reais do perfil Comercial. Dados
+ * Fase 11 (Dashboard e KPIs), Subetapa 2 (ADR-017) — os 15 widgets reais do perfil Comercial (14 da
+ * Subetapa 2 original + 1 do addendum ADR-025, "orçamentos confirmados pelo cliente"). Dados
  * de teste usam uma janela de período sintética e distante (2020) para não sofrer interferência de
  * outros arquivos de teste que gravam no mesmo banco (`prisma/test.db`, `fileParallelism: false`) com
  * `createdAt` padrão (`now()`) — qualquer widget escopado por período é isolado por construção,
@@ -64,6 +65,13 @@ describe('Dashboard Comercial — widgets reais (Subetapa 2)', () => {
     const sh2 = await db.statusHistory.create({ data: { entityType: 'quote', entityId: quoteApproved1.id, fromStatus: 'draft', toStatus: 'sent', userId, createdAt: new Date('2020-01-03') } })
     const sh3 = await db.statusHistory.create({ data: { entityType: 'quote', entityId: quoteApproved1.id, fromStatus: 'sent', toStatus: 'approved', userId, createdAt: new Date('2020-01-06') } })
     statusHistoryIds.push(sh1.id, sh2.id, sh3.id)
+
+    // Orçamento confirmado pelo cliente via link público "agora" (ADR-025 addendum) — precisa de
+    // clientRespondedAt real e recente, diferente dos demais fixtures que usam datas sintéticas 2020.
+    const quoteClientConfirmed = await db.quote.create({
+      data: { number: `DASH-${Date.now()}-6`, status: 'approved', date: '01/01/2020', userId, total: 300, approvedBy: 'Cliente (link público)', clientRespondedAt: new Date() },
+    })
+    quoteIds.push(quoteClientConfirmed.id)
   })
 
   afterAll(async () => {
@@ -76,7 +84,7 @@ describe('Dashboard Comercial — widgets reais (Subetapa 2)', () => {
     await db.user.delete({ where: { id: userId } })
   })
 
-  it('getDashboard("comercial") devolve os 14 widgets do catálogo, todos com id/type/order/data', async () => {
+  it('getDashboard("comercial") devolve os 15 widgets do catálogo, todos com id/type/order/data', async () => {
     const payload = await getDashboard('comercial', PERIOD)
     const catalogIds = DASHBOARD_WIDGET_CATALOG.filter((e) => e.categoria === 'comercial').map((e) => e.id)
     const payloadIds = payload.widgets.map((w) => w.id)
@@ -91,9 +99,9 @@ describe('Dashboard Comercial — widgets reais (Subetapa 2)', () => {
     }
   })
 
-  it('catálogo confirma as 14 entradas Comerciais marcadas implementado:true', () => {
+  it('catálogo confirma as 15 entradas Comerciais marcadas implementado:true', () => {
     const implementedComercial = getImplementedWidgets().filter((e) => e.categoria === 'comercial')
-    expect(implementedComercial.length).toBe(14)
+    expect(implementedComercial.length).toBe(15)
   })
 
   it('widget.type == "alert" se e somente se catalogEntry.kind == "alert" (ADR-019, Subetapa 7.2)', async () => {
@@ -176,6 +184,17 @@ describe('Dashboard Comercial — widgets reais (Subetapa 2)', () => {
     // orçamentos vencidos é sempre 'critical' (o synthetic sozinho já garante isso).
     expect(data.severity).toBe('critical')
     expect(data.message.length).toBeGreaterThan(0)
+    expect(data.linkToModule).toBe('orcamentos')
+  })
+
+  it('orcamentos-confirmados-cliente conta confirmações via link público nas últimas 48h (ADR-025 addendum)', async () => {
+    const payload = await getDashboard('comercial')
+    const widget = payload.widgets.find((w) => w.id === 'comercial.orcamentos-confirmados-cliente')!
+    expect(widget.type).toBe('alert')
+    const data = widget.data as { severity: 'critical' | 'warning' | 'info'; count: number; message: string; linkToModule: string }
+    expect(data.count).toBeGreaterThanOrEqual(1)
+    expect(data.severity).toBe('warning')
+    expect(data.message).toContain('aprovado')
     expect(data.linkToModule).toBe('orcamentos')
   })
 

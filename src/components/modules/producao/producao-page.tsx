@@ -16,8 +16,11 @@ import { AsyncButton } from '@/components/domain/async-button'
 import { QuantityInput } from '@/components/form/quantity-input'
 import { useConfirm } from '@/components/domain/confirm-dialog'
 import { StatusTimeline } from '@/components/domain/status-timeline'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ProducaoFormFields } from './producao-form-fields'
 import { ReservationList } from './reservation-list'
+import { ProductionBatchesSection } from './production-batches-section'
+import { MrpSection } from './mrp-section'
 import {
   PRODUCTION_ORDER_STATUS_LABELS, PRODUCTION_ORDER_TRANSITIONS, EMPTY_PRODUCTION_ORDER_FORM, productionOrderToFormData,
   type ProductionOrderListRow, type ProductionOrderRecord, type ProductionOrderFormData,
@@ -51,6 +54,7 @@ const PAGE_SIZE = 20
  */
 export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initialDetailId, onConsumeInitialDetail }: ProducaoPageProps) {
   const confirmAction = useConfirm()
+  const [view, setView] = useState<'ordens' | 'mrp'>('ordens')
   const [rows, setRows] = useState<ProductionOrderListRow[]>([])
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
@@ -230,7 +234,7 @@ export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initial
     }
     if (!(await confirmAction({
       title: 'Registrar produção',
-      description: `Confirma produzir ${produceQty} ${detail.unit}? Isso dá baixa na matéria-prima e gera um novo lote de produto acabado — não pode ser desfeito pelo sistema.`,
+      description: `Confirma produzir ${produceQty} ${detail.unit}? Isso dá baixa na matéria-prima e gera um novo lote de produto acabado. Só pode ser revertido depois em "Lotes Produzidos", e apenas enquanto o lote gerado não tiver sido consumido por outra Ordem de Produção.`,
     }))) return
     setProducing(true)
     try {
@@ -270,23 +274,41 @@ export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initial
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Ordens de Produção" actions={<Button onClick={openNew}><Plus className="w-4 h-4" /> Nova OP</Button>} />
-
-      <DataTable
-        columns={columns}
-        rows={rows}
-        getRowId={(o) => o.id}
-        loading={loading}
-        emptyMessage="Nenhuma ordem de produção encontrada"
-        rowActions={[
-          { label: 'Ver detalhes', icon: <Eye />, onClick: (o) => openDetail(o) },
-          { label: 'PDF', icon: <FileOutput />, onClick: (o) => window.open(`/api/production-orders/${o.id}/pdf`, '_blank') },
-          { label: 'Gerar requisição de matéria-prima', icon: <Package />, onClick: (o) => onGenerateRequisitionFromOP(o.id) },
-          { label: 'Editar', icon: <Edit />, onClick: (o) => openEdit(o) },
-          { label: 'Excluir', icon: <Trash2 />, variant: 'destructive', onClick: (o) => remove(o.id), disabled: (o) => o.quantityCompleted > 0 },
-        ]}
-        pagination={{ page, pageSize: PAGE_SIZE, total, onPageChange: setPage }}
+      <PageHeader
+        title="Ordens de Produção"
+        actions={
+          <div className="flex items-center gap-3">
+            <Tabs value={view} onValueChange={(v) => setView(v as 'ordens' | 'mrp')}>
+              <TabsList>
+                <TabsTrigger value="ordens">Ordens de Produção</TabsTrigger>
+                <TabsTrigger value="mrp">MRP (Sugestões)</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {view === 'ordens' && <Button onClick={openNew}><Plus className="w-4 h-4" /> Nova OP</Button>}
+          </div>
+        }
       />
+
+      {view === 'mrp' && <MrpSection />}
+
+      {view === 'ordens' && (
+        <DataTable
+          columns={columns}
+          rows={rows}
+          getRowId={(o) => o.id}
+          loading={loading}
+          emptyMessage="Nenhuma ordem de produção encontrada"
+          emptyAction={{ label: 'Criar a primeira Ordem de Produção', onClick: openNew }}
+          rowActions={[
+            { label: 'Ver detalhes', icon: <Eye />, onClick: (o) => openDetail(o) },
+            { label: 'PDF', icon: <FileOutput />, onClick: (o) => window.open(`/api/production-orders/${o.id}/pdf`, '_blank') },
+            { label: 'Gerar requisição de matéria-prima', icon: <Package />, onClick: (o) => onGenerateRequisitionFromOP(o.id) },
+            { label: 'Editar', icon: <Edit />, onClick: (o) => openEdit(o) },
+            { label: 'Excluir', icon: <Trash2 />, variant: 'destructive', onClick: (o) => remove(o.id), disabled: (o) => o.quantityCompleted > 0 },
+          ]}
+          pagination={{ page, pageSize: PAGE_SIZE, total, onPageChange: setPage }}
+        />
+      )}
 
       <FormDialog
         open={dialogOpen}
@@ -379,6 +401,11 @@ export function ProducaoPage({ salesOrders, onGenerateRequisitionFromOP, initial
             <div className="space-y-2">
               <Label className="text-xs">Reserva de Material</Label>
               <ReservationList productionOrderId={detail.id} />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs">Lotes Produzidos</Label>
+              <ProductionBatchesSection productionOrderId={detail.id} />
             </div>
 
             <div className="space-y-2">

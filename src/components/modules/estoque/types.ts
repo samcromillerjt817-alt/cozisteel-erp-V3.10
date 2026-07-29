@@ -19,13 +19,21 @@ export interface StockSummaryItem {
 export interface StockMovementRow {
   id: string
   type: string
+  itemType: string
   quantity: number
   balanceAfter: number
   reason: string
+  referenceType: string
   createdAt: string
   material?: { id: string; name: string } | null
   product?: { id: string; name: string } | null
   user?: { id: string; name: string } | null
+  // ADR-023 (Decisão #1, Estorno) — `reversedAt` marca que este lançamento já foi estornado;
+  // `reversalOfId` marca que ESTE lançamento É o estorno de outro. Só um recebimento de compra
+  // (IN + referenceType "purchase_order"), nunca estornado antes e que não seja ele mesmo um
+  // estorno, ganha a ação "Estornar" na lista.
+  reversedAt: string | null
+  reversalOfId: string | null
 }
 
 export interface StockAdjustForm {

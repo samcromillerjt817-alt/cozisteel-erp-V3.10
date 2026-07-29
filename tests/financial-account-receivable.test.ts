@@ -55,13 +55,14 @@ describe('Financeiro — Faturamento + Contas a Receber (Fase 12, Subetapa 1/4)'
     const salesOrder = (await quoteService.convertToSalesOrder(quote.id, user.id)) as { id: string; number: string }
     createdSalesOrderIds.push(salesOrder.id)
 
-    return { user, salesOrder }
+    const item = (await db.salesOrderItem.findFirstOrThrow({ where: { salesOrderId: salesOrder.id } }))
+    return { user, salesOrder, itemId: item.id }
   }
 
   it('1. Faturar um Pedido de Venda gera a Invoice e, via evento fatura.emitida, o título a receber correspondente', async () => {
-    const { user, salesOrder } = await createSalesOrder('ar-invoice')
+    const { user, salesOrder, itemId } = await createSalesOrder('ar-invoice')
 
-    const invoice = await invoiceService.createFromSalesOrder(salesOrder.id, 500, user.id)
+    const invoice = await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 1 }], '', user.id)
     createdInvoiceIds.push((invoice as { id: string }).id)
 
     const receivable = await db.accountReceivable.findUnique({ where: { invoiceId: (invoice as { id: string }).id } })
@@ -70,12 +71,12 @@ describe('Financeiro — Faturamento + Contas a Receber (Fase 12, Subetapa 1/4)'
     expect(receivable?.status).toBe('open')
   })
 
-  it('2. Um mesmo Pedido de Venda pode gerar mais de 1 Invoice (faturamento parcial)', async () => {
-    const { user, salesOrder } = await createSalesOrder('ar-partial-invoice', 1000)
+  it('2. Um mesmo Pedido de Venda pode gerar mais de 1 Invoice (faturamento parcial por quantidade)', async () => {
+    const { user, salesOrder, itemId } = await createSalesOrder('ar-partial-invoice', 1000)
 
-    const invoice1 = (await invoiceService.createFromSalesOrder(salesOrder.id, 400, user.id)) as { id: string }
+    const invoice1 = (await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 0.4 }], '', user.id)) as { id: string }
     createdInvoiceIds.push(invoice1.id)
-    const invoice2 = (await invoiceService.createFromSalesOrder(salesOrder.id, 600, user.id)) as { id: string }
+    const invoice2 = (await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 0.6 }], '', user.id)) as { id: string }
     createdInvoiceIds.push(invoice2.id)
 
     const invoices = await db.invoice.findMany({ where: { salesOrderId: salesOrder.id } })
@@ -86,16 +87,26 @@ describe('Financeiro — Faturamento + Contas a Receber (Fase 12, Subetapa 1/4)'
     expect(receivables.map((r) => r.amount).sort()).toEqual([400, 600])
   })
 
+  it('2b. Faturar quantidade acima do saldo restante do item é rejeitado', async () => {
+    const { user, salesOrder, itemId } = await createSalesOrder('ar-over-item', 1000)
+
+    await expect(
+      invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 1.5 }], '', user.id)
+    ).rejects.toThrow()
+  })
+
   it('3. Faturar um pedido de venda cancelado é rejeitado', async () => {
-    const { user, salesOrder } = await createSalesOrder('ar-cancelled-so')
+    const { user, salesOrder, itemId } = await createSalesOrder('ar-cancelled-so')
     await db.salesOrder.update({ where: { id: salesOrder.id }, data: { status: 'cancelled' } })
 
-    await expect(invoiceService.createFromSalesOrder(salesOrder.id, 100, user.id)).rejects.toThrow()
+    await expect(
+      invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 1 }], '', user.id)
+    ).rejects.toThrow()
   })
 
   it('4. registerReceipt: recebimento parcial marca "partially_paid", total marca "paid"', async () => {
-    const { user, salesOrder } = await createSalesOrder('ar-receipt', 500)
-    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, 500, user.id)) as { id: string }
+    const { user, salesOrder, itemId } = await createSalesOrder('ar-receipt', 500)
+    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 1 }], '', user.id)) as { id: string }
     createdInvoiceIds.push(invoice.id)
     const receivable = (await db.accountReceivable.findUnique({ where: { invoiceId: invoice.id } }))!
 
@@ -110,8 +121,8 @@ describe('Financeiro — Faturamento + Contas a Receber (Fase 12, Subetapa 1/4)'
   })
 
   it('5. registerReceipt rejeita valor que excede o saldo em aberto', async () => {
-    const { user, salesOrder } = await createSalesOrder('ar-overpay', 500)
-    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, 500, user.id)) as { id: string }
+    const { user, salesOrder, itemId } = await createSalesOrder('ar-overpay', 500)
+    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 1 }], '', user.id)) as { id: string }
     createdInvoiceIds.push(invoice.id)
     const receivable = (await db.accountReceivable.findUnique({ where: { invoiceId: invoice.id } }))!
 
@@ -119,8 +130,8 @@ describe('Financeiro — Faturamento + Contas a Receber (Fase 12, Subetapa 1/4)'
   })
 
   it('6. cancelReceivable: permitido só em "open"; rejeitado depois de qualquer recebimento', async () => {
-    const { user, salesOrder } = await createSalesOrder('ar-cancel', 500)
-    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, 500, user.id)) as { id: string }
+    const { user, salesOrder, itemId } = await createSalesOrder('ar-cancel', 500)
+    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 1 }], '', user.id)) as { id: string }
     createdInvoiceIds.push(invoice.id)
     const receivable = (await db.accountReceivable.findUnique({ where: { invoiceId: invoice.id } }))!
 
@@ -129,8 +140,8 @@ describe('Financeiro — Faturamento + Contas a Receber (Fase 12, Subetapa 1/4)'
   })
 
   it('7. createReceivableFromInvoice é idempotente: chamar de novo para a mesma Invoice não duplica', async () => {
-    const { user, salesOrder } = await createSalesOrder('ar-idempotent', 500)
-    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, 500, user.id)) as { id: string; number: string }
+    const { user, salesOrder, itemId } = await createSalesOrder('ar-idempotent', 500)
+    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 1 }], '', user.id)) as { id: string; number: string }
     createdInvoiceIds.push(invoice.id)
 
     const again = await financialAccountService.createReceivableFromInvoice(invoice.id, invoice.number, 500, new Date(), user.id)
@@ -140,8 +151,8 @@ describe('Financeiro — Faturamento + Contas a Receber (Fase 12, Subetapa 1/4)'
   })
 
   it('8. AuditLog registra a emissão da fatura e a geração do título', async () => {
-    const { user, salesOrder } = await createSalesOrder('ar-audit', 500)
-    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, 500, user.id)) as { id: string }
+    const { user, salesOrder, itemId } = await createSalesOrder('ar-audit', 500)
+    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 1 }], '', user.id)) as { id: string }
     createdInvoiceIds.push(invoice.id)
 
     const invoiceLogs = await db.auditLog.findMany({ where: { entityId: invoice.id, module: 'financeiro', action: 'CREATE' } })
@@ -153,10 +164,10 @@ describe('Financeiro — Faturamento + Contas a Receber (Fase 12, Subetapa 1/4)'
   })
 
   it('9. Vencimento do título reflete a condição de pagamento do Pedido de Venda (não um prazo fixo do Financeiro)', async () => {
-    const { user, salesOrder } = await createSalesOrder('ar-payment-terms', 500, '45 dias')
+    const { user, salesOrder, itemId } = await createSalesOrder('ar-payment-terms', 500, '45 dias')
     const before = Date.now()
 
-    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, 500, user.id)) as { id: string }
+    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 1 }], '', user.id)) as { id: string }
     createdInvoiceIds.push(invoice.id)
     const receivable = (await db.accountReceivable.findUnique({ where: { invoiceId: invoice.id } }))!
 
@@ -166,13 +177,47 @@ describe('Financeiro — Faturamento + Contas a Receber (Fase 12, Subetapa 1/4)'
   })
 
   it('10. "À vista" vence imediatamente (0 dias)', async () => {
-    const { user, salesOrder } = await createSalesOrder('ar-avista', 500, 'À vista')
+    const { user, salesOrder, itemId } = await createSalesOrder('ar-avista', 500, 'À vista')
     const before = Date.now()
 
-    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, 500, user.id)) as { id: string }
+    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 1 }], '', user.id)) as { id: string }
     createdInvoiceIds.push(invoice.id)
     const receivable = (await db.accountReceivable.findUnique({ where: { invoiceId: invoice.id } }))!
 
     expect(Math.abs(receivable.dueDate.getTime() - before)).toBeLessThan(5000)
+  })
+
+  it('11. Cancelar uma fatura sem recebimento cancela também o título; com recebimento, é rejeitado', async () => {
+    const { user, salesOrder, itemId } = await createSalesOrder('ar-invoice-cancel', 500)
+    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 1 }], '', user.id)) as { id: string }
+    createdInvoiceIds.push(invoice.id)
+
+    const cancelled = (await invoiceService.cancel(invoice.id, user.id)) as { status: string }
+    expect(cancelled.status).toBe('cancelled')
+    const receivable = await db.accountReceivable.findUnique({ where: { invoiceId: invoice.id } })
+    expect(receivable?.status).toBe('cancelled')
+
+    const { user: user2, salesOrder: salesOrder2, itemId: itemId2 } = await createSalesOrder('ar-invoice-cancel-blocked', 500)
+    const invoice2 = (await invoiceService.createFromSalesOrder(salesOrder2.id, [{ salesOrderItemId: itemId2, quantity: 1 }], '', user2.id)) as { id: string }
+    createdInvoiceIds.push(invoice2.id)
+    const receivable2 = (await db.accountReceivable.findUnique({ where: { invoiceId: invoice2.id } }))!
+    await financialAccountService.registerReceipt(receivable2.id, 100, new Date(), '', user2.id)
+
+    await expect(invoiceService.cancel(invoice2.id, user2.id)).rejects.toThrow()
+  })
+
+  it('12. Uma fatura cancelada não conta como já faturada no saldo do item (permite refaturar)', async () => {
+    const { user, salesOrder, itemId } = await createSalesOrder('ar-cancel-then-refaturar', 500)
+    const invoice = (await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 1 }], '', user.id)) as { id: string }
+    createdInvoiceIds.push(invoice.id)
+    await invoiceService.cancel(invoice.id, user.id)
+
+    const balance = await invoiceService.getInvoiceableBalance(salesOrder.id)
+    expect(balance[0].quantityInvoiced).toBe(0)
+    expect(balance[0].quantityRemaining).toBe(1)
+
+    const invoice2 = (await invoiceService.createFromSalesOrder(salesOrder.id, [{ salesOrderItemId: itemId, quantity: 1 }], '', user.id)) as { id: string }
+    createdInvoiceIds.push(invoice2.id)
+    expect(invoice2.id).not.toBe(invoice.id)
   })
 })

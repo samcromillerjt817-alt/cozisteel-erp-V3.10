@@ -167,6 +167,74 @@ class PurchaseOrderRepository extends BaseRepository<typeof db.purchaseOrder> {
       return { updated, newStatus }
     })
   }
+
+  /**
+   * ADR-023 (Decisão #1, Estorno) — reverte UM lançamento de recebimento específico (não o pedido
+   * inteiro): decrementa `stockQty`, o lote (quando lotControlled) e `quantityReceived` do item na
+   * MESMA transação, recalcula o status do pedido pra baixo, marca o movimento original como
+   * estornado e cria um novo movimento `OUT` apontando pra ele (`reversalOfId`) — nunca edita/apaga o
+   * lançamento original, que continua existindo como registro histórico imutável.
+   */
+  async reverseReceipt(
+    movement: { id: string; materialId: string; quantity: number; materialBatchId: string | null },
+    purchaseOrder: { id: string; number: string },
+    purchaseOrderItemId: string,
+    reason: string,
+    userId: string
+  ) {
+    return db.$transaction(async (tx) => {
+      const material = await tx.material.update({
+        where: { id: movement.materialId },
+        data: { stockQty: { decrement: movement.quantity } },
+      })
+
+      if (movement.materialBatchId) {
+        await tx.materialBatch.update({
+          where: { id: movement.materialBatchId },
+          data: {
+            quantityReceived: { decrement: movement.quantity },
+            quantityAvailable: { decrement: movement.quantity },
+          },
+        })
+      }
+
+      await tx.purchaseOrderItem.update({
+        where: { id: purchaseOrderItemId },
+        data: { quantityReceived: { decrement: movement.quantity } },
+      })
+
+      const refreshedItems = await tx.purchaseOrderItem.findMany({ where: { purchaseOrderId: purchaseOrder.id } })
+      const allComplete = refreshedItems.every((i) => i.quantityReceived >= i.quantity)
+      const someReceived = refreshedItems.some((i) => i.quantityReceived > 0)
+      const newStatus = allComplete ? 'received' : someReceived ? 'partially_received' : 'confirmed'
+
+      const updatedPurchaseOrder = await tx.purchaseOrder.update({
+        where: { id: purchaseOrder.id },
+        data: { status: newStatus, receivedAt: newStatus === 'received' ? new Date() : null },
+        include: STATUS_INCLUDE,
+      })
+
+      await tx.stockMovement.update({ where: { id: movement.id }, data: { reversedAt: new Date() } })
+
+      const reversalMovement = await tx.stockMovement.create({
+        data: {
+          itemType: 'material',
+          materialId: movement.materialId,
+          type: 'OUT',
+          quantity: movement.quantity,
+          balanceAfter: material.stockQty,
+          reason: `Estorno do recebimento do pedido de compra ${purchaseOrder.number}${reason ? ` — ${reason}` : ''}`,
+          referenceType: 'purchase_order',
+          referenceId: purchaseOrder.id,
+          userId,
+          materialBatchId: movement.materialBatchId,
+          reversalOfId: movement.id,
+        },
+      })
+
+      return { updatedPurchaseOrder, reversalMovement }
+    })
+  }
 }
 
 export const purchaseOrderRepository = new PurchaseOrderRepository()

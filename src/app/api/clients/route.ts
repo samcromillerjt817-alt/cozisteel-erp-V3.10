@@ -9,8 +9,9 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const { page, limit } = parsePagination(searchParams)
     const search = searchParams.get('search') || ''
+    const includeInactive = searchParams.get('includeInactive') === 'true'
 
-    const result = await clientService.list({ search, page, limit })
+    const result = await clientService.list({ search, page, limit, includeInactive })
     return ok(result)
   } catch (error) {
     return handleRouteError(error, 'Erro ao buscar clientes')

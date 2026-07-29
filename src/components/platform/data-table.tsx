@@ -6,6 +6,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { TableSkeleton } from '@/components/domain/table-skeleton'
 import { EmptyTableRow } from '@/components/domain/empty-table-row'
 import { PaginationBar } from '@/components/domain/pagination-bar'
@@ -46,11 +47,17 @@ export interface DataTableColumn<T> {
 }
 
 export interface DataTableRowAction<T> {
-  label: string
+  /** String fixa ou função do row — função para ações cujo texto muda conforme o estado da linha
+   * (ex.: "Inativar"/"Reativar" em Clientes, ADR-022 Fase UX-6 achado #24). */
+  label: string | ((row: T) => string)
   icon?: ReactNode
   onClick: (row: T) => void
   disabled?: (row: T) => boolean
   variant?: 'default' | 'destructive'
+  /** ADR-022 (Fase UX-7, achado #9) — promove esta ação pra um botão-ícone visível ao lado do menu
+   * "⋮", em vez de escondida dentro dele. Reservado pra 1-2 ações realmente mais frequentes por
+   * módulo (ex.: Editar num catálogo simples) — o resto continua no menu. */
+  primary?: boolean
 }
 
 export interface DataTableBulkAction<T> {
@@ -81,6 +88,8 @@ export interface DataTableProps<T> {
   loading?: boolean
   error?: string | null
   emptyMessage?: string
+  /** ADR-022 (Fase UX-6, achado #22) — CTA opcional no estado vazio ("Criar o primeiro X"). */
+  emptyAction?: { label: string; onClick: () => void }
 
   sort?: DataTableSort | null
   onSortChange?: (sort: DataTableSort | null) => void
@@ -117,6 +126,7 @@ export function DataTable<T>({
   loading = false,
   error = null,
   emptyMessage = 'Nenhum registro encontrado',
+  emptyAction,
   sort = null,
   onSortChange,
   selectable = false,
@@ -132,6 +142,9 @@ export function DataTable<T>({
   const [uncontrolledSelected, setUncontrolledSelected] = useState<Set<string>>(new Set())
   const selected = selectedIds ?? uncontrolledSelected
   const setSelected = onSelectionChange ?? setUncontrolledSelected
+
+  const promotedActions = rowActions?.filter((a) => a.primary) ?? []
+  const menuActions = rowActions?.filter((a) => !a.primary) ?? []
 
   const extraCols = (selectable ? 1 : 0) + (rowActions?.length ? 1 : 0)
   const colSpan = columns.length + extraCols
@@ -215,7 +228,7 @@ export function DataTable<T>({
                   )}
                 </TableHead>
               ))}
-              {rowActions && rowActions.length > 0 && <TableHead className="w-10" />}
+              {rowActions && rowActions.length > 0 && <TableHead className={promotedActions.length > 0 ? 'w-auto' : 'w-10'} />}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -235,7 +248,7 @@ export function DataTable<T>({
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
-              <EmptyTableRow colSpan={colSpan} message={emptyMessage} />
+              <EmptyTableRow colSpan={colSpan} message={emptyMessage} action={emptyAction} />
             ) : (
               rows.map((row) => {
                 const id = getRowId(row)
@@ -253,26 +266,55 @@ export function DataTable<T>({
                     ))}
                     {rowActions && rowActions.length > 0 && (
                       <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {rowActions.map((action) => (
-                              <DropdownMenuItem
-                                key={action.label}
-                                disabled={action.disabled?.(row)}
-                                variant={action.variant === 'destructive' ? 'destructive' : 'default'}
-                                onClick={() => action.onClick(row)}
-                              >
-                                {action.icon}
-                                {action.label}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div className="flex items-center justify-end gap-1">
+                          {promotedActions.map((action, actionIndex) => {
+                            const resolvedLabel = typeof action.label === 'function' ? action.label(row) : action.label
+                            return (
+                              <Tooltip key={actionIndex}>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={`h-8 w-8 ${action.variant === 'destructive' ? 'text-destructive hover:text-destructive' : ''}`}
+                                    aria-label={resolvedLabel}
+                                    disabled={action.disabled?.(row)}
+                                    onClick={() => action.onClick(row)}
+                                  >
+                                    {action.icon}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>{resolvedLabel}</TooltipContent>
+                              </Tooltip>
+                            )
+                          })}
+                          {menuActions.length > 0 && (
+                            <DropdownMenu>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Ações">
+                                      <MoreHorizontal className="w-4 h-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                </TooltipTrigger>
+                                <TooltipContent>Ações</TooltipContent>
+                              </Tooltip>
+                              <DropdownMenuContent align="end">
+                                {menuActions.map((action, actionIndex) => (
+                                  <DropdownMenuItem
+                                    key={actionIndex}
+                                    disabled={action.disabled?.(row)}
+                                    variant={action.variant === 'destructive' ? 'destructive' : 'default'}
+                                    onClick={() => action.onClick(row)}
+                                  >
+                                    {action.icon}
+                                    {typeof action.label === 'function' ? action.label(row) : action.label}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
                       </TableCell>
                     )}
                   </TableRow>

@@ -8,9 +8,9 @@ import { db } from '@/lib/db'
  * do que como "mais recente primeiro").
  */
 class StatusHistoryService {
-  async record(entityType: string, entityId: string, fromStatus: string, toStatus: string, userId: string) {
+  async record(entityType: string, entityId: string, fromStatus: string, toStatus: string, userId: string, reason = '') {
     return db.statusHistory.create({
-      data: { entityType, entityId, fromStatus, toStatus, userId },
+      data: { entityType, entityId, fromStatus, toStatus, userId, reason },
     })
   }
 

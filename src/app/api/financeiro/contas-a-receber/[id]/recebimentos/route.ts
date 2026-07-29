@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server'
-import { requireModulePermission, ok, handleRouteError } from '@/lib/api-utils'
+import { requireModulePermission, ok, badRequest, handleRouteError } from '@/lib/api-utils'
 import { validateDto, registerReceiptSchema } from '@/app/dto'
 import { financialAccountService } from '@/app/services/financial-account.service'
+import { parseApiDate } from '@/lib/format'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -19,7 +20,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const body = await req.json()
     const data = validateDto(registerReceiptSchema, body)
 
-    const updated = await financialAccountService.registerReceipt(id, data.amount, new Date(data.paidAt), data.notes, user.id)
+    const paidAt = parseApiDate(data.paidAt)
+    if (!paidAt) return badRequest('Data de recebimento inválida — use aaaa-mm-dd ou dd/mm/aaaa')
+
+    const updated = await financialAccountService.registerReceipt(id, data.amount, paidAt, data.notes, user.id)
     return ok(updated)
   } catch (error) {
     return handleRouteError(error, 'Erro ao registrar recebimento')

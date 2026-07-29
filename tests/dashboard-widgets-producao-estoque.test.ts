@@ -87,12 +87,12 @@ describe('Dashboard Produção/PCP/Estoque — widgets reais (Subetapa 3)', () =
     await db.user.delete({ where: { id: userId } })
   })
 
-  it('catálogo confirma Comercial+Produção+Estoque implementados (36 entradas destas 3 categorias)', () => {
+  it('catálogo confirma Comercial+Produção+Estoque implementados (37 entradas destas 3 categorias)', () => {
     const implementedIds = new Set(getImplementedWidgets().map((w) => w.id))
     const expectedIds = DASHBOARD_WIDGET_CATALOG.filter((e) => ['comercial', 'producao', 'estoque'].includes(e.categoria))
-    // 36 desde o ADR-019 Subetapa 7.5: +1 (`estoque.valor-total-estoque`, headline agregado pro
-    // Resumo por Módulo da Diretoria).
-    expect(expectedIds.length).toBe(36)
+    // 37 desde o ADR-025 addendum: +1 (`comercial.orcamentos-confirmados-cliente`, alerta de
+    // confirmação de orçamento pelo cliente via link público).
+    expect(expectedIds.length).toBe(37)
     for (const entry of expectedIds) expect(implementedIds.has(entry.id)).toBe(true)
   })
 

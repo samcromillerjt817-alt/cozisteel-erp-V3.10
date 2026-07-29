@@ -82,6 +82,7 @@ export interface QuoteListRow {
   clientName: string
   total: number
   salesOrder: { id: string; number: string } | null
+  publicToken: string | null
 }
 
 export interface ClientOption {
@@ -106,4 +107,7 @@ export interface ProductOption {
   unit?: string
   salePrice: number
   weight: number
+  width: number
+  height: number
+  length: number
 }

@@ -239,7 +239,7 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
   async function changeStatus(id: string, status: string) {
     if (status === 'approved' && !(await confirmAction({
       title: 'Aprovar requisição',
-      description: 'Você está aprovando esta requisição sozinho — o sistema não exige um segundo aprovador. Confirme só se tiver revisado os itens e cotações.',
+      description: 'Confirme só se tiver revisado os itens e cotações. Dependendo da alçada configurada, pode ser necessária mais de uma aprovação antes de avançar.',
     }))) return
     setStatusChanging(true)
     try {
@@ -248,6 +248,12 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
       })
       if (r.ok) {
         const json = await r.json()
+        if (json.pendingApproval) {
+          toast.info(`Aprovação registrada: ${json.approvalsGiven} de ${json.approvalsNeeded} necessárias. Aguardando mais aprovações.`)
+          load()
+          if (detail?.id === id) setDetail(await fetchDetail(id))
+          return
+        }
         const generated = json.generatedPurchaseOrders as Array<{ id: string; number: string }> | undefined
         if (generated && generated.length > 0) {
           showActionResult({
@@ -348,6 +354,7 @@ export function RequisicoesPage({ materialsFull, suppliers, productionOrders, pe
         getRowId={(req) => req.id}
         loading={loading}
         emptyMessage="Nenhuma requisição encontrada"
+        emptyAction={{ label: 'Criar a primeira requisição', onClick: openNew }}
         rowActions={[
           { label: 'Cotar fornecedores', icon: <Users />, onClick: (req) => openDetail(req) },
           { label: 'PDF', icon: <FileOutput />, onClick: (req) => window.open(`/api/requisitions/${req.id}/pdf`, '_blank') },
