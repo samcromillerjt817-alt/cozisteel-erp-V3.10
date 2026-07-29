@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react'
 import { Radar, Gauge } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { DashboardSkeletonGrid } from '@/components/dashboard/dashboard-skeleton-grid'
+import { DashboardStateMessage } from '@/components/dashboard/dashboard-state-message'
 import { DashboardAlertCenter } from '@/components/dashboard/dashboard-alert-center'
-import { DashboardModuleSummaryCard } from '@/components/dashboard/dashboard-module-summary-card'
+import { DashboardIndicatorCard } from '@/components/dashboard/dashboard-indicator-card'
 import { DashboardPipelineBreadcrumb } from '@/components/dashboard/dashboard-pipeline-breadcrumb'
 import { PROFILE_ICONS } from '@/components/dashboard/dashboard-profile-view'
 import type { DashboardCardData, DashboardCentroOperacoesPayloadDTO } from '@/app/services/dashboard-types'
@@ -66,24 +68,20 @@ export function DashboardCentroOperacoesView({ onNavigate }: DashboardCentroOper
     <div className="space-y-6">
       {loading ? (
         <div className="space-y-6">
-          <Skeleton className="h-16 rounded-xl" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-24 rounded-xl" />
-            ))}
-          </div>
+          <Skeleton className="h-16 rounded-ms-lg" />
+          <DashboardSkeletonGrid />
         </div>
       ) : error ? (
-        <p className="text-muted-foreground text-center py-12">Erro ao carregar o Centro de Operações</p>
+        <DashboardStateMessage kind="error" message="Erro ao carregar o Centro de Operações" />
       ) : !payload ? (
-        <p className="text-muted-foreground text-center py-12">Nenhum indicador disponível ainda</p>
+        <DashboardStateMessage kind="empty" message="Nenhum indicador disponível ainda" />
       ) : (
         <>
           <DashboardPipelineBreadcrumb stages={payload.pipeline} onNavigate={onNavigate} />
 
           <section className="space-y-3">
             <header className="flex items-center gap-2">
-              <Radar className="w-4 h-4 text-red-600" />
+              <Radar className="w-4 h-4 text-primary" />
               <div>
                 <h3 className="text-sm font-bold leading-tight">Central de Alertas</h3>
                 <p className="text-xs text-muted-foreground leading-tight">O que precisa de atenção agora, em toda a empresa.</p>
@@ -105,7 +103,8 @@ export function DashboardCentroOperacoesView({ onNavigate }: DashboardCentroOper
                 {payload.kpis.map((kpi) => {
                   const Icon = PROFILE_ICONS[kpi.profile]
                   return (
-                    <DashboardModuleSummaryCard
+                    <DashboardIndicatorCard
+                      variant="compact"
                       key={kpi.widget.id}
                       label={kpi.label}
                       data={kpi.widget.data as DashboardCardData}

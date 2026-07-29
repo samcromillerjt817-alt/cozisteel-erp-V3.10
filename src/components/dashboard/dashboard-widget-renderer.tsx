@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { DashboardChart } from '@/components/dashboard/dashboard-chart'
-import { DashboardWidgetCard } from '@/components/dashboard/dashboard-widget-card'
+import { DashboardIndicatorCard } from '@/components/dashboard/dashboard-indicator-card'
 import { DashboardWidgetTable } from '@/components/dashboard/dashboard-widget-table'
 import type { DashboardWidgetDTO, DashboardCardData, DashboardChartData, DashboardTableData } from '@/app/services/dashboard-types'
 
@@ -18,7 +18,7 @@ interface DashboardWidgetRendererProps {
  */
 export function DashboardWidgetRenderer({ widget, icon }: DashboardWidgetRendererProps) {
   if (widget.type === 'card') {
-    return <DashboardWidgetCard title={widget.title} data={widget.data as DashboardCardData} icon={icon} />
+    return <DashboardIndicatorCard variant="wide" title={widget.title} data={widget.data as DashboardCardData} icon={icon} />
   }
 
   return (

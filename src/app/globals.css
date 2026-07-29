@@ -57,6 +57,14 @@ body {
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --color-ms-critical: var(--ms-critical);
+  --color-ms-warning: var(--ms-warning);
+  --color-ms-success: var(--ms-success);
+  --color-ms-info: var(--ms-info);
+  --color-ms-surface-2: var(--ms-surface-2);
+  --radius-ms-sm: var(--ms-radius-sm);
+  --radius-ms-md: var(--ms-radius-md);
+  --radius-ms-lg: var(--ms-radius-lg);
 }
 
 :root {
@@ -98,6 +106,25 @@ body {
   --sidebar-accent-foreground: #7a0c11;
   --sidebar-border: #e2e8f0;
   --sidebar-ring: #b21118;
+
+  /* Tokens semânticos MOBSTEEL (evolução visual do Dashboard, 2026-07-29) — aditivos, nunca
+     redefinem --primary/--destructive. "Crítico" é laranja (calor), não vermelho de marca: o
+     vermelho fica reservado para seleção/ação/identidade (ver docs/superpowers/specs/2026-07-29-
+     dashboard-visual-identity-design.md). "Sucesso" é teal (frio/inox/higiene), contraste
+     deliberado com o laranja "quente" do crítico. */
+  --ms-critical: #c2410c;
+  --ms-warning: #b45309;
+  --ms-success: #0f766e;
+  --ms-info: #33608a;
+  --ms-surface-2: #f4f5f6;
+
+  --ms-radius-sm: 6px;
+  --ms-radius-md: 10px;
+  --ms-radius-lg: 14px;
+
+  --ms-motion-fast: 150ms;
+  --ms-motion-base: 250ms;
+  --ms-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Tema escuro (Fase 11.5, Decisão 1): reservado, NÃO implementado nesta fase — todo token acima já
@@ -132,15 +159,13 @@ body {
 
 @layer utilities {
   .bg-app {
-    background-color: #f8fafc;
+    @apply bg-background;
   }
   .text-app {
-    color: #0f172a;
+    @apply text-foreground;
   }
   .card-app {
-    background-color: white;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+    @apply bg-card border border-border shadow-sm;
   }
 }
 
@@ -178,6 +203,20 @@ body {
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Fluxo da esteira operacional do Dashboard (evolução visual, 2026-07-29) — dispara uma vez por
+   carregamento de dado, nunca em loop. Ver dashboard-pipeline-breadcrumb.tsx. */
+@keyframes ms-flow {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ms-motion-safe {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 /* Remove native number input spin buttons everywhere — in tight columns (Qtd, Valor Unit, etc.)

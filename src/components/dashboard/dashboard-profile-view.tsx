@@ -2,7 +2,8 @@
 
 import { useEffect, useState, type ElementType } from 'react'
 import { Home, LayoutDashboard, TrendingUp, ClipboardList, ShoppingCart, Factory, Package, Settings2, Radar, Gauge, Wallet } from 'lucide-react'
-import { Skeleton } from '@/components/ui/skeleton'
+import { DashboardSkeletonGrid } from '@/components/dashboard/dashboard-skeleton-grid'
+import { DashboardStateMessage } from '@/components/dashboard/dashboard-state-message'
 import { DashboardAlertCenter } from '@/components/dashboard/dashboard-alert-center'
 import { DashboardKpiRow } from '@/components/dashboard/dashboard-kpi-row'
 import { DashboardSecondaryDetails } from '@/components/dashboard/dashboard-secondary-details'
@@ -112,20 +113,16 @@ export function DashboardProfileView({ profile, onNavigate }: DashboardProfileVi
       />
 
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
-          ))}
-        </div>
+        <DashboardSkeletonGrid />
       ) : error ? (
-        <p className="text-muted-foreground text-center py-12">Erro ao carregar este dashboard</p>
+        <DashboardStateMessage kind="error" message="Erro ao carregar este dashboard" />
       ) : !payload || payload.widgets.length === 0 ? (
-        <p className="text-muted-foreground text-center py-12">Nenhum indicador disponível para este perfil ainda</p>
+        <DashboardStateMessage kind="empty" message="Nenhum indicador disponível para este perfil ainda" />
       ) : (
         <>
           <section className="space-y-3">
             <header className="flex items-center gap-2">
-              <Radar className="w-4 h-4 text-red-600" />
+              <Radar className="w-4 h-4 text-primary" />
               <div>
                 <h3 className="text-sm font-bold leading-tight">Centro de Comando</h3>
                 <p className="text-xs text-muted-foreground leading-tight">O que precisa da sua atenção agora.</p>

@@ -5,7 +5,8 @@ import { useSession, signIn, signOut } from 'next-auth/react'
 import { toast } from 'sonner'
 import { hasPermission, type Role } from '@/app/middleware/rbac'
 import { getAccessibleProfiles } from '@/app/services/dashboard-access.service'
-import { DashboardTabs } from '@/components/dashboard/dashboard-tabs'
+import { DashboardTabs, PROFILE_LABELS } from '@/components/dashboard/dashboard-tabs'
+import { DashboardHeader } from '@/components/dashboard/dashboard-header'
 import { ClientesPage } from '@/components/modules/clientes/clientes-page'
 import { UsuariosPage } from '@/components/modules/usuarios/usuarios-page'
 import { FornecedoresPage } from '@/components/modules/fornecedores/fornecedores-page'
@@ -82,6 +83,12 @@ export default function ERPPage() {
   const { data: session, status } = useSession()
   const user = session?.user as SessionUser | undefined
   const userRole = (user?.role || 'viewer') as Role
+  // Sessão já resolvida neste ponto (gate em `status === 'loading'` acima) — inicializador preguiçoso
+  // é seguro, reflete o perfil real desde o primeiro render, sem precisar de um efeito pra sincronizar.
+  const [activeProfileLabel, setActiveProfileLabel] = useState(() => {
+    const firstProfile = getAccessibleProfiles(userRole)[0]
+    return firstProfile ? PROFILE_LABELS[firstProfile] : ''
+  })
   const confirmAction = useConfirm()
 
   /* ── Global UI State ── */
@@ -579,21 +586,29 @@ export default function ERPPage() {
             return (
               <div key={gi} className={gi > 0 ? 'mt-4' : ''}>
                 {group.label && !collapsed && (
-                  <p className="px-3 mb-1 text-[11px] font-semibold tracking-wider text-muted-foreground/70">{group.label}</p>
+                  <p className="px-3 mb-1 text-xs font-semibold tracking-wider text-muted-foreground/70 uppercase">{group.label}</p>
                 )}
-                {visibleItems.map(n => (
-                  <button
-                    key={n.key}
-                    onClick={() => handleNavClick(n.key)}
-                    title={collapsed ? n.label : undefined}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${collapsed ? 'justify-center' : ''} ${
-                      activeModule === n.key ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
-                  >
-                    {n.icon} {!collapsed && n.label}
-                    {!collapsed && n.key === 'configuracoes' && activeModule === 'configuracoes' && <ChevronDown className="w-4 h-4 ml-auto" />}
-                  </button>
-                ))}
+                {visibleItems.map(n => {
+                  const isActive = activeModule === n.key
+                  const activeClass = collapsed
+                    ? isActive
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    : isActive
+                      ? 'bg-primary/5 text-primary border-l-2 border-l-primary'
+                      : 'text-muted-foreground border-l-2 border-l-transparent hover:bg-muted hover:text-foreground hover:border-l-border'
+                  return (
+                    <button
+                      key={n.key}
+                      onClick={() => handleNavClick(n.key)}
+                      title={collapsed ? n.label : undefined}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-ms-sm text-sm font-medium transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-1 ${collapsed ? 'justify-center' : ''} ${activeClass}`}
+                    >
+                      {n.icon} {!collapsed && n.label}
+                      {!collapsed && n.key === 'configuracoes' && activeModule === 'configuracoes' && <ChevronDown className="w-4 h-4 ml-auto" />}
+                    </button>
+                  )
+                })}
               </div>
             )
           })}
@@ -655,7 +670,7 @@ export default function ERPPage() {
   return (
     <div className="min-h-screen flex flex-col bg-app text-app">
       {/* ═══ TOP BAR ═══ */}
-      <header className="sticky top-0 z-30 bg-white/95 border-b border-slate-200 h-14 flex items-center px-4 gap-4 shadow-sm">
+      <header className="sticky top-0 z-30 bg-card/95 border-b border-border h-14 flex items-center px-4 gap-4 shadow-sm">
         <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" className="md:hidden"><Menu className="w-5 h-5" /></Button>
@@ -674,7 +689,7 @@ export default function ERPPage() {
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
-            className="relative w-full flex items-center h-9 rounded-md border border-input bg-transparent px-3 text-sm text-muted-foreground hover:bg-accent transition-colors"
+            className="relative w-full flex items-center h-9 rounded-md border border-input bg-transparent px-3 text-sm text-muted-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-1"
           >
             <Search className="w-4 h-4 mr-2 shrink-0" />
             <span className="flex-1 text-left">Buscar...</span>
@@ -697,7 +712,7 @@ export default function ERPPage() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* ═══ SIDEBAR (desktop) — recolhível, Subetapa 11.5.10 ═══ */}
-        <aside className={`hidden md:flex border-r border-slate-200 bg-white flex-shrink-0 transition-[width] duration-200 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
+        <aside className={`hidden md:flex border-r border-border bg-card flex-shrink-0 transition-[width] duration-200 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
           <div className="w-full">{renderNav(sidebarCollapsed)}</div>
         </aside>
 
@@ -730,8 +745,12 @@ export default function ERPPage() {
             // Container com max-width em telas ultrawide (ADR-019 §5: "não esticar cards finos até a
             // borda da tela").
             <div className="space-y-4 max-w-[1600px] mx-auto">
-              <h2 className="text-2xl font-bold">Dashboard</h2>
-              <DashboardTabs role={userRole} onNavigate={(moduleKey) => setActiveModule(moduleKey as ModuleKey)} />
+              <DashboardHeader activeProfileLabel={activeProfileLabel} />
+              <DashboardTabs
+                role={userRole}
+                onNavigate={(moduleKey) => setActiveModule(moduleKey as ModuleKey)}
+                onProfileChange={setActiveProfileLabel}
+              />
             </div>
           )}
 

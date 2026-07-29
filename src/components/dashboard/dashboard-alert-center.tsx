@@ -41,7 +41,7 @@ export function DashboardAlertCenter({ widgets, onNavigate, fetchedAt, maxVisibl
   if (active.length === 0) {
     return (
       <div className="rounded-xl border bg-card p-6 flex flex-col items-center text-center gap-2">
-        <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+        <CheckCircle2 className="w-8 h-8 text-ms-success" />
         <p className="font-medium">Tudo em ordem por aqui.</p>
         <p className="text-xs text-muted-foreground">{formatRelativeUpdate(fetchedAt)}</p>
       </div>
@@ -55,10 +55,10 @@ export function DashboardAlertCenter({ widgets, onNavigate, fetchedAt, maxVisibl
   const info = visible.filter((v) => v.data.severity === 'info')
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" aria-live="polite" aria-atomic="false">
       {critical.length > 0 && (
         <div className="space-y-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-red-600">
+          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-ms-critical">
             <AlertCircle className="w-3.5 h-3.5" />
             Crítico — requer ação imediata
           </div>
@@ -72,7 +72,7 @@ export function DashboardAlertCenter({ widgets, onNavigate, fetchedAt, maxVisibl
 
       {warning.length > 0 && (
         <div className="space-y-2">
-          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-600">
+          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ms-warning">
             <AlertTriangle className="w-3.5 h-3.5" />
             Atenção — monitorar
           </div>

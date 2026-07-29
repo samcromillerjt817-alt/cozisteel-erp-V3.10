@@ -8,7 +8,7 @@ import { DashboardCentroOperacoesView } from '@/components/dashboard/dashboard-c
 import { getAccessibleProfiles } from '@/app/services/dashboard-access.service'
 import type { DashboardProfile } from '@/app/services/dashboard-types'
 
-const PROFILE_LABELS: Record<DashboardProfile, string> = {
+export const PROFILE_LABELS: Record<DashboardProfile, string> = {
   'centro-operacoes': 'Centro de Operações',
   diretoria: 'Diretoria',
   comercial: 'Comercial',
@@ -26,7 +26,15 @@ const PROFILE_LABELS: Record<DashboardProfile, string> = {
  * nenhuma lista fixa de perfis aqui. Um perfil novo, ou uma mudança na composição perfil→Role,
  * aparece automaticamente sem tocar este componente.
  */
-export function DashboardTabs({ role, onNavigate }: { role: string; onNavigate: (moduleKey: string) => void }) {
+export function DashboardTabs({
+  role,
+  onNavigate,
+  onProfileChange,
+}: {
+  role: string
+  onNavigate: (moduleKey: string) => void
+  onProfileChange?: (label: string) => void
+}) {
   const profiles = getAccessibleProfiles(role)
   const [active, setActive] = useState<DashboardProfile | undefined>(profiles[0])
 
@@ -34,8 +42,13 @@ export function DashboardTabs({ role, onNavigate }: { role: string; onNavigate: 
     return <p className="text-muted-foreground text-center py-12">Nenhum dashboard disponível para o seu perfil de acesso</p>
   }
 
+  function handleValueChange(value: string) {
+    setActive(value as DashboardProfile)
+    onProfileChange?.(PROFILE_LABELS[value as DashboardProfile])
+  }
+
   return (
-    <Tabs value={active} onValueChange={(value) => setActive(value as DashboardProfile)}>
+    <Tabs value={active} onValueChange={handleValueChange}>
       {/* ADR-019 §5 (QA responsivo, Subetapa 7.6) — admin/manager veem até 8 perfis; `TabsList` nunca
           quebra linha (`w-fit`), então em mobile isso rolava a PÁGINA INTEIRA na horizontal (o `<main>`
           tem `overflow-auto`). Rolagem contida só na faixa de abas, resto da tela intocado. */}
