@@ -109,6 +109,12 @@ model User {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  // Bloqueio de conta por força bruta (ADR-027) — complementa o rate limit por IP: um atacante
+  // trocando de IP ainda esbarra neste limite, por username, sobrevive a restart do PM2 (guardado
+  // no banco, não em memória).
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
   quotes                    Quote[]
   auditLogs                 AuditLog[]
   sequences                 NumberSequence[]
