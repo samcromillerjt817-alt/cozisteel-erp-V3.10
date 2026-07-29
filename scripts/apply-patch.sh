@@ -156,7 +156,10 @@ tar czf "$BACKUP_FILE" \
   prisma src public package.json package-lock.json next.config.ts version.json ecosystem.config.cjs 2>/dev/null || true
 
 if [ -n "$DB_FILE" ] && [ -f "$DB_FILE" ]; then
-  cp "$DB_FILE" "$PATCH_BACKUP_DIR/pre-patch-$TS.db"
+  # ADR-028 — nunca `cp` direto: o PM2 pode estar com o banco aberto e escrevendo nele nesse
+  # exato instante. A API de backup do próprio SQLite (`.backup`) copia um snapshot consistente
+  # mesmo sob escrita concorrente, sem correr risco da cópia sair corrompida/inconsistente.
+  sqlite3 -cmd "PRAGMA busy_timeout=10000;" "$DB_FILE" ".backup '$PATCH_BACKUP_DIR/pre-patch-$TS.db'" >/dev/null
   echo "  Banco de dados copiado para backup."
 fi
 echo "  Backup salvo em: $BACKUP_FILE"
@@ -168,7 +171,10 @@ rollback() {
   write_status "rolling_back" "Erro detectado — revertendo para a versão anterior..."
   tar xzf "$BACKUP_FILE" -C "$PROJECT_ROOT"
   if [ -n "$DB_FILE" ] && [ -f "$PATCH_BACKUP_DIR/pre-patch-$TS.db" ]; then
-    cp "$PATCH_BACKUP_DIR/pre-patch-$TS.db" "$DB_FILE"
+    # ADR-028 — mesmo motivo do backup acima, mas na direção contrária: o PM2 ainda não foi
+    # reiniciado neste ponto (comentário abaixo), então o arquivo de destino pode estar aberto.
+    # `.restore` é a API de backup do SQLite operando ao contrário — segura no mesmo sentido.
+    sqlite3 -cmd "PRAGMA busy_timeout=10000;" "$DB_FILE" ".restore '$PATCH_BACKUP_DIR/pre-patch-$TS.db'" >/dev/null
   fi
 
   # Achado real (relatado pelo usuário — patches que "quebravam de vez" em vez de reverter):

@@ -94,7 +94,11 @@ class PatchService {
     const dbFile = (process.env.DATABASE_URL || '').replace(/^file:/, '')
     if (dbFile && fsSync.existsSync(dbFile)) {
       backupDb = `manual-backup-${ts}.db`
-      await fs.copyFile(dbFile, path.join(backupDir, backupDb))
+      // ADR-028 — nunca `fs.copyFile`/`cp` direto no arquivo: o banco pode estar recebendo
+      // gravação do PM2 no exato instante da cópia (mesmo achado que motivou o backup diário
+      // automático). A própria API de backup do SQLite (`.backup`) lida com isso corretamente,
+      // copiando um snapshot consistente mesmo sob escrita concorrente.
+      execSync(`sqlite3 -cmd "PRAGMA busy_timeout=10000;" "${dbFile}" ".backup '${path.join(backupDir, backupDb)}'"`, { cwd: process.cwd() })
     }
 
     const { size: sizeBytes } = await fs.stat(backupTarPath)

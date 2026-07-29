@@ -49,9 +49,12 @@ describe('Administração — backup manual sob demanda (ADR-021, Parte 8.5)', (
     expect(log).not.toBeNull()
   })
 
-  it('3. inclui o banco de dados no backup quando DATABASE_URL aponta para um arquivo existente', async () => {
+  it('3. inclui o banco de dados no backup quando DATABASE_URL aponta para um arquivo existente (ADR-028 — via sqlite3 .backup, não cp direto)', async () => {
     const fakeDbPath = path.join(tmpStorageDir, 'fake.db')
-    fs.writeFileSync(fakeDbPath, 'conteudo-fake-do-banco')
+    // Precisa ser um SQLite de verdade — a partir do ADR-028, o backup usa a API de backup do
+    // próprio SQLite (`.backup`, segura sob escrita concorrente), que exige um arquivo de banco
+    // válido como origem (não copia bytes arbitrários como o `cp` antigo copiava).
+    execSync(`sqlite3 "${fakeDbPath}" "CREATE TABLE t(x TEXT); INSERT INTO t VALUES ('conteudo-fake-do-banco');"`)
     process.env.DATABASE_URL = `file:${fakeDbPath}`
 
     const user = await createTestUser('manual-backup-with-db')
@@ -60,8 +63,13 @@ describe('Administração — backup manual sob demanda (ADR-021, Parte 8.5)', (
     const result = await patchService.createManualBackup(user.id)
 
     expect(result.backupDb).toMatch(/^manual-backup-\d{8}-\d{6}-\d{3}\.db$/)
-    expect(fs.existsSync(path.join(backupsDir, result.backupDb!))).toBe(true)
-    expect(fs.readFileSync(path.join(backupsDir, result.backupDb!), 'utf8')).toBe('conteudo-fake-do-banco')
+    const backedUpPath = path.join(backupsDir, result.backupDb!)
+    expect(fs.existsSync(backedUpPath)).toBe(true)
+
+    // Verifica que é um SQLite válido e íntegro, com o mesmo conteúdo do original — não mais uma
+    // comparação de bytes crus, já que `.backup` grava o arquivo em seu próprio formato interno.
+    expect(execSync(`sqlite3 "${backedUpPath}" "PRAGMA integrity_check;"`, { encoding: 'utf8' }).trim()).toBe('ok')
+    expect(execSync(`sqlite3 "${backedUpPath}" "SELECT x FROM t;"`, { encoding: 'utf8' }).trim()).toBe('conteudo-fake-do-banco')
 
     process.env.DATABASE_URL = originalDatabaseUrl
   })
@@ -72,7 +80,7 @@ describe('Administração — backup manual sob demanda (ADR-021, Parte 8.5)', (
     expect(files[0].modifiedAt >= files[files.length - 1].modifiedAt).toBe(true)
     const withDb = files.find((f) => f.dbSizeBytes !== null)
     expect(withDb).toBeDefined()
-    expect(withDb!.dbSizeBytes).toBe('conteudo-fake-do-banco'.length)
+    expect(withDb!.dbSizeBytes).toBeGreaterThan(0)
   })
 
   it('5. não lista um backup automático de patch ("pre-patch-*") entre os backups manuais', async () => {
