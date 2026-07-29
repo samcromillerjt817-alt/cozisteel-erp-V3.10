@@ -88,6 +88,16 @@ export interface AdminQueryResult {
   truncated: boolean
 }
 
+export interface AdminWriteQueryResult {
+  statementType: 'UPDATE' | 'DELETE' | 'INSERT'
+  table: string
+  affectedCount: number
+  beforeRows: Record<string, unknown>[]
+  afterRows: Record<string, unknown>[]
+  truncatedPreview: boolean
+  committed: boolean
+}
+
 export type RecipeId = 'unstick-patch-status' | 'reconcile-patch-log' | 'recalculate-batch-cost'
 
 export interface RecipeDefinition {

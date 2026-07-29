@@ -330,3 +330,42 @@ banco quando `DATABASE_URL` aponta pra um arquivo existente, e confirma que um `
 (backup automático de um patch real) nunca aparece na listagem de backups manuais. 339/339 testes
 totais, tsc limpo, lint 34 (+1 sobre a baseline de 33 — mesmo padrão sistêmico de fetch-em-efeito já
 tolerado nesta mesma aba, não um problema novo), build limpo.
+
+## Addendum — Console de escrita controlada (2026-07-29)
+
+Pedido explícito do usuário, na mesma conversa em que o ERP foi considerado pronto para produção
+(ver ADR-027/ADR-028): acesso direto ao banco pra correções e consultas, "parecido com o APSDU do
+TOTVS". Isso reabre — de propósito, com o usuário ciente — a decisão original da Parte 3(c) desta
+ADR, que rejeitou explicitamente um console de escrita livre por risco, optando só por leitura +
+receitas curadas. Apresentei essa tensão antes de implementar; o usuário escolheu explicitamente
+**não** o SQL livre sem trava, mas um meio-termo controlado.
+
+**Implementado**: `AdminWriteQueryService` (`src/app/services/admin-write-query.service.ts`) —
+aceita só `UPDATE`/`DELETE`/`INSERT` (`DROP`/`ALTER`/`CREATE`/`TRUNCATE`/`PRAGMA` continuam
+impossíveis, mesma allowlist do `firstWord` que já protegia o console de leitura). `UPDATE`/`DELETE`
+exigem `WHERE` explícito — nunca atualiza/apaga a tabela inteira; como a gramática do próprio SQLite
+não permite `JOIN` nessas 2 formas, "1 tabela por vez" já vem de graça, sem precisar impor
+separadamente. Teto de 1000 linhas afetadas por instrução (acima disso, pede pra restringir o
+`WHERE`). Tabela `AuditLog` bloqueada permanentemente — a ferramenta de correção não pode apagar o
+próprio rastro de ter sido usada.
+
+A parte que diferencia isso de um `cp`/console de escrita cru: **preview obrigatório**. Toda
+chamada roda a instrução de verdade dentro de uma `db.$transaction`, captura o estado antes/depois
+das linhas afetadas, e só comita se o chamador passar `commit: true` explicitamente — do contrário,
+força rollback (via uma exceção-sentinela capturada logo depois da transação) e devolve o que
+*teria* acontecido, sem qualquer persistência real. A UI (`console-tab.tsx`, nova aba "Correção" ao
+lado de "Consulta") invalida qualquer preview anterior assim que o texto da instrução muda — nunca
+deixa confirmar em cima de um preview que não corresponde mais ao SQL atual. `commit: true` grava em
+`AuditLog` (`action: 'CORRECAO_DIRETA'`) com `beforeValue`/`afterValue` reais, mesmo padrão já usado
+pelas receitas.
+
+Rede de segurança adicional: o backup automático diário (ADR-028), implementado na mesma sessão,
+cobre qualquer correção que saia errada apesar das travas acima.
+
+Rota: `POST /api/admin/query/write` (`sistema:manage`, mesma permissão do console de leitura e das
+receitas). Testes: `tests/admin-write-query.test.ts` (10 casos) — preview nunca persiste (UPDATE e
+DELETE), commit persiste de verdade, UPDATE/DELETE sem WHERE rejeitados, DELETE com WHERE some de
+verdade só com commit, INSERT devolve a linha criada via `last_insert_rowid()`, `AuditLog` bloqueada
+mesmo com WHERE válido, instruções fora da allowlist rejeitadas, múltiplas instruções empilhadas
+rejeitadas. 497/497 testes totais, tsc limpo, lint 59 (mesma contagem da baseline, 0 novos), build
+limpo.
