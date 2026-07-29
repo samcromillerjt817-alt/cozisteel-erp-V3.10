@@ -82,6 +82,15 @@ export async function authorizeCredentials(
   return { id: user.id, name: user.name, email: user.email, role: user.role }
 }
 
+// Auditoria de segurança (2ª rodada) — antes, o cookie ficar `Secure` dependia só do NextAuth
+// interpretar corretamente o protocolo de `NEXTAUTH_URL` (que num deploy real chegou a ficar
+// configurado como `http://<ip-interno>` por engano, derrubando a proteção de todos os cookies,
+// inclusive o de sessão). Agora é explícito e não depende de mais nada além de `APP_ENV` estar
+// certo — o mesmo valor que já governa o bloqueio de `/dev/*` em `src/middleware.ts`. Em dev
+// (`APP_ENV` ausente/`development`), continua `false` — cookie sem `Secure` funciona normalmente
+// por HTTP local.
+const isProductionDeploy = process.env.APP_ENV === "production"
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -90,6 +99,7 @@ export const authOptions: NextAuthOptions = {
       authorize: (credentials) => authorizeCredentials(credentials?.username, credentials?.password),
     })
   ],
+  useSecureCookies: isProductionDeploy,
   session: { strategy: "jwt" },
   callbacks: {
     async jwt({ token, user }) {

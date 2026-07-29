@@ -6,8 +6,12 @@ import { auditService } from '@/app/services/audit.service'
 import { statusHistoryService } from '@/app/services/status-history.service'
 import { approvalService } from '@/app/services/approval.service'
 import { domainEvents, DOMAIN_EVENTS } from '@/lib/domain-events'
-import type { OrcamentoAprovadoPayload, OrcamentoConvertidoEmPedidoVendaPayload } from '@/lib/domain-events'
-import { NotFoundException, BadRequestException } from '@/app/exceptions'
+import type {
+  OrcamentoAprovadoPayload,
+  OrcamentoAprovadoEfeitosPosCommitPayload,
+  OrcamentoConvertidoEmPedidoVendaPayload,
+} from '@/lib/domain-events'
+import { NotFoundException, BadRequestException, ConflictException } from '@/app/exceptions'
 import { checkTransition } from '@/lib/status-machine'
 import { formatDate, parseBrDate } from '@/lib/format'
 import { onlyDigits } from '@/lib/masks'
@@ -76,6 +80,18 @@ interface QuoteClientFields {
   clientAddress: string
   clientNeighborhood: string
   clientCep: string
+}
+
+/** Leitura dedicada da transação atômica de `confirmByClient` — só os campos usados ali, com
+ *  `items` no formato bruto do banco (`productId`/`notes`), não o formato de exibição pública
+ *  (`code`/`unitPrice`/`total`) de `QuotePublicRecord`. */
+interface QuotePublicRecordWithItems {
+  id: string
+  number: string
+  status: string
+  userId: string
+  validUntil: string
+  items: Array<{ productId: string | null; description: string; quantity: number; unit: string; notes: string }>
 }
 
 interface QuotePublicRecord {
@@ -550,11 +566,50 @@ class QuoteService {
    * alçada (`approvalService`), que exige um usuário interno com Role — o cliente não tem nenhum dos
    * dois. O fluxo interno de aprovação (ADR-023, item 5) continua existindo à parte, sem alteração,
    * para os casos em que a equipe confirma manualmente (ex.: cliente aprovou por telefone).
+   *
+   * Atomicidade (auditoria de segurança, 2ª rodada) — a versão anterior lia o orçamento, checava
+   * `status === 'sent'` em JS e só DEPOIS escrevia, em 2 passos separados: 2 requisições
+   * concorrentes podiam ler "sent" antes de qualquer uma escrever, e as duas gerariam Ordem de
+   * Produção. O guard real agora é `tx.quote.updateMany({where: {status: 'sent'}, ...})` — uma
+   * ÚNICA instrução SQL, atômica no próprio motor SQLite, indivisível mesmo sob concorrência real
+   * (não depende de `db.$transaction` pra isso: um único `UPDATE ... WHERE` já é atômico por
+   * conta própria). Só o `count === 1` da chamada vencedora prossegue pra criar Ordem de Produção.
+   *
+   * Decisão de design importante, descoberta NESTA auditoria: a primeira versão desta correção
+   * envolvia o compare-and-swap inteiro dentro de uma `db.$transaction` interativa. Sob teste de
+   * carga real (20 chamadas concorrentes via `Promise.all`, ver `tests/quote-public-confirmation-
+   * race.test.ts`), isso expôs um teto de concorrência do motor Prisma (Node-API) + SQLite nesta
+   * versão (6.19.3): mesmo uma transação trivial (`tx.user.count()`) sem nenhuma lógica de negócio
+   * falhava com "Socket timeout" pra 80%+ das chamadas sob 20 transações interativas simultâneas —
+   * um teto do motor, não do `$transaction({maxWait, timeout})` (aumentar esses valores não mudou
+   * nada, confirmando que o teto não é configurável por essa API). Por isso o compare-and-swap
+   * NÃO abre uma transação interativa — é 1 `updateMany` avulso, atômico por natureza, sem
+   * concorrência de transações nenhuma. Só a criação de OP (que só o vencedor executa — nenhuma
+   * pressão de 20 chamadas concorrentes chega até aqui) abre uma transação estreita, com
+   * compensação manual (reverter o status) se ela falhar no meio — o equivalente prático a um
+   * rollback, sem pagar o preço do teto de concorrência do motor.
+   *
+   * Contrato de resposta pra 2ª tentativa sobre o mesmo token (idempotência/conflito, nunca depende
+   * de rate limit pra ficar consistente): se o orçamento já foi decidido com a MESMA decisão
+   * pedida, devolve sucesso idempotente (`alreadyProcessed: true`, sem recriar nada); se já foi
+   * decidido com uma decisão DIFERENTE, `ConflictException` (409); se o token nunca existiu ou o
+   * orçamento expirou, `NotFoundException` (404) — igual a antes, sem virar oráculo.
    */
   async confirmByClient(token: string, decision: 'approved' | 'rejected') {
-    const quote = (await quoteRepository.findByPublicToken(token)) as unknown as QuotePublicRecord | null
-    if (!quote || quote.status !== 'sent' || this.isPastValidUntil(quote.validUntil)) {
+    const existing = (await db.quote.findUnique({
+      where: { publicToken: token },
+      include: { items: { orderBy: { order: 'asc' } } },
+    })) as unknown as QuotePublicRecordWithItems | null
+
+    if (!existing || this.isPastValidUntil(existing.validUntil)) {
       throw new NotFoundException('Link inválido ou expirado')
+    }
+
+    if (existing.status !== 'sent') {
+      if (existing.status === decision) {
+        return { status: decision, generatedProductionOrders: [], alreadyProcessed: true }
+      }
+      throw new ConflictException('Este orçamento já foi respondido anteriormente com uma decisão diferente')
     }
 
     const updateData: Record<string, unknown> = { status: decision, clientRespondedAt: new Date() }
@@ -563,32 +618,86 @@ class QuoteService {
       updateData.approvedAt = new Date()
     }
 
-    await quoteRepository.updateStatus(quote.id, updateData)
+    // O guard atômico real: `status: 'sent'` no `where` faz do check-e-write uma única instrução
+    // indivisível no SQLite — não 2 passos separados em JS, e sem precisar de `$transaction`.
+    const updated = await db.quote.updateMany({
+      where: { id: existing.id, status: 'sent' },
+      data: updateData,
+    })
+
+    if (updated.count === 0) {
+      // Perdeu a corrida entre a leitura acima e este `updateMany` — reavalia o estado final e
+      // responde idempotente ou conflito, igual ao caso acima, nunca duplica.
+      const final = (await db.quote.findUnique({ where: { id: existing.id } })) as unknown as Omit<QuotePublicRecordWithItems, 'items'> | null
+      if (final && final.status === decision) {
+        return { status: decision, generatedProductionOrders: [], alreadyProcessed: true }
+      }
+      throw new ConflictException('Este orçamento já foi respondido anteriormente com uma decisão diferente')
+    }
+
+    // A partir daqui, só a chamada vencedora chega — nenhuma pressão de concorrência real neste
+    // ponto (o `updateMany` acima já filtrou todas as outras).
+    let createdOrders: Array<{ id: string; number: string; productId: string | null; quantity: number }> = []
+    if (decision === 'approved') {
+      const items = existing.items.filter((i) => i.productId)
+      if (items.length > 0) {
+        try {
+          const results = await db.$transaction(
+            async (tx) =>
+              domainEvents.publish<
+                OrcamentoAprovadoPayload,
+                Array<{ id: string; number: string; productId: string | null; quantity: number }>
+              >(DOMAIN_EVENTS.ORCAMENTO_APROVADO, { quoteId: existing.id, quoteNumber: existing.number, userId: existing.userId, items, tx }),
+            // Só a chamada vencedora abre esta transação (nunca 20 ao mesmo tempo — ver comentário
+            // do método) — mas outras chamadas perdedoras ainda podem estar concorrendo por
+            // consultas avulsas na mesma conexão SQLite ao mesmo tempo; `maxWait`/`timeout`
+            // generosos evitam que essa contenção pontual feche a transação prematuramente.
+            { maxWait: 15000, timeout: 15000 }
+          )
+          createdOrders = results.flat()
+        } catch (err) {
+          // Compensação (equivalente a rollback, sem `$transaction` envolvendo o `updateMany`
+          // acima): a criação de OP falhou no meio — desfaz a transição, orçamento volta a "sent"
+          // e o cliente pode confirmar de novo.
+          await db.quote.updateMany({
+            where: { id: existing.id, status: decision },
+            data: { status: 'sent', clientRespondedAt: null, approvedBy: null, approvedAt: null },
+          })
+          throw err
+        }
+
+        if (createdOrders.length > 0) {
+          // Efeitos secundários da criação de OP (evento sem consumidor + reserva de material) só
+          // depois do commit — ver `ORCAMENTO_APROVADO_EFEITOS_POS_COMMIT` em `domain-events.ts`.
+          await domainEvents.publish<OrcamentoAprovadoEfeitosPosCommitPayload, void>(DOMAIN_EVENTS.ORCAMENTO_APROVADO_EFEITOS_POS_COMMIT, {
+            orders: createdOrders,
+            userId: existing.userId,
+          })
+        }
+      }
+    }
 
     await statusHistoryService.record(
       'quote',
-      quote.id,
-      quote.status,
+      existing.id,
+      'sent',
       decision,
-      quote.userId,
+      existing.userId,
       decision === 'approved' ? 'Aprovado pelo cliente via link público' : 'Recusado pelo cliente via link público'
     )
 
     await auditService.log({
-      userId: quote.userId,
+      userId: existing.userId,
       action: 'PATCH',
       module: 'orcamentos',
-      entityId: quote.id,
-      entityName: quote.number,
-      details: `Orçamento ${quote.number} ${decision === 'approved' ? 'aprovado' : 'recusado'} pelo cliente via link público`,
-      beforeValue: { status: quote.status },
+      entityId: existing.id,
+      entityName: existing.number,
+      details: `Orçamento ${existing.number} ${decision === 'approved' ? 'aprovado' : 'recusado'} pelo cliente via link público`,
+      beforeValue: { status: 'sent' },
       afterValue: { status: decision },
     })
 
-    const productionOrders =
-      decision === 'approved' ? await this.generateProductionOrdersForApproval(quote.id, quote.number, quote.userId) : []
-
-    return { status: decision, generatedProductionOrders: productionOrders }
+    return { status: decision, generatedProductionOrders: createdOrders, alreadyProcessed: false }
   }
 
   private isPastValidUntil(validUntil: string): boolean {

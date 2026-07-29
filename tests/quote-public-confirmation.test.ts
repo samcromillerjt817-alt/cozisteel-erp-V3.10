@@ -91,12 +91,36 @@ describe('Orçamentos — confirmação do cliente via link público', () => {
     expect(updated?.clientRespondedAt).not.toBeNull()
   })
 
-  it('8. depois de confirmado, o mesmo link não funciona mais (nem GET nem POST de novo)', async () => {
+  it('8. depois de confirmado, GET pelo mesmo link não funciona mais (não está mais "sent")', async () => {
     const { token } = await createSentQuote('public-confirm-usado-uma-vez')
     await quoteService.confirmByClient(token, 'approved')
 
     await expect(quoteService.getByPublicToken(token)).rejects.toThrow(/inválido ou expirado/)
-    await expect(quoteService.confirmByClient(token, 'approved')).rejects.toThrow(/inválido ou expirado/)
+  })
+
+  it('8b. confirmar de novo com a MESMA decisão devolve sucesso idempotente, sem duplicar nada (auditoria de segurança, 2ª rodada)', async () => {
+    const { quoteId, token } = await createSentQuote('public-confirm-idempotente')
+    const first = await quoteService.confirmByClient(token, 'approved')
+    expect(first.alreadyProcessed).toBe(false)
+
+    const second = await quoteService.confirmByClient(token, 'approved')
+    expect(second.status).toBe('approved')
+    expect(second.alreadyProcessed).toBe(true)
+    expect(second.generatedProductionOrders.length).toBe(0)
+
+    // Só 1 registro de histórico de status pra essa transição — a 2ª chamada não gravou de novo.
+    const history = await db.statusHistory.findMany({ where: { entityType: 'quote', entityId: quoteId, toStatus: 'approved' } })
+    expect(history.length).toBe(1)
+  })
+
+  it('8c. confirmar de novo com decisão DIFERENTE da já registrada devolve conflito (409), não sobrescreve', async () => {
+    const { quoteId, token } = await createSentQuote('public-confirm-conflito')
+    await quoteService.confirmByClient(token, 'approved')
+
+    await expect(quoteService.confirmByClient(token, 'rejected')).rejects.toThrow(/decisão diferente/)
+
+    const updated = await db.quote.findUnique({ where: { id: quoteId } })
+    expect(updated?.status).toBe('approved') // decisão original preservada, não virou "rejected"
   })
 
   it('9. reenviar o orçamento (sent -> draft -> sent) gera um token novo; o token antigo para de funcionar', async () => {

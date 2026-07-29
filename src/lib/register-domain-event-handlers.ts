@@ -1,6 +1,7 @@
 import { domainEvents, DOMAIN_EVENTS } from '@/lib/domain-events'
 import type {
   OrcamentoAprovadoPayload,
+  OrcamentoAprovadoEfeitosPosCommitPayload,
   OrcamentoConvertidoEmPedidoVendaPayload,
   RequisicaoAprovadaParaCompraPayload,
   OrdemProducaoFinalizadaPayload,
@@ -27,7 +28,13 @@ export function registerDomainEventHandlers(): void {
   registered = true
 
   domainEvents.on(DOMAIN_EVENTS.ORCAMENTO_APROVADO, (payload: OrcamentoAprovadoPayload) =>
-    productionOrderService.createFromApprovedQuote(payload.items, payload.quoteNumber, payload.userId)
+    productionOrderService.createFromApprovedQuote(payload.items, payload.quoteNumber, payload.userId, payload.tx)
+  )
+
+  // Ver comentário de `ORCAMENTO_APROVADO_EFEITOS_POS_COMMIT` em `domain-events.ts` — publicado só
+  // depois que a transação da confirmação por link público já commitou.
+  domainEvents.on(DOMAIN_EVENTS.ORCAMENTO_APROVADO_EFEITOS_POS_COMMIT, (payload: OrcamentoAprovadoEfeitosPosCommitPayload) =>
+    productionOrderService.runPostApprovalSideEffects(payload.orders, payload.userId)
   )
 
   domainEvents.on(DOMAIN_EVENTS.ORCAMENTO_CONVERTIDO_EM_PEDIDO_VENDA, (payload: OrcamentoConvertidoEmPedidoVendaPayload) =>

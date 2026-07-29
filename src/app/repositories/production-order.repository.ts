@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { BaseRepository } from './base.repository'
 import type { BomExplosionResult } from '@/app/services/bom-explosion.service'
+import type { Prisma } from '@prisma/client'
 
 const LIST_INCLUDE = {
   product: { select: { id: true, name: true, internalCode: true } },
@@ -64,8 +65,18 @@ class ProductionOrderRepository extends BaseRepository<typeof db.productionOrder
   }
 
   createWithIncludes(data: Record<string, unknown>) {
-     
+
     return this.delegate.create({ data: data as any, include: MUTATION_INCLUDE })
+  }
+
+  /** Mesma criação de `createWithIncludes`, mas contra um cliente Prisma explícito — usado quando
+   *  o chamador já está dentro de uma `db.$transaction` (ex.: aprovação atômica de orçamento via
+   *  link público, auditoria de segurança 2ª rodada) e a criação da OP precisa participar do
+   *  mesmo rollback-tudo-ou-nada. `client` aceita tanto `db` quanto o `tx` de uma transação
+   *  interativa — mesma interface Prisma nos dois casos. */
+  createWithTx(client: typeof db | Prisma.TransactionClient, data: Record<string, unknown>) {
+
+    return client.productionOrder.create({ data: data as any, include: MUTATION_INCLUDE })
   }
 
   updateFields(id: string, data: Record<string, unknown>) {

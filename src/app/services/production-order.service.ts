@@ -13,6 +13,9 @@ import { checkTransition } from '@/lib/status-machine'
 import { domainEvents, DOMAIN_EVENTS } from '@/lib/domain-events'
 import type { OrdemProducaoCriadaPayload, OrdemProducaoFinalizadaPayload, ProducaoParcialRealizadaPayload } from '@/lib/domain-events'
 import { formatDate } from '@/lib/format'
+import type { Prisma } from '@prisma/client'
+
+type DbClient = typeof db | Prisma.TransactionClient
 
 interface ConsumptionLine {
   lineType: string
@@ -132,8 +135,8 @@ class ProductionOrderService {
     return order
   }
 
-  private async findActiveBomRevisionId(productId: string): Promise<string | null> {
-    const revision = (await bomRevisionRepository.findActiveByProduct(productId)) as { id: string } | null
+  private async findActiveBomRevisionId(productId: string, client: DbClient = db): Promise<string | null> {
+    const revision = (await bomRevisionRepository.findActiveByProduct(productId, client)) as { id: string } | null
     return revision?.id ?? null
   }
 
@@ -401,13 +404,25 @@ class ProductionOrderService {
    * Gera uma OP por item (com produto vinculado) de um Orçamento recém-aprovado.
    * Chamada pelo QuoteService (Service-a-Service) — item "avulso" sem productId é
    * ignorado antes de chegar aqui, pois não há o que produzir via OP.
+   *
+   * `client` opcional (auditoria de segurança, 2ª rodada) — quando o chamador já está dentro de
+   * uma `db.$transaction` (confirmação atômica de orçamento por link público, `QuoteService.
+   * confirmByClient`), passar o `tx` garante que a criação de cada OP participa do mesmo
+   * rollback-tudo-ou-nada: se a criação da 2ª OP de 3 falhar, a 1ª (e a mudança de status do
+   * orçamento) também é revertida. Default `client = db` preserva 100% o comportamento de todo
+   * chamador existente (aprovação interna via `changeStatus`), sem transação nenhuma.
    */
-  async createFromApprovedQuote(items: QuoteItemForProduction[], quoteNumber: string, userId: string) {
-    const created = []
+  async createFromApprovedQuote(
+    items: QuoteItemForProduction[],
+    quoteNumber: string,
+    userId: string,
+    client: DbClient = db
+  ) {
+    const created: Array<{ id: string; number: string; productId: string | null; quantity: number }> = []
     for (const item of items) {
-      const number = await numberingService.getNextNumber('op')
-      const bomRevisionId = item.productId ? await this.findActiveBomRevisionId(item.productId) : null
-      const order = (await productionOrderRepository.create({
+      const number = await numberingService.getNextNumber('op', client)
+      const bomRevisionId = item.productId ? await this.findActiveBomRevisionId(item.productId, client) : null
+      const order = (await productionOrderRepository.createWithTx(client, {
         number,
         status: 'planned',
         date: formatDate(new Date()),
@@ -422,7 +437,25 @@ class ProductionOrderService {
         bomRevisionId,
       })) as { id: string; number: string; productId: string | null; quantity: number }
       created.push(order)
+    }
 
+    // Efeitos secundários (evento sem consumidor + reserva de material, Fase 5/ADR-006) leem a OP
+    // recém-criada por fora — se `client` ainda for uma transação aberta, essa leitura aconteceria
+    // ANTES do commit e não a enxergaria (conexão separada). Por isso só rodam aqui quando
+    // `client === db` (fluxo síncrono de sempre); quando `client` é um `tx`, quem abriu a
+    // transação chama `runPostApprovalSideEffects()` explicitamente depois do commit.
+    if (client === db) await this.runPostApprovalSideEffects(created, userId)
+
+    return created
+  }
+
+  /** Ver comentário de `createFromApprovedQuote` — extraído pra poder rodar depois do commit de
+   *  uma transação externa, sem duplicar a lógica entre os dois chamadores. */
+  async runPostApprovalSideEffects(
+    orders: Array<{ id: string; number: string; productId: string | null; quantity: number }>,
+    userId: string
+  ) {
+    for (const order of orders) {
       // Emitido sem consumidor nesta fase (ADR-003) — preparação para MRP/notificação futuros.
       await domainEvents.publish<OrdemProducaoCriadaPayload, void>(DOMAIN_EVENTS.ORDEM_PRODUCAO_CRIADA, {
         productionOrderId: order.id,
@@ -435,7 +468,6 @@ class ProductionOrderService {
       // Reserva de material (Fase 5, ADR-006) — mesma regra do create() manual.
       await materialReservationService.reserveForProductionOrder(order.id, userId)
     }
-    return created
   }
 }
 

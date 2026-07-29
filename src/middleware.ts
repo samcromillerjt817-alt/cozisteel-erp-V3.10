@@ -88,6 +88,17 @@ export async function middleware(req: NextRequest) {
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
     response.headers.set(key, value)
   }
+
+  // HSTS só faz sentido (e só é seguro anunciar) quando a origem real é servida por HTTPS — aqui,
+  // via Tailscale Funnel. `max-age` de 180 dias é um valor inicial deliberadamente mais conservador
+  // que o 1 ano comum: primeira vez que este cabeçalho existe no projeto, sem histórico de operação
+  // pra confiar num compromisso mais longo. Sem `includeSubDomains`/`preload` — não há levantamento
+  // confirmando que todo subdomínio eventual serviria HTTPS, e `preload` é efetivamente irreversível
+  // (fica em listas de navegador por muito tempo mesmo depois de remover o cabeçalho).
+  if (process.env.APP_ENV === 'production') {
+    response.headers.set('Strict-Transport-Security', 'max-age=15552000')
+  }
+
   return response
 }
 
