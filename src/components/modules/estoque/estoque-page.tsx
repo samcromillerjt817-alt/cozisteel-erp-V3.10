@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Eye, SlidersHorizontal, Undo2 } from 'lucide-react'
 import { PageHeader } from '@/components/platform/page-header'
+import { formatQuantity } from '@/lib/format'
 import { FilterBar } from '@/components/platform/filter-bar'
 import { DataTable, type DataTableColumn } from '@/components/platform/data-table'
 import { StatusBadge } from '@/components/domain/status-badge'
@@ -178,8 +179,8 @@ export function EstoquePage() {
   const summaryColumns: DataTableColumn<StockSummaryItem>[] = [
     { id: 'itemType', header: 'Tipo', cell: (item) => <Badge variant="outline">{item.itemType === 'material' ? 'Matéria-prima' : 'Produto'}</Badge> },
     { id: 'name', header: 'Item', cell: (item) => <span className="font-medium">{item.name}</span> },
-    { id: 'stockQty', header: 'Saldo Atual', align: 'right', cell: (item) => <span className={`font-mono ${item.isLow ? 'text-destructive font-bold' : ''}`}>{item.stockQty}</span> },
-    { id: 'minStockQty', header: 'Estoque Mínimo', align: 'right', cell: (item) => <span className="font-mono text-muted-foreground">{item.minStockQty}</span>, hideBelow: 'sm' },
+    { id: 'stockQty', header: 'Saldo Atual', align: 'right', cell: (item) => <span className={`font-mono ${item.isLow ? 'text-destructive font-bold' : ''}`}>{formatQuantity(item.stockQty)}</span> },
+    { id: 'minStockQty', header: 'Estoque Mínimo', align: 'right', cell: (item) => <span className="font-mono text-muted-foreground">{formatQuantity(item.minStockQty)}</span>, hideBelow: 'sm' },
     { id: 'unit', header: 'Unid.', cell: (item) => item.unit, hideBelow: 'sm' },
   ]
 
@@ -187,8 +188,8 @@ export function EstoquePage() {
     { id: 'createdAt', header: 'Data', cell: (mv) => <span className="whitespace-nowrap">{new Date(mv.createdAt).toLocaleString('pt-BR')}</span> },
     { id: 'item', header: 'Item', cell: (mv) => mv.material?.name || mv.product?.name || '-' },
     { id: 'type', header: 'Tipo', cell: (mv) => <StatusBadge domain="stockMovement" status={mv.type} label={STOCK_MOVEMENT_TYPE_LABELS[mv.type] || mv.type} /> },
-    { id: 'quantity', header: 'Quantidade', align: 'right', cell: (mv) => <span className="font-mono">{mv.quantity}</span> },
-    { id: 'balanceAfter', header: 'Saldo Após', align: 'right', cell: (mv) => <span className="font-mono">{mv.balanceAfter}</span>, hideBelow: 'md' },
+    { id: 'quantity', header: 'Quantidade', align: 'right', cell: (mv) => <span className="font-mono">{formatQuantity(mv.quantity)}</span> },
+    { id: 'balanceAfter', header: 'Saldo Após', align: 'right', cell: (mv) => <span className="font-mono">{formatQuantity(mv.balanceAfter)}</span>, hideBelow: 'md' },
     { id: 'reason', header: 'Motivo', cell: (mv) => mv.reason, hideBelow: 'md' },
     { id: 'user', header: 'Usuário', cell: (mv) => mv.user?.name || '-', hideBelow: 'lg' },
   ]
@@ -280,7 +281,7 @@ export function EstoquePage() {
         <div className="space-y-4">
           <div className="flex justify-between text-sm bg-muted/50 rounded p-3">
             <span>{reverseMovement?.material?.name || reverseMovement?.product?.name}</span>
-            <span className="font-mono font-semibold">{reverseMovement?.quantity}</span>
+            <span className="font-mono font-semibold">{formatQuantity(reverseMovement?.quantity)}</span>
           </div>
           <p className="text-sm text-muted-foreground">
             Isso reverte a entrada de estoque deste recebimento. Só é possível enquanto o lote (quando
@@ -304,7 +305,7 @@ export function EstoquePage() {
         <div className="space-y-4">
           <div className="flex justify-between text-sm bg-muted/50 rounded p-3">
             <span>Saldo atual do sistema</span>
-            <span className="font-mono font-semibold">{adjustForm.currentQty} {adjustForm.unit}</span>
+            <span className="font-mono font-semibold">{formatQuantity(adjustForm.currentQty)} {adjustForm.unit}</span>
           </div>
           <div className="space-y-1.5">
             <Label>Novo saldo (contagem física)</Label>

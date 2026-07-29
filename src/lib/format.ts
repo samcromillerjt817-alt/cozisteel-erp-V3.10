@@ -16,6 +16,18 @@ export function parseCurrencyInput(val: string): number {
   return isNaN(num) ? 0 : num
 }
 
+/**
+ * Formata quantidade de estoque (saldo de matéria-prima/produto, quantidade de movimentação) —
+ * corta o ruído de ponto flutuante que se acumula depois de muitos incrementos/decrementos em
+ * sequência (ex.: "-3.849999999999998" virando "-3,85"). Até 3 casas decimais (precisão de grama
+ * pra materiais em KG), sem forçar zeros à direita quando o valor já é inteiro.
+ */
+export function formatQuantity(value: number | null | undefined): string {
+  const safeValue = typeof value === 'number' && !isNaN(value) ? value : 0
+  const rounded = Math.round(safeValue * 1000) / 1000
+  return rounded.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+}
+
 export function formatDate(date: Date): string {
   const d = String(date.getDate()).padStart(2, '0')
   const m = String(date.getMonth() + 1).padStart(2, '0')

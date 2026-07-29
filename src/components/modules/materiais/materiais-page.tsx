@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { useConfirm } from '@/components/domain/confirm-dialog'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
-import { formatCurrency } from '@/lib/format'
+import { formatCurrency, formatQuantity } from '@/lib/format'
 import { MaterialFormFields } from './material-form-fields'
 import { MaterialLinksReadonly } from './material-links-readonly'
 import { EMPTY_MATERIAL_FORM, materialToFormData, type MaterialRecord, type MaterialListRow, type MaterialFormData, type MaterialSupplierLink, type MaterialProductLink } from './types'
@@ -197,7 +197,7 @@ export function MateriaisPage({ categories, onCatalogChanged }: MateriaisPagePro
     { id: 'internalCode', header: 'Código', cell: (m) => m.internalCode || '-', hideBelow: 'sm' },
     { id: 'name', header: 'Nome', cell: (m) => m.name },
     { id: 'category', header: 'Categoria', cell: (m) => m.category?.name || '-', hideBelow: 'md' },
-    { id: 'stock', header: 'Estoque', cell: (m) => <span className={m.stockQty <= m.minStockQty ? 'font-mono font-bold text-destructive' : 'font-mono'}>{m.stockQty} {m.unit}</span>, align: 'right' },
+    { id: 'stock', header: 'Estoque', cell: (m) => <span className={m.stockQty <= m.minStockQty ? 'font-mono font-bold text-destructive' : 'font-mono'}>{formatQuantity(m.stockQty)} {m.unit}</span>, align: 'right' },
     { id: 'cost', header: 'Custo', cell: (m) => formatCurrency(m.costPrice), align: 'right', hideBelow: 'md' },
     { id: 'suppliers', header: 'Fornecedores', cell: (m) => m._count?.suppliers ?? 0, align: 'right', hideBelow: 'lg' },
     { id: 'products', header: 'Produtos', cell: (m) => m._count?.products ?? 0, align: 'right', hideBelow: 'lg' },

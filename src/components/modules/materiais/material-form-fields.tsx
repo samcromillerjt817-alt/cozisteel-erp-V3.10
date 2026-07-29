@@ -1,4 +1,5 @@
 import { Input } from '@/components/ui/input'
+import { formatQuantity } from '@/lib/format'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
@@ -38,7 +39,7 @@ export function MaterialFormFields({ form, onChange, categories, isEditing }: Ma
         <Label>Estoque atual</Label>
         {isEditing ? (
           <>
-            <Input value={`${form.stockQty} ${form.unit}`} disabled />
+            <Input value={`${formatQuantity(form.stockQty)} ${form.unit}`} disabled />
             <p className="text-xs text-muted-foreground">Para ajustar o saldo, use Estoque → Ajustar (exige motivo).</p>
           </>
         ) : (

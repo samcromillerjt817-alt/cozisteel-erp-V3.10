@@ -40,6 +40,21 @@ class MaterialService {
       return materials
     }
 
+    if (input.lowStock) {
+      // Achado real (usuário relatou "Só estoque baixo" não funcionando na lista paginada):
+      // `stockQty <= minStockQty` é uma comparação coluna-com-coluna da MESMA linha — o `where`
+      // declarativo do Prisma não expressa isso (só compara uma coluna contra um valor literal).
+      // Esse filtro só estava sendo aplicado no ramo `!paginate` acima (usado por dropdowns/
+      // selects); a tela principal, paginada, ignorava silenciosamente a marcação do checkbox.
+      // Mesma solução do ramo acima: busca tudo que bate os outros filtros, filtra em JS, pagina
+      // o resultado já filtrado (não o total da tabela).
+      const all = (await materialRepository.findAll(where)) as { stockQty: number; minStockQty: number }[]
+      const filtered = all.filter((m) => m.stockQty <= m.minStockQty)
+      const start = (input.page - 1) * input.limit
+      const data = filtered.slice(start, start + input.limit)
+      return { data, total: filtered.length, page: input.page, limit: input.limit, totalPages: Math.ceil(filtered.length / input.limit) }
+    }
+
     const { data, total } = await materialRepository.findManyPaginated(where, (input.page - 1) * input.limit, input.limit)
     return { data, total, page: input.page, limit: input.limit, totalPages: Math.ceil(total / input.limit) }
   }
