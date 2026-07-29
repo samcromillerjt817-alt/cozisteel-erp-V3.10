@@ -259,6 +259,28 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
           load()
           return
         }
+        // Migração de token pra hash (auditoria de segurança, 2ª rodada) — o token bruto do link
+        // público não é mais persistido, só existe nesta resposta, uma única vez. Reenviar (sent →
+        // draft → sent de novo, pelo próprio seletor de status) gera e revela um token novo — não
+        // há como recuperar um link já mostrado antes.
+        if (status === 'sent' && typeof json.publicToken === 'string' && json.publicToken) {
+          const url = `${window.location.origin}/orcamento/${json.publicToken}`
+          showActionResult({
+            title: 'Orçamento enviado',
+            description: 'Copie o link de confirmação agora e envie para o cliente — ele só é exibido nesta tela, uma única vez.',
+            actions: [
+              {
+                label: 'Copiar link de confirmação',
+                onClick: () => { navigator.clipboard.writeText(url); toast.success('Link copiado — envie para o cliente') },
+                variant: 'default',
+              },
+              { label: 'Fechar', onClick: () => {} },
+            ],
+          })
+          load()
+          onDataChanged()
+          return
+        }
         const generated = json.generatedProductionOrders as Array<{ id: string; number: string }> | undefined
         if (generated && generated.length > 0) {
           showActionResult({

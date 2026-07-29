@@ -61,7 +61,7 @@ describe('Fluxos via Eventos de Domínio', () => {
     await quoteService.changeStatus((quote as { id: string }).id, 'sent', user.id)
     const result = await quoteService.changeStatus((quote as { id: string }).id, 'approved', user.id)
 
-    const generated = result.generatedProductionOrders as unknown as Array<{ id: string; number: string; productId: string | null; status: string }>
+    const generated = (result as { generatedProductionOrders: unknown }).generatedProductionOrders as unknown as Array<{ id: string; number: string; productId: string | null; status: string }>
     expect(generated).toHaveLength(1)
     createdProductionOrderIds.push(generated[0].id)
 

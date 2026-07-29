@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import { db } from '@/lib/db'
 import { BaseRepository } from './base.repository'
 
@@ -44,8 +45,12 @@ class QuoteRepository extends BaseRepository<typeof db.quote> {
     return this.delegate.findUnique({ where: { id }, include: { items: { orderBy: { order: 'asc' } } } })
   }
 
+  /** Migração de token pra hash (auditoria de segurança, 2ª rodada) — busca primeiro pelo hash
+   *  (`publicTokenHash`, novo padrão, nunca guarda o valor bruto) e cai pro `publicToken` em texto
+   *  puro só como fallback pra links já enviados antes da migração (nunca mais escrito, só lido). */
   findByPublicToken(token: string) {
-    return this.delegate.findUnique({ where: { publicToken: token }, include: DETAIL_INCLUDE })
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
+    return this.delegate.findFirst({ where: { OR: [{ publicTokenHash: tokenHash }, { publicToken: token }] }, include: DETAIL_INCLUDE })
   }
 
   findItemsWithProduct(id: string) {

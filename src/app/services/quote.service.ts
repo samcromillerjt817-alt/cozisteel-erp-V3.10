@@ -162,6 +162,14 @@ interface QuoteWithItemsAndSalesOrder {
 }
 
 class QuoteService {
+  // Migração de token pra hash (auditoria de segurança, 2ª rodada) — o token bruto do link público
+  // nunca mais é persistido; só o hash SHA-256 vai pro banco (`Quote.publicTokenHash`). O token
+  // bruto só existe na resposta HTTP do envio, uma única vez (`changeStatus` pra "sent") — não há
+  // como recuperá-lo depois. Reenviar (sent → draft → sent de novo) gera e revela um token novo.
+  private hashPublicToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex')
+  }
+
   // `freightValue` entra no total desde que tenha sido informado, independente de `freightMode`
   // ("A combinar"/"Emitente"/"Destinatario" só documentam quem organiza o frete, não isentam o
   // cliente de pagá-lo quando um valor foi de fato lançado) — achado do usuário: o frete aparecia
@@ -489,11 +497,16 @@ class QuoteService {
       updateData.approvedBy = userId
       updateData.approvedAt = new Date()
     }
+    let rawPublicToken: string | null = null
     if (status === 'sent') {
       updateData.sentAt = new Date()
       // Gera (ou regenera) o token do link público a cada novo envio — se o orçamento foi editado e
-      // reenviado, qualquer link antigo compartilhado com o cliente para de funcionar.
-      updateData.publicToken = crypto.randomBytes(32).toString('hex')
+      // reenviado, qualquer link antigo compartilhado com o cliente para de funcionar. Só o HASH
+      // vai pro banco (`publicTokenHash`) — o valor bruto (`rawPublicToken`) nunca é persistido,
+      // só devolvido nesta resposta, uma única vez.
+      rawPublicToken = crypto.randomBytes(32).toString('hex')
+      updateData.publicToken = null
+      updateData.publicTokenHash = this.hashPublicToken(rawPublicToken)
     }
 
     const updated = await quoteRepository.updateStatus(id, updateData)
@@ -516,7 +529,13 @@ class QuoteService {
     // o destino for "approved" é seguro e não duplica.
     const productionOrders = status === 'approved' ? await this.generateProductionOrdersForApproval(id, quote.number, userId) : []
 
-    return { ...(updated as object), generatedProductionOrders: productionOrders }
+    return {
+      ...(updated as object),
+      // Sobrescreve o `publicToken` (null no banco, ver acima) só nesta resposta — única vez que o
+      // valor bruto existe fora do momento em que foi gerado.
+      ...(rawPublicToken ? { publicToken: rawPublicToken } : {}),
+      generatedProductionOrders: productionOrders,
+    }
   }
 
   /** Gera 1 Ordem de Produção por item vinculado a produto cadastrado, ao aprovar um orçamento — usado
@@ -596,8 +615,10 @@ class QuoteService {
    * orçamento expirou, `NotFoundException` (404) — igual a antes, sem virar oráculo.
    */
   async confirmByClient(token: string, decision: 'approved' | 'rejected') {
-    const existing = (await db.quote.findUnique({
-      where: { publicToken: token },
+    // Migração de token pra hash (auditoria de segurança, 2ª rodada) — busca primeiro pelo hash
+    // (padrão novo), cai pro `publicToken` em texto puro só como fallback pra links legados.
+    const existing = (await db.quote.findFirst({
+      where: { OR: [{ publicTokenHash: this.hashPublicToken(token) }, { publicToken: token }] },
       include: { items: { orderBy: { order: 'asc' } } },
     })) as unknown as QuotePublicRecordWithItems | null
 

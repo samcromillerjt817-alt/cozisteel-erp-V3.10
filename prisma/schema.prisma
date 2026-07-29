@@ -1062,7 +1062,8 @@ model Quote {
   approvedBy         String?
   approvedAt         DateTime?
   sentAt             DateTime?
-  publicToken        String?   @unique // token do link público de confirmação do cliente (ADR-024 addendum)
+  publicToken        String?   @unique // legado — links já enviados antes da migração pra hash (auditoria de segurança, 2ª rodada); nunca mais escrito em texto puro a partir de agora, só lido como fallback
+  publicTokenHash    String?   @unique // sha256 do token do link público — token bruto nunca persiste, só é revelado uma vez na resposta do envio
   clientRespondedAt  DateTime? // quando o cliente confirmou (aprovou/recusou) via o link público
   origin             String    @default("manual") // manual, catalogo_digital (ADR-026)
   internalStage      String? // aguardando_triagem, analise_comercial, analise_tecnica, aguardando_cliente,
