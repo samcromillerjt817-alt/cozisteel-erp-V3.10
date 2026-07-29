@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Edit, Copy, FileOutput, Image as ImageIcon, Truck, ShoppingCart, Trash2, X, AlertTriangle, Link2 } from 'lucide-react'
+import { Plus, Edit, Copy, FileOutput, Image as ImageIcon, Truck, ShoppingCart, Trash2, X, AlertTriangle, Link2, UserPlus } from 'lucide-react'
 import { PageHeader } from '@/components/platform/page-header'
 import { FilterBar } from '@/components/platform/filter-bar'
 import { DataTable, type DataTableColumn } from '@/components/platform/data-table'
@@ -165,6 +165,22 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
       clientNeighborhood: c.neighborhood || '',
       clientCep: c.zipCode || '',
     }))
+  }
+
+  /** Cria (ou vincula) um Cliente formal a partir dos dados já digitados no orçamento — mantém o
+   * registro de um lead (ex.: vindo do Catálogo Digital) sem precisar re-digitar em Clientes. */
+  async function promoteToClient() {
+    if (!editingId) return
+    try {
+      const r = await fetch(`/api/quotes/${editingId}/promote-to-client`, { method: 'POST' })
+      const json = await r.json()
+      if (!r.ok) { toast.error(json.error || 'Erro ao criar cliente'); return }
+      setForm((prev) => ({ ...prev, clientId: json.clientId }))
+      toast.success(json.created ? 'Cliente criado e vinculado a este orçamento' : 'Orçamento vinculado ao cliente já cadastrado')
+      load()
+    } catch {
+      toast.error('Erro ao criar cliente. Tente novamente.')
+    }
   }
 
   async function openEdit(id: string, salesOrder: { id: string; number: string } | null = null) {
@@ -466,6 +482,11 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
                   }))}
                   onSelect={(hit) => selectClient(hit.data)}
                 />
+                {editingId && !form.clientId && form.clientName.trim() && (
+                  <Button type="button" variant="outline" size="sm" className="mt-2" onClick={promoteToClient}>
+                    <UserPlus className="w-4 h-4 mr-1" /> Criar cliente a partir destes dados
+                  </Button>
+                )}
               </div>
               <div className="space-y-1.5"><Label>Nome / Razão Social</Label><Input value={form.clientName} onChange={(e) => setForm({ ...form, clientName: e.target.value })} /></div>
               <div className="space-y-1.5">

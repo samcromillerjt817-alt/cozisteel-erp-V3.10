@@ -564,3 +564,32 @@ houver pedido explícito.
 
 Verificação (mobile): tsc limpo, lint 59 problemas (mesma contagem, 0 novos), 446/446 testes, build
 limpo, PM2 reconstruído e reiniciado.
+
+## Addendum — investigação de item ausente + conversão de lead em Cliente (2026-07-29)
+
+**Investigação: "o produto não vem junto no orçamento"**. Usuário reportou um caso real em produção
+(protocolo `000001`) onde o Orçamento gerado ficou sem nenhum `QuoteItem`, apesar do
+`CatalogRequestItem` correspondente ter sido criado corretamente. Reproduzido o cenário 2x via chamada
+direta à API pública em produção, com payload mínimo e com payload completo (idêntico ao que o
+carrinho real envia) — em ambos os casos o `QuoteItem` foi criado corretamente, com `productId`/
+`code`/`description`/`notes` de personalização certos. **Não foi possível reproduzir o bug com o
+código atual** — o registro quebrado provavelmente veio de um restart do PM2 em andamento bem no
+meio daquela submissão específica, durante o desenvolvimento ativo desta mesma tarde. Não gerou
+nenhuma correção de código (não havia bug pra corrigir), só a investigação registrada aqui. O
+registro `000001` continua em produção, incompleto, à disposição do usuário pra decidir se arquiva.
+
+**Nova funcionalidade: converter lead em Cliente formal, a qualquer momento da triagem**.
+`quoteService.promoteToClient(id, actingUserId)` — cria (ou vincula, se já existir por CPF/CNPJ) um
+Cliente formal a partir dos dados desnormalizados de QUALQUER Orçamento sem cliente vinculado (não é
+exclusivo do Catálogo Digital, embora tenha sido o gatilho do pedido). Se o Orçamento tiver um
+`CatalogRequest` de origem, o `clientId` dele também é atualizado, mantendo os dois registros
+apontando pro mesmo Cliente. Cidade/estado (que só existem no `CatalogRequest`, não em `Quote`) são
+herdados quando disponíveis. Botão "Criar cliente a partir destes dados" na tela de edição de
+Orçamento (`orcamentos-page.tsx`), visível só quando o orçamento já existe, não tem `clientId`, e tem
+`clientName` preenchido — nova rota `POST /api/quotes/[id]/promote-to-client`.
+
+Verificação: tsc limpo, lint 59 problemas (mesma contagem, 0 novos), 452/452 testes (6 novos em
+`tests/quote-promote-to-client.test.ts`: cria Cliente novo, vincula a Cliente existente sem duplicar,
+rejeita se já vinculado, rejeita sem dado nenhum de cliente, 404 pra orçamento inexistente, e o caso
+específico do Catálogo Digital vinculando também o CatalogRequest). Build limpo com
+`/api/quotes/[id]/promote-to-client` registrado. PM2 reconstruído e reiniciado.

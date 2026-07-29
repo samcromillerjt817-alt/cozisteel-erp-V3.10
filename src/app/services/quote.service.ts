@@ -10,6 +10,8 @@ import type { OrcamentoAprovadoPayload, OrcamentoConvertidoEmPedidoVendaPayload 
 import { NotFoundException, BadRequestException } from '@/app/exceptions'
 import { checkTransition } from '@/lib/status-machine'
 import { formatDate, parseBrDate } from '@/lib/format'
+import { onlyDigits } from '@/lib/masks'
+import { db } from '@/lib/db'
 import type { CreateQuoteDto } from '@/app/dto'
 
 export interface ListQuotesInput {
@@ -60,6 +62,20 @@ interface QuoteRecord {
   discountType: string
   discountValue: number
   freightValue: number
+}
+
+interface QuoteClientFields {
+  id: string
+  number: string
+  clientId: string | null
+  clientName: string
+  clientCnpj: string
+  clientContact: string
+  clientEmail: string
+  clientPhone: string
+  clientAddress: string
+  clientNeighborhood: string
+  clientCep: string
 }
 
 interface QuotePublicRecord {
@@ -338,6 +354,68 @@ class QuoteService {
     })
 
     return updated
+  }
+
+  /**
+   * Cria (ou vincula, se já existir) um Cliente formal a partir dos dados desnormalizados de um
+   * Orçamento sem cliente cadastrado — cobre tanto o lead do Catálogo Digital (ADR-026) quanto
+   * qualquer outro Orçamento criado sem selecionar um Cliente. Nunca altera o cadastro de Produto/
+   * BOM; só cria o Cliente e vincula `clientId` no Orçamento (e no CatalogRequest de origem, se
+   * houver, pra manter os dois registros apontando pro mesmo Cliente).
+   */
+  async promoteToClient(id: string, actingUserId: string) {
+    const quote = (await quoteRepository.findById(id)) as QuoteClientFields | null
+    if (!quote) throw new NotFoundException('Orçamento não encontrado')
+    if (quote.clientId) throw new BadRequestException('Este orçamento já está vinculado a um cliente')
+    if (!quote.clientName?.trim()) throw new BadRequestException('Não há dados de cliente neste orçamento para criar um cadastro')
+
+    // Orçamento do Catálogo Digital (ADR-026) tem cidade/estado só no CatalogRequest — Quote não
+    // tem esses 2 campos. Reaproveita se existir, sem criar campo novo em Quote.
+    const catalogRequest = await db.catalogRequest.findUnique({
+      where: { quoteId: id },
+      select: { id: true, clientCity: true, clientState: true },
+    })
+
+    const cpfCnpj = quote.clientCnpj?.trim() || null
+    const existingClient = (cpfCnpj ? await clientRepository.findByCpfCnpj(cpfCnpj) : null) as { id: string; corporateName: string } | null
+    let clientRecord: { id: string; corporateName: string }
+    let created = false
+    if (existingClient) {
+      clientRecord = existingClient
+    } else {
+      const digits = onlyDigits(cpfCnpj || '')
+      clientRecord = (await clientRepository.create({
+        type: digits.length > 11 ? 'company' : 'person',
+        corporateName: quote.clientName,
+        cpfCnpj,
+        email: quote.clientEmail || '',
+        phone: quote.clientPhone || '',
+        contactName: quote.clientContact || '',
+        address: quote.clientAddress || '',
+        neighborhood: quote.clientNeighborhood || '',
+        zipCode: quote.clientCep || '',
+        city: catalogRequest?.clientCity || '',
+        state: catalogRequest?.clientState || '',
+      })) as { id: string; corporateName: string }
+      created = true
+    }
+    await quoteRepository.updateStatus(id, { clientId: clientRecord.id })
+    if (catalogRequest) {
+      await db.catalogRequest.update({ where: { id: catalogRequest.id }, data: { clientId: clientRecord.id } })
+    }
+
+    await auditService.log({
+      userId: actingUserId,
+      action: 'UPDATE',
+      module: 'orcamentos',
+      entityId: id,
+      entityName: quote.number,
+      details: created
+        ? `Cliente "${clientRecord.corporateName}" criado a partir do orçamento ${quote.number}`
+        : `Orçamento ${quote.number} vinculado ao cliente já cadastrado "${clientRecord.corporateName}"`,
+    })
+
+    return { clientId: clientRecord.id, created }
   }
 
   async delete(id: string, userId: string) {
