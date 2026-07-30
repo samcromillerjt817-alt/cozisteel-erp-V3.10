@@ -6,6 +6,19 @@ import { maskPhone, maskCep, fetchAddressByCep, fetchCompanyByCnpj, onlyDigits }
 // `components/platform`). As closures antigas em `page.tsx` continuam intactas até Fornecedores
 // migrar também — evita tocar um módulo que não faz parte desta subetapa.
 
+// Vocabulário oficial da Receita Federal pra "situação cadastral" de um CNPJ (confirmado contra o
+// dado real já gravado no banco: hoje só existe "ATIVA", exatamente este valor, vindo direto de
+// `data.descricao_situacao_cadastral` da BrasilAPI). Usado como opções de um <Select> em vez de texto
+// livre em Cliente/Fornecedor — a busca automática por CNPJ preenche um destes 5 valores, e a edição
+// manual fica restrita ao mesmo vocabulário, nunca digitação livre divergente.
+export const SITUACAO_CADASTRAL_OPTIONS: { value: string; label: string }[] = [
+  { value: 'ATIVA', label: 'Ativa' },
+  { value: 'BAIXADA', label: 'Baixada' },
+  { value: 'INAPTA', label: 'Inapta' },
+  { value: 'SUSPENSA', label: 'Suspensa' },
+  { value: 'NULA', label: 'Nula' },
+]
+
 type FieldMap<K extends string> = Partial<Record<K, string>>
 
 export async function handleCepLookup<T extends Record<string, unknown>>(

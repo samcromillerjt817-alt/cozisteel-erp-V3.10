@@ -1,11 +1,12 @@
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { CnpjInput } from '@/components/form/cnpj-input'
 import { CepInput } from '@/components/form/cep-input'
 import { EmailInput } from '@/components/form/email-input'
 import { PhoneInput } from '@/components/form/phone-input'
-import { handleCnpjLookup, handleCepLookup } from '@/lib/cnpj-cep-lookup'
+import { handleCnpjLookup, handleCepLookup, SITUACAO_CADASTRAL_OPTIONS } from '@/lib/cnpj-cep-lookup'
 import { toast } from 'sonner'
 import type { ClientFormData } from './types'
 
@@ -53,7 +54,17 @@ export function ClienteFormFields({ form, onChange }: ClienteFormFieldsProps) {
       <div className="space-y-1.5"><Label>Bairro</Label><Input value={form.neighborhood} onChange={(e) => set('neighborhood', e.target.value)} /></div>
       <div className="space-y-1.5"><Label>Cidade</Label><Input value={form.city} onChange={(e) => set('city', e.target.value)} /></div>
       <div className="space-y-1.5"><Label>Estado</Label><Input value={form.state} onChange={(e) => set('state', e.target.value)} /></div>
-      <div className="space-y-1.5"><Label>Situação Cadastral</Label><Input value={form.situacaoCadastral} onChange={(e) => set('situacaoCadastral', e.target.value)} /></div>
+      <div className="space-y-1.5">
+        <Label>Situação Cadastral</Label>
+        <Select value={form.situacaoCadastral || undefined} onValueChange={(v) => set('situacaoCadastral', v)}>
+          <SelectTrigger className="w-full"><SelectValue placeholder="Selecione" /></SelectTrigger>
+          <SelectContent>
+            {SITUACAO_CADASTRAL_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <div className="space-y-1.5"><Label>CNAE</Label><Input value={form.cnaeDescription} onChange={(e) => set('cnaeDescription', e.target.value)} /></div>
       <div className="flex items-center gap-3 sm:col-span-2">
         <Switch checked={form.active} onCheckedChange={(v) => set('active', v)} />
