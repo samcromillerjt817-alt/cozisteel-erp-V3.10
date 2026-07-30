@@ -8,6 +8,7 @@ import { UnitSelect } from '@/components/form/unit-select'
 import { QuantityInput } from '@/components/form/quantity-input'
 import { CurrencyInput } from '@/components/form/currency-input'
 import { PercentInput } from '@/components/form/percent-input'
+import { CatalogCustomizationConfigFields } from './catalog-customization-config'
 import type { ProductFormData } from './types'
 
 interface ProdutoFormFieldsProps {
@@ -70,6 +71,9 @@ export function ProdutoFormFields({ form, onChange, categories, materials }: Pro
         <Label htmlFor="catalogAllowCustomization">Permitir personalização</Label>
         <Switch id="catalogAllowCustomization" checked={form.catalogAllowCustomization} onCheckedChange={(v) => set('catalogAllowCustomization', v)} />
       </div>
+      {form.catalogAllowCustomization && (
+        <CatalogCustomizationConfigFields value={form.catalogCustomizationConfig} onChange={(v) => set('catalogCustomizationConfig', v)} />
+      )}
       <div className="space-y-1.5">
         <Label>Ordem de exibição</Label>
         <Input type="number" step={1} value={form.catalogOrder} onChange={(e) => set('catalogOrder', parseInt(e.target.value, 10) || 0)} />

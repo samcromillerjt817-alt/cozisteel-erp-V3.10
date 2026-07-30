@@ -79,6 +79,7 @@ class ProductService {
       catalogDescription: data.catalogDescription,
       catalogPriceMode: data.catalogPriceMode,
       catalogAllowCustomization: data.catalogAllowCustomization,
+      catalogCustomizationConfig: data.catalogCustomizationConfig ?? undefined,
     })
   }
 

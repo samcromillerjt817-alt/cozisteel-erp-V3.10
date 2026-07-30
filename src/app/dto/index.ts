@@ -45,6 +45,34 @@ export const updateQuoteSchema = createQuoteSchema.partial().extend({
   items: z.array(createQuoteItemSchema).optional(),
 })
 
+// Controle por campo de personalização do Catálogo Digital Público (ADR-026) — cliente não pode
+// mais digitar qualquer valor quando o admin marcar um campo como 'bloqueado' (usa o padrão do
+// produto) ou 'selecao' (só os valores que o admin cadastrou). Ausência de uma entrada = 'livre',
+// idêntico ao comportamento anterior a esta config.
+export const CATALOG_CUSTOMIZATION_FIELDS = ['width', 'height', 'length', 'material', 'finish', 'voltage', 'operationSide', 'accessories'] as const
+export type CatalogCustomizationField = (typeof CATALOG_CUSTOMIZATION_FIELDS)[number]
+
+const catalogCustomizationFieldConfigSchema = z.object({
+  mode: z.enum(['livre', 'bloqueado', 'selecao']).default('livre'),
+  options: z.array(z.string().min(1).max(200)).max(50).default([]),
+})
+export type CatalogCustomizationFieldConfig = z.infer<typeof catalogCustomizationFieldConfigSchema>
+
+export const catalogCustomizationConfigSchema = z
+  .object({
+    width: catalogCustomizationFieldConfigSchema.optional(),
+    height: catalogCustomizationFieldConfigSchema.optional(),
+    length: catalogCustomizationFieldConfigSchema.optional(),
+    material: catalogCustomizationFieldConfigSchema.optional(),
+    finish: catalogCustomizationFieldConfigSchema.optional(),
+    voltage: catalogCustomizationFieldConfigSchema.optional(),
+    operationSide: catalogCustomizationFieldConfigSchema.optional(),
+    accessories: catalogCustomizationFieldConfigSchema.optional(),
+  })
+  .nullable()
+  .optional()
+export type CatalogCustomizationConfig = z.infer<typeof catalogCustomizationConfigSchema>
+
 export const createProductSchema = z.object({
   internalCode: z.string().default(''),
   sku: z.string().default(''),
@@ -74,6 +102,7 @@ export const createProductSchema = z.object({
   catalogDescription: z.string().default(''),
   catalogPriceMode: z.string().default('sob_consulta'),
   catalogAllowCustomization: z.boolean().default(true),
+  catalogCustomizationConfig: catalogCustomizationConfigSchema,
 })
 
 export const createClientSchema = z.object({

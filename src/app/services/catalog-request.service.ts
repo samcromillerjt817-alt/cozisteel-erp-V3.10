@@ -5,7 +5,7 @@ import { numberingService } from '@/app/services/numbering.service'
 import { clientRepository } from '@/app/repositories/client.repository'
 import { formatDate } from '@/lib/format'
 import { BadRequestException, NotFoundException } from '@/app/exceptions'
-import type { SubmitCatalogRequestDto } from '@/app/dto'
+import type { SubmitCatalogRequestDto, CatalogCustomizationConfig, CatalogCustomizationField } from '@/app/dto'
 
 export interface ListCatalogRequestsInput {
   status?: string
@@ -34,6 +34,20 @@ interface ProductSnapshot {
   width: number
   height: number
   length: number
+  finish: string
+  material: { name: string } | null
+  catalogCustomizationConfig: CatalogCustomizationConfig
+}
+
+type SanitizedCustomization = {
+  width?: number
+  height?: number
+  length?: number
+  material: string
+  finish: string
+  voltage: string
+  operationSide: string
+  accessories: string
 }
 
 /**
@@ -74,17 +88,61 @@ class CatalogRequestService {
     return null
   }
 
-  private buildItemPersonalizationNotes(item: SubmitCatalogRequestDto['items'][number], isCustomized: boolean): string {
+  private buildItemPersonalizationNotes(sanitized: SanitizedCustomization, item: SubmitCatalogRequestDto['items'][number], isCustomized: boolean): string {
     const parts: string[] = []
     if (isCustomized) parts.push('PERSONALIZADO — revisar viabilidade técnica, custo e prazo')
-    if (item.material) parts.push(`Material: ${item.material}`)
-    if (item.finish) parts.push(`Acabamento: ${item.finish}`)
-    if (item.voltage) parts.push(`Voltagem: ${item.voltage}`)
-    if (item.operationSide) parts.push(`Lado de operação: ${item.operationSide}`)
-    if (item.accessories) parts.push(`Acessórios: ${item.accessories}`)
+    if (sanitized.material) parts.push(`Material: ${sanitized.material}`)
+    if (sanitized.finish) parts.push(`Acabamento: ${sanitized.finish}`)
+    if (sanitized.voltage) parts.push(`Voltagem: ${sanitized.voltage}`)
+    if (sanitized.operationSide) parts.push(`Lado de operação: ${sanitized.operationSide}`)
+    if (sanitized.accessories) parts.push(`Acessórios: ${sanitized.accessories}`)
     if (item.modifications) parts.push(`Modificações: ${item.modifications}`)
     if (item.notes) parts.push(`Obs. do cliente: ${item.notes}`)
     return parts.join(' | ')
+  }
+
+  /**
+   * Reconfere cada campo de personalização contra `Product.catalogCustomizationConfig` — entrada
+   * pública não é confiável (rota sem autenticação), então esconder o campo na tela não basta: um
+   * request forjado direto na API ainda tentaria mandar qualquer valor. Campo 'bloqueado' força o
+   * padrão do produto (ou vazio, pra voltage/operationSide/accessories, que não têm um valor "de
+   * fábrica" no cadastro de Produto); campo 'selecao' rejeita qualquer valor fora da lista que o
+   * admin cadastrou; campo 'livre' (ou sem config) mantém o comportamento de sempre.
+   */
+  private sanitizeCustomization(item: SubmitCatalogRequestDto['items'][number], product: ProductSnapshot): SanitizedCustomization {
+    const config = (product.catalogCustomizationConfig || {}) as Partial<
+      Record<CatalogCustomizationField, { mode: 'livre' | 'bloqueado' | 'selecao'; options: string[] }>
+    >
+
+    const resolveNumeric = (field: 'width' | 'height' | 'length', submitted: number | undefined): number | undefined => {
+      const fieldConfig = config[field]
+      if (!fieldConfig || fieldConfig.mode === 'livre') return submitted
+      if (fieldConfig.mode === 'bloqueado') return undefined // undefined -> quem chama já cai no padrão do produto (?? product.x)
+      if (submitted === undefined) return undefined
+      const allowed = fieldConfig.options.map(Number)
+      if (!allowed.includes(submitted)) throw new BadRequestException(`Valor informado não é uma opção válida para este produto (${field})`)
+      return submitted
+    }
+
+    const resolveString = (field: 'material' | 'finish' | 'voltage' | 'operationSide' | 'accessories', submitted: string, productDefault: string): string => {
+      const fieldConfig = config[field]
+      if (!fieldConfig || fieldConfig.mode === 'livre') return submitted
+      if (fieldConfig.mode === 'bloqueado') return productDefault
+      if (!submitted) return submitted
+      if (!fieldConfig.options.includes(submitted)) throw new BadRequestException(`Valor informado não é uma opção válida para este produto (${field})`)
+      return submitted
+    }
+
+    return {
+      width: resolveNumeric('width', item.width),
+      height: resolveNumeric('height', item.height),
+      length: resolveNumeric('length', item.length),
+      material: resolveString('material', item.material, product.material?.name || ''),
+      finish: resolveString('finish', item.finish, product.finish),
+      voltage: resolveString('voltage', item.voltage, ''),
+      operationSide: resolveString('operationSide', item.operationSide, ''),
+      accessories: resolveString('accessories', item.accessories, ''),
+    }
   }
 
   async submit(input: SubmitCatalogRequestDto): Promise<{ protocol: string }> {
@@ -96,9 +154,12 @@ class CatalogRequestService {
     const productIds = [...new Set(input.items.map((i) => i.productId))]
     const products = await db.product.findMany({
       where: { id: { in: productIds }, showInCatalog: true, active: true },
-      select: { id: true, internalCode: true, name: true, unit: true, width: true, height: true, length: true },
+      select: {
+        id: true, internalCode: true, name: true, unit: true, width: true, height: true, length: true,
+        finish: true, material: { select: { name: true } }, catalogCustomizationConfig: true,
+      },
     })
-    const productMap = new Map<string, ProductSnapshot>(products.map((p) => [p.id, p]))
+    const productMap = new Map<string, ProductSnapshot>(products.map((p) => [p.id, p as unknown as ProductSnapshot]))
     if (productMap.size !== productIds.length) {
       throw new BadRequestException('Um ou mais produtos da solicitação não estão mais disponíveis no catálogo')
     }
@@ -112,13 +173,14 @@ class CatalogRequestService {
     // mesmo produto pode aparecer 2x no carrinho com personalizações diferentes, ex.: 2 cores).
     const enrichedItems = input.items.map((item) => {
       const product = productMap.get(item.productId) as ProductSnapshot
+      const sanitized = this.sanitizeCustomization(item, product)
       const isCustomized = Boolean(
-        (item.width !== undefined && item.width !== product.width) ||
-        (item.height !== undefined && item.height !== product.height) ||
-        (item.length !== undefined && item.length !== product.length) ||
-        item.material || item.finish || item.voltage || item.operationSide || item.modifications
+        (sanitized.width !== undefined && sanitized.width !== product.width) ||
+        (sanitized.height !== undefined && sanitized.height !== product.height) ||
+        (sanitized.length !== undefined && sanitized.length !== product.length) ||
+        sanitized.material || sanitized.finish || sanitized.voltage || sanitized.operationSide || item.modifications
       )
-      return { item, product, isCustomized, notes: this.buildItemPersonalizationNotes(item, isCustomized) }
+      return { item, product, sanitized, isCustomized, notes: this.buildItemPersonalizationNotes(sanitized, item, isCustomized) }
     })
 
     const result = await db.$transaction(async (tx) => {
@@ -137,17 +199,17 @@ class CatalogRequestService {
           clientCompany: input.clientCompany,
           generalNotes: input.generalNotes,
           items: {
-            create: enrichedItems.map(({ item, isCustomized }) => ({
+            create: enrichedItems.map(({ item, sanitized, isCustomized }) => ({
               productId: item.productId,
               quantity: item.quantity,
-              width: item.width ?? null,
-              height: item.height ?? null,
-              length: item.length ?? null,
-              material: item.material,
-              finish: item.finish,
-              voltage: item.voltage,
-              operationSide: item.operationSide,
-              accessories: item.accessories,
+              width: sanitized.width ?? null,
+              height: sanitized.height ?? null,
+              length: sanitized.length ?? null,
+              material: sanitized.material,
+              finish: sanitized.finish,
+              voltage: sanitized.voltage,
+              operationSide: sanitized.operationSide,
+              accessories: sanitized.accessories,
               modifications: item.modifications,
               notes: item.notes,
               isCustomized,
@@ -172,7 +234,7 @@ class CatalogRequestService {
           notes: input.generalNotes,
           userId: systemUser.id,
           items: {
-            create: enrichedItems.map(({ item, product, notes }, order) => ({
+            create: enrichedItems.map(({ item, product, sanitized, notes }, order) => ({
               productId: item.productId,
               code: product.internalCode,
               description: product.name,
@@ -180,9 +242,9 @@ class CatalogRequestService {
               unit: product.unit,
               unitPrice: 0,
               total: 0,
-              width: item.width ?? product.width,
-              height: item.height ?? product.height,
-              length: item.length ?? product.length,
+              width: sanitized.width ?? product.width,
+              height: sanitized.height ?? product.height,
+              length: sanitized.length ?? product.length,
               order,
               notes,
             })),

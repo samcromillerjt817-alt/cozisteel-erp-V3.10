@@ -25,6 +25,27 @@ export interface ProductListRow {
   images?: ProductImage[]
 }
 
+// Controle por campo de personalização do Catálogo Digital Público (ADR-026) — pedido do usuário
+// pra impedir valor absurdo (ex.: largura de 100m): admin escolhe, por campo, se o cliente pode
+// digitar livre, se o campo fica travado no padrão do produto, ou se só pode escolher entre opções
+// pré-cadastradas. Ausência de entrada pra um campo = 'livre' (comportamento de sempre).
+export type CustomizationFieldMode = 'livre' | 'bloqueado' | 'selecao'
+export interface CustomizationFieldConfig {
+  mode: CustomizationFieldMode
+  options: string[]
+}
+export const CATALOG_CUSTOMIZATION_FIELDS: { key: string; label: string }[] = [
+  { key: 'width', label: 'Largura' },
+  { key: 'height', label: 'Altura' },
+  { key: 'length', label: 'Comprimento' },
+  { key: 'material', label: 'Material' },
+  { key: 'finish', label: 'Acabamento' },
+  { key: 'voltage', label: 'Voltagem' },
+  { key: 'operationSide', label: 'Lado de operação' },
+  { key: 'accessories', label: 'Acessórios' },
+]
+export type CatalogCustomizationConfig = Record<string, CustomizationFieldConfig>
+
 export interface ProductFormData {
   internalCode: string
   name: string
@@ -53,6 +74,7 @@ export interface ProductFormData {
   catalogDescription: string
   catalogPriceMode: string
   catalogAllowCustomization: boolean
+  catalogCustomizationConfig: CatalogCustomizationConfig
 }
 
 export const EMPTY_PRODUCT_FORM: ProductFormData = {
@@ -60,7 +82,7 @@ export const EMPTY_PRODUCT_FORM: ProductFormData = {
   costPrice: 0, salePrice: 0, width: 0, height: 0, length: 0, thickness: 0, weight: 0,
   ncm: '', ipi: 0, icms: 0, finish: '', family: '', line: '', notes: '',
   showInCatalog: false, catalogOrder: 0, catalogFeatured: false, catalogDescription: '',
-  catalogPriceMode: 'sob_consulta', catalogAllowCustomization: true,
+  catalogPriceMode: 'sob_consulta', catalogAllowCustomization: true, catalogCustomizationConfig: {},
 }
 
 export interface ProductListItem extends ProductListRow {
@@ -86,6 +108,7 @@ export interface ProductListItem extends ProductListRow {
   catalogDescription?: string
   catalogPriceMode?: string
   catalogAllowCustomization?: boolean
+  catalogCustomizationConfig?: CatalogCustomizationConfig | null
 }
 
 /** A linha da listagem já traz todos os campos do formulário (mesmo comportamento de antes desta
@@ -120,5 +143,6 @@ export function productToFormData(product: ProductListItem): ProductFormData {
     catalogDescription: product.catalogDescription || '',
     catalogPriceMode: product.catalogPriceMode || 'sob_consulta',
     catalogAllowCustomization: product.catalogAllowCustomization ?? true,
+    catalogCustomizationConfig: product.catalogCustomizationConfig || {},
   }
 }

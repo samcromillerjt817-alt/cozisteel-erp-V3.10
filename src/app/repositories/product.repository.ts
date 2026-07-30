@@ -37,6 +37,7 @@ const CATALOG_PUBLIC_SELECT = {
   catalogFeatured: true,
   catalogPriceMode: true,
   catalogAllowCustomization: true,
+  catalogCustomizationConfig: true,
   salePrice: true,
   images: {
     orderBy: [{ isPrimary: 'desc' as const }, { order: 'asc' as const }],

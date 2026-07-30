@@ -389,12 +389,18 @@ model Product {
 
   // Controle de exibição no Catálogo Digital Público (ADR-026) — nada aparece publicamente até
   // showInCatalog ser explicitamente marcado; defaults seguros (não expõe nada por acidente).
-  showInCatalog             Boolean @default(false)
-  catalogOrder              Int     @default(0)
-  catalogFeatured           Boolean @default(false)
-  catalogDescription        String  @default("") // descrição comercial, distinta de `description` (uso interno)
-  catalogPriceMode          String  @default("sob_consulta") // sob_consulta, exibir, faixa
-  catalogAllowCustomization Boolean @default(true)
+  showInCatalog              Boolean @default(false)
+  catalogOrder               Int     @default(0)
+  catalogFeatured            Boolean @default(false)
+  catalogDescription         String  @default("") // descrição comercial, distinta de `description` (uso interno)
+  catalogPriceMode           String  @default("sob_consulta") // sob_consulta, exibir, faixa
+  catalogAllowCustomization  Boolean @default(true)
+  // Controle por campo (largura/altura/comprimento/material/acabamento/voltagem/lado de
+  // operação/acessórios): { [campo]: { modo: 'livre'|'bloqueado'|'selecao', opcoes?: string[] } }.
+  // Ausência de uma entrada (ou o campo inteiro null) = 'livre' em todos os campos — comportamento
+  // idêntico ao anterior à esta config, nenhum produto existente muda de comportamento. Só tem
+  // efeito quando `catalogAllowCustomization` já é true (o botão-mestre continua existindo).
+  catalogCustomizationConfig Json?
 
   quoteItems           QuoteItem[]
   salesOrderItems      SalesOrderItem[]

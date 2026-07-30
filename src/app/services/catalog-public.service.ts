@@ -1,5 +1,6 @@
 import { productRepository } from '@/app/repositories/product.repository'
 import { NotFoundException } from '@/app/exceptions'
+import type { CatalogCustomizationConfig } from '@/app/dto'
 
 export interface ListCatalogInput {
   search?: string
@@ -29,6 +30,7 @@ interface CatalogProductRecord {
   catalogFeatured: boolean
   catalogPriceMode: string
   catalogAllowCustomization: boolean
+  catalogCustomizationConfig: CatalogCustomizationConfig
   salePrice: number
   images: Array<{ id: string; url: string; isPrimary: boolean; order: number }>
 }
@@ -54,6 +56,7 @@ function toPublicProduct(product: CatalogProductRecord) {
     line: product.line,
     featured: product.catalogFeatured,
     allowsCustomization: product.catalogAllowCustomization,
+    customizationConfig: product.catalogCustomizationConfig || null,
     priceMode: product.catalogPriceMode,
     price: product.catalogPriceMode === 'exibir' ? product.salePrice : null,
     images: product.images.map((img) => ({ id: img.id, url: `/api/public/uploads/${img.url}`, isPrimary: img.isPrimary })),

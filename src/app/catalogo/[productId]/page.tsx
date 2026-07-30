@@ -12,8 +12,24 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCatalogCart } from '@/hooks/use-catalog-cart'
+
+// Espelha CatalogCustomizationConfig (src/app/dto/index.ts) sem importar do DTO do servidor — esta
+// é uma página pública, o formato é só o que a API já expõe em `customizationConfig`.
+type CustomizationFieldMode = 'livre' | 'bloqueado' | 'selecao'
+interface CustomizationFieldConfig {
+  mode: CustomizationFieldMode
+  options: string[]
+}
+type CustomizationConfig = Partial<
+  Record<'width' | 'height' | 'length' | 'material' | 'finish' | 'voltage' | 'operationSide' | 'accessories', CustomizationFieldConfig>
+>
+
+function fieldMode(config: CustomizationConfig | null | undefined, field: keyof CustomizationConfig): CustomizationFieldMode {
+  return config?.[field]?.mode || 'livre'
+}
 
 interface CatalogProductDetail {
   id: string
@@ -29,6 +45,7 @@ interface CatalogProductDetail {
   line: string
   featured: boolean
   allowsCustomization: boolean
+  customizationConfig: CustomizationConfig | null
   priceMode: string
   price: number | null
   images: Array<{ id: string; url: string; isPrimary: boolean }>
@@ -212,19 +229,115 @@ export default function CatalogoProductPage({ params }: { params: Promise<{ prod
                       {product.allowsCustomization && (
                         <>
                           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                            <div className="space-y-1.5"><Label>Largura (cm)</Label><Input type="number" value={form.width} onChange={(e) => setForm({ ...form, width: e.target.value })} /></div>
-                            <div className="space-y-1.5"><Label>Altura (cm)</Label><Input type="number" value={form.height} onChange={(e) => setForm({ ...form, height: e.target.value })} /></div>
-                            <div className="space-y-1.5 col-span-2 sm:col-span-1"><Label>Comprimento (cm)</Label><Input type="number" value={form.length} onChange={(e) => setForm({ ...form, length: e.target.value })} /></div>
+                            {fieldMode(product.customizationConfig, 'width') !== 'bloqueado' && (
+                              <div className="space-y-1.5">
+                                <Label>Largura (cm)</Label>
+                                {fieldMode(product.customizationConfig, 'width') === 'selecao' ? (
+                                  <Select value={form.width} onValueChange={(v) => setForm({ ...form, width: v })}>
+                                    <SelectTrigger className="w-full"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                    <SelectContent>{(product.customizationConfig?.width?.options || []).map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                                  </Select>
+                                ) : (
+                                  <Input type="number" value={form.width} onChange={(e) => setForm({ ...form, width: e.target.value })} />
+                                )}
+                              </div>
+                            )}
+                            {fieldMode(product.customizationConfig, 'height') !== 'bloqueado' && (
+                              <div className="space-y-1.5">
+                                <Label>Altura (cm)</Label>
+                                {fieldMode(product.customizationConfig, 'height') === 'selecao' ? (
+                                  <Select value={form.height} onValueChange={(v) => setForm({ ...form, height: v })}>
+                                    <SelectTrigger className="w-full"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                    <SelectContent>{(product.customizationConfig?.height?.options || []).map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                                  </Select>
+                                ) : (
+                                  <Input type="number" value={form.height} onChange={(e) => setForm({ ...form, height: e.target.value })} />
+                                )}
+                              </div>
+                            )}
+                            {fieldMode(product.customizationConfig, 'length') !== 'bloqueado' && (
+                              <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                                <Label>Comprimento (cm)</Label>
+                                {fieldMode(product.customizationConfig, 'length') === 'selecao' ? (
+                                  <Select value={form.length} onValueChange={(v) => setForm({ ...form, length: v })}>
+                                    <SelectTrigger className="w-full"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                    <SelectContent>{(product.customizationConfig?.length?.options || []).map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                                  </Select>
+                                ) : (
+                                  <Input type="number" value={form.length} onChange={(e) => setForm({ ...form, length: e.target.value })} />
+                                )}
+                              </div>
+                            )}
                           </div>
                           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            <div className="space-y-1.5"><Label>Material</Label><Input value={form.material} onChange={(e) => setForm({ ...form, material: e.target.value })} /></div>
-                            <div className="space-y-1.5"><Label>Acabamento</Label><Input value={form.finish} onChange={(e) => setForm({ ...form, finish: e.target.value })} /></div>
+                            {fieldMode(product.customizationConfig, 'material') !== 'bloqueado' && (
+                              <div className="space-y-1.5">
+                                <Label>Material</Label>
+                                {fieldMode(product.customizationConfig, 'material') === 'selecao' ? (
+                                  <Select value={form.material} onValueChange={(v) => setForm({ ...form, material: v })}>
+                                    <SelectTrigger className="w-full"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                    <SelectContent>{(product.customizationConfig?.material?.options || []).map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                                  </Select>
+                                ) : (
+                                  <Input value={form.material} onChange={(e) => setForm({ ...form, material: e.target.value })} />
+                                )}
+                              </div>
+                            )}
+                            {fieldMode(product.customizationConfig, 'finish') !== 'bloqueado' && (
+                              <div className="space-y-1.5">
+                                <Label>Acabamento</Label>
+                                {fieldMode(product.customizationConfig, 'finish') === 'selecao' ? (
+                                  <Select value={form.finish} onValueChange={(v) => setForm({ ...form, finish: v })}>
+                                    <SelectTrigger className="w-full"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                    <SelectContent>{(product.customizationConfig?.finish?.options || []).map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                                  </Select>
+                                ) : (
+                                  <Input value={form.finish} onChange={(e) => setForm({ ...form, finish: e.target.value })} />
+                                )}
+                              </div>
+                            )}
                           </div>
                           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            <div className="space-y-1.5"><Label>Voltagem</Label><Input value={form.voltage} onChange={(e) => setForm({ ...form, voltage: e.target.value })} placeholder="Ex.: 220V" /></div>
-                            <div className="space-y-1.5"><Label>Lado de operação</Label><Input value={form.operationSide} onChange={(e) => setForm({ ...form, operationSide: e.target.value })} placeholder="Ex.: esquerdo" /></div>
+                            {fieldMode(product.customizationConfig, 'voltage') !== 'bloqueado' && (
+                              <div className="space-y-1.5">
+                                <Label>Voltagem</Label>
+                                {fieldMode(product.customizationConfig, 'voltage') === 'selecao' ? (
+                                  <Select value={form.voltage} onValueChange={(v) => setForm({ ...form, voltage: v })}>
+                                    <SelectTrigger className="w-full"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                    <SelectContent>{(product.customizationConfig?.voltage?.options || []).map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                                  </Select>
+                                ) : (
+                                  <Input value={form.voltage} onChange={(e) => setForm({ ...form, voltage: e.target.value })} placeholder="Ex.: 220V" />
+                                )}
+                              </div>
+                            )}
+                            {fieldMode(product.customizationConfig, 'operationSide') !== 'bloqueado' && (
+                              <div className="space-y-1.5">
+                                <Label>Lado de operação</Label>
+                                {fieldMode(product.customizationConfig, 'operationSide') === 'selecao' ? (
+                                  <Select value={form.operationSide} onValueChange={(v) => setForm({ ...form, operationSide: v })}>
+                                    <SelectTrigger className="w-full"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                    <SelectContent>{(product.customizationConfig?.operationSide?.options || []).map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                                  </Select>
+                                ) : (
+                                  <Input value={form.operationSide} onChange={(e) => setForm({ ...form, operationSide: e.target.value })} placeholder="Ex.: esquerdo" />
+                                )}
+                              </div>
+                            )}
                           </div>
-                          <div className="space-y-1.5"><Label>Acessórios</Label><Input value={form.accessories} onChange={(e) => setForm({ ...form, accessories: e.target.value })} /></div>
+                          {fieldMode(product.customizationConfig, 'accessories') !== 'bloqueado' && (
+                            <div className="space-y-1.5">
+                              <Label>Acessórios</Label>
+                              {fieldMode(product.customizationConfig, 'accessories') === 'selecao' ? (
+                                <Select value={form.accessories} onValueChange={(v) => setForm({ ...form, accessories: v })}>
+                                  <SelectTrigger className="w-full"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                  <SelectContent>{(product.customizationConfig?.accessories?.options || []).map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                                </Select>
+                              ) : (
+                                <Input value={form.accessories} onChange={(e) => setForm({ ...form, accessories: e.target.value })} />
+                              )}
+                            </div>
+                          )}
                           <div className="space-y-1.5"><Label>Modificações solicitadas</Label><Textarea rows={2} value={form.modifications} onChange={(e) => setForm({ ...form, modifications: e.target.value })} /></div>
                         </>
                       )}

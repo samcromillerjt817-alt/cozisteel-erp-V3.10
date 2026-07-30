@@ -20,6 +20,7 @@ describe('Catálogo Digital Público — submissão (ADR-026, Fase 3)', () => {
   let categoryId: string
   let visibleProductId: string
   let hiddenProductId: string
+  let configuredProductId: string
 
   beforeAll(async () => {
     const category = await db.category.create({ data: { name: `Cat Submissão ${Date.now()}`, slug: `cat-submissao-${Date.now()}` } })
@@ -31,7 +32,29 @@ describe('Catálogo Digital Público — submissão (ADR-026, Fase 3)', () => {
     visibleProductId = visible.id
     const hidden = await db.product.create({ data: { name: `Produto Oculto ${Date.now()}`, showInCatalog: false, active: true, categoryId } })
     hiddenProductId = hidden.id
-    productIds.push(visibleProductId, hiddenProductId)
+
+    // Produto com personalização por campo (ADR-026, achado do usuário: sem isso o cliente podia
+    // pedir qualquer largura/material) — width bloqueado (usa sempre o padrão do produto) e
+    // material em modo seleção (só aceita as opções cadastradas).
+    const configured = await db.product.create({
+      data: {
+        name: `Produto Config Personalização ${Date.now()}`,
+        showInCatalog: true,
+        active: true,
+        categoryId,
+        unit: 'UN',
+        width: 100,
+        height: 50,
+        length: 30,
+        internalCode: 'PS-2',
+        catalogCustomizationConfig: {
+          width: { mode: 'bloqueado', options: [] },
+          material: { mode: 'selecao', options: ['Inox 304', 'Inox 316'] },
+        },
+      },
+    })
+    configuredProductId = configured.id
+    productIds.push(visibleProductId, hiddenProductId, configuredProductId)
   })
 
   afterAll(async () => {
@@ -235,5 +258,49 @@ describe('Catálogo Digital Público — submissão (ADR-026, Fase 3)', () => {
 
     const itemsAfter = await db.quoteItem.count({ where: { quoteId: catalogRequest!.quoteId! } })
     expect(itemsAfter).toBe(itemsBefore) // reassignAndStage NUNCA deve tocar em itens
+  })
+
+  it('13. campo "bloqueado" ignora o valor enviado pelo cliente e usa o padrão do produto', async () => {
+    const result = await catalogRequestService.submit(
+      baseInput({
+        items: [{ productId: configuredProductId, quantity: 1, width: 999, material: 'Inox 304', finish: '', voltage: '', operationSide: '', accessories: '', modifications: '', notes: '' }],
+      })
+    )
+    const catalogRequest = await db.catalogRequest.findUnique({ where: { protocol: result.protocol } })
+    catalogRequestIds.push(catalogRequest!.id)
+    quoteIds.push(catalogRequest!.quoteId!)
+
+    const item = await db.catalogRequestItem.findFirst({ where: { catalogRequestId: catalogRequest!.id } })
+    expect(item?.width).toBeNull() // bloqueado -> nunca grava o valor enviado (999), fica null (usa o padrão a jusante)
+
+    const quoteItem = await db.quoteItem.findFirst({ where: { quoteId: catalogRequest!.quoteId! } })
+    expect(quoteItem?.width).toBe(100) // padrão do produto, nunca os 999 enviados
+  })
+
+  it('14. campo "selecao" aceita valor dentro da lista cadastrada', async () => {
+    const result = await catalogRequestService.submit(
+      baseInput({
+        items: [{ productId: configuredProductId, quantity: 1, material: 'Inox 316', finish: '', voltage: '', operationSide: '', accessories: '', modifications: '', notes: '' }],
+      })
+    )
+    const catalogRequest = await db.catalogRequest.findUnique({ where: { protocol: result.protocol } })
+    catalogRequestIds.push(catalogRequest!.id)
+    quoteIds.push(catalogRequest!.quoteId!)
+
+    const item = await db.catalogRequestItem.findFirst({ where: { catalogRequestId: catalogRequest!.id } })
+    expect(item?.material).toBe('Inox 316')
+  })
+
+  it('15. campo "selecao" rejeita valor fora da lista cadastrada, sem criar nada', async () => {
+    const before = await db.catalogRequest.count()
+    await expect(
+      catalogRequestService.submit(
+        baseInput({
+          items: [{ productId: configuredProductId, quantity: 1, material: 'Alumínio Anodizado', finish: '', voltage: '', operationSide: '', accessories: '', modifications: '', notes: '' }],
+        })
+      )
+    ).rejects.toThrow(BadRequestException)
+    const after = await db.catalogRequest.count()
+    expect(after).toBe(before) // rejeição acontece antes da transação — nada é criado
   })
 })
