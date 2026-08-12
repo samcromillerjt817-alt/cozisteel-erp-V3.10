@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { requireAuth, ok, created, handleRouteError } from '@/lib/api-utils'
+import { requireAuth, requireModulePermission, ok, created, handleRouteError } from '@/lib/api-utils'
 import { categoryService } from '@/app/services/category.service'
 
 export async function GET(_req: NextRequest) {
@@ -14,7 +14,7 @@ export async function GET(_req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    await requireAuth()
+    await requireModulePermission('categorias', 'create')
     const body = await req.json()
     const category = await categoryService.create(body)
     return created(category)

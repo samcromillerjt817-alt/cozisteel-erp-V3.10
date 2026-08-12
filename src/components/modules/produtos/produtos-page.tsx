@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Ban, Package } from 'lucide-react'
+import { Plus, Pencil, Ban, Package, FolderCog } from 'lucide-react'
 import { PageHeader } from '@/components/platform/page-header'
 import { FilterBar } from '@/components/platform/filter-bar'
 import { DataTable, type DataTableColumn } from '@/components/platform/data-table'
@@ -12,14 +12,16 @@ import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/domain/confirm-dialog'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { formatCurrency } from '@/lib/format'
+import type { Role } from '@/app/middleware/rbac'
 import { ProdutoFormFields } from './produto-form-fields'
 import { ProdutoImages } from './produto-images'
 import { ProdutoMaterialLinks } from './produto-material-links'
-import { ProdutoAuxiliaryCard } from './produto-auxiliary-card'
+import { CategoriaManagerSheet } from './categoria-manager-sheet'
 import { ProdutoBomSection } from './produto-bom-section'
 import { EMPTY_PRODUCT_FORM, productToFormData, type ProductListItem, type ProductFormData, type ProductImage, type ProductMaterialLink } from './types'
 
 interface ProdutosPageProps {
+  role: Role
   categories: { id: string; name: string }[]
   materials: { id: string; name: string }[]
   materialsFull: { id: string; name: string }[]
@@ -31,12 +33,13 @@ interface ProdutosPageProps {
 const PAGE_SIZE = 20
 
 /**
- * Módulo Produtos — 5ª e última migração da Subetapa 11.5.7 (a mais complexa: imagens + BOM). Estrutura
- * igual às demais: `PageHeader`→`FilterBar`→`DataTable`→`FormDialog` (com `ProdutoImages`+
- * `ProdutoMaterialLinks` dentro, drill-down leve) + o card de "Cadastros auxiliares" ao lado da
- * tabela, preservado na mesma posição de antes.
+ * Módulo Produtos — `PageHeader`→`FilterBar`→`DataTable`→`FormDialog`. Categorias saíram do card
+ * "Cadastros auxiliares" (embaixo da tabela — achado do usuário: rolar a página inteira só pra
+ * cadastrar categoria não é prático com dezenas/centenas de produtos) e viraram a janela
+ * "Gerenciar categorias" (`CategoriaManagerSheet`), acionada pelo cabeçalho — gerenciável a
+ * qualquer momento em 1 clique, sem sair da tela nem rolar a listagem.
  */
-export function ProdutosPage({ categories, materials, materialsFull, onCatalogChanged, onAuxiliaryCatalogChanged, onNavigateToMateriais }: ProdutosPageProps) {
+export function ProdutosPage({ role, categories, materials, materialsFull, onCatalogChanged, onAuxiliaryCatalogChanged, onNavigateToMateriais }: ProdutosPageProps) {
   const confirmAction = useConfirm()
   const [rows, setRows] = useState<ProductListItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -53,9 +56,7 @@ export function ProdutosPage({ categories, materials, materialsFull, onCatalogCh
   const [materialLinks, setMaterialLinks] = useState<ProductMaterialLink[]>([])
   const [saving, setSaving] = useState(false)
 
-  const [categoryName, setCategoryName] = useState('')
-  const [categorySlug, setCategorySlug] = useState('')
-  const [savingCategory, setSavingCategory] = useState(false)
+  const [categoriaManagerOpen, setCategoriaManagerOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -232,30 +233,6 @@ export function ProdutosPage({ categories, materials, materialsFull, onCatalogCh
     }
   }
 
-  async function saveCategory() {
-    if (!categoryName.trim() || !categorySlug.trim()) {
-      toast.error('Preencha nome e slug da categoria')
-      return
-    }
-    setSavingCategory(true)
-    try {
-      const r = await fetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: categoryName, slug: categorySlug }) })
-      if (r.ok) {
-        toast.success('Categoria criada!')
-        setCategoryName('')
-        setCategorySlug('')
-        onAuxiliaryCatalogChanged?.()
-      } else {
-        const err = await r.json()
-        toast.error(err.error || 'Erro ao salvar categoria')
-      }
-    } catch {
-      toast.error('Erro ao salvar categoria')
-    } finally {
-      setSavingCategory(false)
-    }
-  }
-
   const columns: DataTableColumn<ProductListItem>[] = [
     {
       id: 'image',
@@ -278,7 +255,16 @@ export function ProdutosPage({ categories, materials, materialsFull, onCatalogCh
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Produtos" actions={<Button onClick={openNew}><Plus className="w-4 h-4" /> Novo</Button>} />
+      <PageHeader
+        title="Produtos"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={onNavigateToMateriais}><Package className="w-4 h-4" /> Matérias-primas</Button>
+            <Button variant="outline" onClick={() => setCategoriaManagerOpen(true)}><FolderCog className="w-4 h-4" /> Gerenciar categorias</Button>
+            <Button onClick={openNew}><Plus className="w-4 h-4" /> Novo</Button>
+          </div>
+        }
+      />
 
       <FilterBar>
         <SearchInput value={search} onChange={handleSearchChange} />
@@ -298,14 +284,11 @@ export function ProdutosPage({ categories, materials, materialsFull, onCatalogCh
         pagination={{ page, pageSize: PAGE_SIZE, total, onPageChange: setPage }}
       />
 
-      <ProdutoAuxiliaryCard
-        categoryName={categoryName}
-        categorySlug={categorySlug}
-        onCategoryNameChange={setCategoryName}
-        onCategorySlugChange={setCategorySlug}
-        onSaveCategory={saveCategory}
-        savingCategory={savingCategory}
-        onGoToMateriais={onNavigateToMateriais}
+      <CategoriaManagerSheet
+        open={categoriaManagerOpen}
+        onOpenChange={setCategoriaManagerOpen}
+        role={role}
+        onChanged={onAuxiliaryCatalogChanged}
       />
 
       <FormDialog

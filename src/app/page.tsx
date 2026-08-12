@@ -811,6 +811,7 @@ export default function ERPPage() {
           {keepAliveVisible('produtos') && (
             <div className={keepAliveClass('produtos')}>
               <ProdutosPage
+                role={userRole}
                 categories={categories}
                 materials={materials}
                 materialsFull={materialsFull}
