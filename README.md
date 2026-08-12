@@ -145,8 +145,8 @@ tabela de itens).
 # ⚙️ Instalação
 
 ```bash
-git clone https://github.com/samcromillerjt817-alt/cozisteel-erp-V3.10.git
-cd cozisteel-erp-V3.10
+git clone https://github.com/samcromillerjt817-alt/mobsteel-erp.git
+cd mobsteel-erp
 chmod +x install.sh
 sudo bash install.sh
 ```
@@ -171,7 +171,7 @@ suporta caminho UNC como diretório de trabalho ("Não há suporte para caminhos
 através do WSL de verdade:
 
 ```bash
-wsl.exe -e bash -lc "cd /home/julio/cozisteel-erp-V3.10 && <comando>"
+wsl.exe -e bash -lc "cd <caminho-do-projeto-dentro-do-wsl> && <comando>"
 ```
 
 Comandos puramente de shell (`git`, `ls`, leitura/edição de arquivo) funcionam normalmente a partir do

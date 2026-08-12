@@ -25,7 +25,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # ── 1. Node.js ──
-echo -e "${YELLOW}[1/9] Verificando Node.js 20+...${NC}"
+echo -e "${YELLOW}[1/10] Verificando Node.js 20+...${NC}"
 if command -v node >/dev/null 2>&1; then
   VER=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
   if [ "$VER" -ge 20 ] && [ "$VER" -lt 24 ]; then
@@ -44,16 +44,17 @@ else
 fi
 
 # ── 2. Dependencias do sistema ──
-echo -e "${YELLOW}[2/9] Instalando dependencias do sistema...${NC}"
+echo -e "${YELLOW}[2/10] Instalando dependencias do sistema...${NC}"
 apt-get update -qq 2>/dev/null || true
 apt-get install -y build-essential python3 sqlite3 2>/dev/null || true
 npm install -g pm2 tsx 2>/dev/null || true
 
 # ── 3. Projeto ──
-echo -e "${YELLOW}[3/9] Configurando projeto...${NC}"
+echo -e "${YELLOW}[3/10] Configurando projeto...${NC}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 mkdir -p data storage/{clientes,produtos,orcamentos,pdf,logos,assinaturas,anexos,backups,temp,cache,logs} logs patches
+chmod +x scripts/*.sh start.sh 2>/dev/null || true
 
 if [ ! -f .env ]; then
   SECRET=$(openssl rand -base64 32)
@@ -74,7 +75,7 @@ else
 fi
 
 # ── 4. NPM install (como usuario real para evitar permissao) ──
-echo -e "${YELLOW}[4/9] Instalando dependencias npm...${NC}"
+echo -e "${YELLOW}[4/10] Instalando dependencias npm...${NC}"
 if [ "$REAL_USER" != "root" ]; then
   echo -e "${CYAN}  Instalando como usuario $REAL_USER...${NC}"
   chown -R "$REAL_USER:$REAL_USER" "$SCRIPT_DIR"
@@ -84,7 +85,7 @@ else
 fi
 
 # ── 5. Prisma ──
-echo -e "${YELLOW}[5/9] Configurando banco de dados...${NC}"
+echo -e "${YELLOW}[5/10] Configurando banco de dados...${NC}"
 if [ "$REAL_USER" != "root" ]; then
   su - "$REAL_USER" -c "cd '$SCRIPT_DIR' && npx prisma generate" 2>&1 | tail -3
   su - "$REAL_USER" -c "cd '$SCRIPT_DIR' && npx prisma db push" 2>&1 | tail -3
@@ -97,7 +98,7 @@ fi
 echo -e "${GREEN}  Banco de dados configurado${NC}"
 
 # ── 6. Build (SEM Turbopack — standalone quebra com Turbopack) ──
-echo -e "${YELLOW}[6/9] Compilando build de producao (Webpack) ...${NC}"
+echo -e "${YELLOW}[6/10] Compilando build de producao (Webpack) ...${NC}"
 if [ "$REAL_USER" != "root" ]; then
   su - "$REAL_USER" -c "cd '$SCRIPT_DIR' && npx next build --no-turbopack" 2>&1 | tail -10
 else
@@ -123,14 +124,14 @@ cp -r public "$APP_DIR/"
 echo "Arquivos static copiados"
 
 # ── 7. Corrige permissoes ──
-echo -e "${YELLOW}[7/9] Corrigindo permissoes...${NC}"
+echo -e "${YELLOW}[7/10] Corrigindo permissoes...${NC}"
 if [ "$REAL_USER" != "root" ]; then
   chown -R "$REAL_USER:$REAL_USER" "$SCRIPT_DIR"
   echo -e "${GREEN}  Permissoes atribuidas a $REAL_USER${NC}"
 fi
 
 # ── 8. PM2 ──
-echo -e "${YELLOW}[8/9] Configurando servico PM2...${NC}"
+echo -e "${YELLOW}[8/10] Configurando servico PM2...${NC}"
 SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
 SECRET_VAL=$(grep NEXTAUTH_SECRET .env | cut -d= -f2)
 
@@ -175,7 +176,30 @@ fi
 echo -e "${YELLOW}  Configurando inicializacao automatica apos reiniciar...${NC}"
 pm2 startup systemd -u "$REAL_USER" --hp "$REAL_HOME" >/dev/null 2>&1 || true
 
-# ── 9. Resumo ──
+# ── 9. Backup automatico diario (ADR-028) ──
+echo -e "${YELLOW}[9/10] Configurando backup automatico diario (3h da manha)...${NC}"
+CRON_LINE="0 3 * * * cd $SCRIPT_DIR && ./scripts/backup-daily.sh >> logs/backup-cron.out 2>&1"
+if [ "$REAL_USER" != "root" ]; then
+  EXISTING_CRON=$(su - "$REAL_USER" -c "crontab -l 2>/dev/null" || true)
+  if ! echo "$EXISTING_CRON" | grep -qF "backup-daily.sh"; then
+    su - "$REAL_USER" -c "(crontab -l 2>/dev/null; echo '$CRON_LINE') | crontab -" 2>&1 | tail -3
+    echo -e "${GREEN}  Backup diario agendado (cron)${NC}"
+  else
+    echo -e "${CYAN}  Backup diario ja estava agendado, mantendo...${NC}"
+  fi
+else
+  EXISTING_CRON=$(crontab -l 2>/dev/null || true)
+  if ! echo "$EXISTING_CRON" | grep -qF "backup-daily.sh"; then
+    (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
+    echo -e "${GREEN}  Backup diario agendado (cron)${NC}"
+  fi
+fi
+echo -e "${CYAN}  Retencao diaria/semanal/mensal em storage/backups/. A copia externa (fora do${NC}"
+echo -e "${CYAN}  WSL) aponta por padrao pra uma pasta de um usuario especifico — se nao existir${NC}"
+echo -e "${CYAN}  nesta maquina, o backup local funciona normal e so avisa que pulou a copia${NC}"
+echo -e "${CYAN}  externa. Ajuste EXTERNAL_BACKUP_PATH em scripts/backup-daily.sh se quiser.${NC}"
+
+# ── 10. Resumo ──
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║  COZISTEEL ERP v4.0 — Instalado com Sucesso!        ║${NC}"
