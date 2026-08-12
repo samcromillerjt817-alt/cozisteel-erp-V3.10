@@ -1,0 +1,5 @@
+# Forca LF em todo arquivo de texto, independente do SO que fez o checkout/commit.
+# Sem isso, scripts .sh editados/salvos por ferramentas do lado Windows (ex.: via caminho UNC
+# \\wsl.localhost\...) podem ser gravados com CRLF, o que quebra a execucao via bash/cron —
+# foi exatamente isso que derrubou o backup automatico diario silenciosamente por 13 dias.
+* text=auto eol=lf
