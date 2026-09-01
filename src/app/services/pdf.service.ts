@@ -541,6 +541,22 @@ function ensureSpace(doc: jsPDF, y: number, needed: number): number {
   return y
 }
 
+/** Altura que uma caixa de largura cheia (`drawSingleBox`/`drawHighlightBox`) vai ocupar, sem
+ * desenhar nada — pra decidir ANTES se um grupo de caixas cabe inteiro na página atual. Sem isso,
+ * `ensureSpace` só enxergava uma caixa de cada vez com um "needed" fixo (30) bem menor que a altura
+ * real de um texto longo (Garantia), então a página virava DEPOIS de Dados Bancários já desenhado,
+ * deixando só Garantia + assinatura numa página 2 quase vazia — visualmente desequilibrado. Inclui
+ * o mesmo respiro de 10mm que as funções de desenho somam depois da caixa.
+ */
+function measureFullWidthBoxHeight(doc: jsPDF, lines: string[]): number {
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const textWidth = pageWidth - 28 - 8
+  const lineHeight = 4.6
+  const wrapped = lines.map((line) => doc.splitTextToSize(line, textWidth) as string[])
+  const lineCount = Math.max(wrapped.reduce((sum, w) => sum + w.length, 0), 1)
+  return 12 + lineCount * lineHeight + 10
+}
+
 class PdfService {
   /**
    * `variant` (Orçamento Técnico × Comercial, achado do usuário): a única diferença de verdade é a
@@ -676,22 +692,25 @@ class PdfService {
     const noteLines = [quote.notes || quote.generalConditions || 'Nenhuma observação adicional.']
     y = drawTwoColumnBoxes(doc, y, 'CONDIÇÕES COMERCIAIS', conditionLines.length ? conditionLines : ['A combinar'], 'OBSERVAÇÕES', noteLines)
 
+    // Dados Bancários + Garantia + Assinatura formam o "fechamento" do documento — tratados como um
+    // bloco só na decisão de quebra de página (mede tudo ANTES de desenhar) pra nunca ficar metade
+    // numa página e metade sozinha na próxima (ex.: só Garantia + assinatura numa página 2 esparsa).
+    const bankLines = company.bankData ? company.bankData.split('\n').map((l) => l.trim()).filter(Boolean) : []
+    const closingBlockHeight =
+      (bankLines.length ? measureFullWidthBoxHeight(doc, bankLines) : 0) +
+      (quote.warranty ? measureFullWidthBoxHeight(doc, [quote.warranty]) : 0) +
+      35 + // assinatura
+      20 // faixa de rodapé da marca
+    y = ensureSpace(doc, y, closingBlockHeight)
+
     // Dados Bancários (Configurações > Empresa) — caixa em destaque (cor da marca), pra saltar aos
     // olhos de quem vai pagar, em vez de dividir uma caixa neutra com Pagamento/Prazo/Validade.
-    if (company.bankData) {
-      y = ensureSpace(doc, y, 30)
-      const bankLines = company.bankData.split('\n').map((l) => l.trim()).filter(Boolean)
-      y = drawHighlightBox(doc, y, 'DADOS BANCÁRIOS', bankLines)
-    }
+    if (bankLines.length) y = drawHighlightBox(doc, y, 'DADOS BANCÁRIOS', bankLines)
 
     // Garantia numa caixa própria, largura cheia — texto longo demais (política de garantia, CDC)
     // pra dividir espaço com Pagamento/Prazo/Validade sem ficar amontoado.
-    if (quote.warranty) {
-      y = ensureSpace(doc, y, 30)
-      y = drawSingleBox(doc, y, 'GARANTIA', [quote.warranty])
-    }
+    if (quote.warranty) y = drawSingleBox(doc, y, 'GARANTIA', [quote.warranty])
 
-    y = ensureSpace(doc, y, 35)
     y = drawSignatureBlock(doc, y, quote.approvedBy || undefined, quote.approvedAt)
 
     y = ensureSpace(doc, y, 20)
