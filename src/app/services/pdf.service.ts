@@ -13,6 +13,7 @@ const BRAND_DARK: [number, number, number] = [26, 26, 26]      // "card" escuro 
 const BRAND_GRAY: [number, number, number] = [100, 100, 100]
 const BRAND_LIGHT: [number, number, number] = [247, 247, 247]  // fundo do card claro (dados do cliente)
 const BRAND_BORDER: [number, number, number] = [225, 225, 225]
+const BRAND_RED_TINT: [number, number, number] = [252, 237, 235] // fundo leve de BRAND_RED — destaque de Dados Bancários sem pesar a página
 
 const PAGE_SAFE_Y = 252 // abaixo disso, reserva nova página pro fechamento do documento
 
@@ -473,6 +474,40 @@ function drawSingleBox(doc: jsPDF, y: number, title: string, lines: string[]): n
   return y + boxHeight + 10
 }
 
+/** Igual `drawSingleBox`, mas com fundo/borda na cor da marca — usado pra Dados Bancários, que
+ * precisa saltar aos olhos de quem vai pagar (nunca compete visualmente com as caixas neutras de
+ * Condições/Observações/Garantia ao redor). Título e primeira linha (rótulo do banco) em negrito
+ * visual via tamanho maior — jsPDF não tem negrito sintético nesta fonte (só o peso Regular). */
+function drawHighlightBox(doc: jsPDF, y: number, title: string, lines: string[]): number {
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const boxWidth = pageWidth - 28
+  const lineHeight = 4.6
+  const textWidth = boxWidth - 8
+
+  const wrapped = lines.map((line) => doc.splitTextToSize(line, textWidth) as string[])
+  const lineCount = Math.max(wrapped.reduce((sum, w) => sum + w.length, 0), 1)
+  const boxHeight = 12 + lineCount * lineHeight
+
+  doc.setDrawColor(...BRAND_RED)
+  doc.setLineWidth(0.6)
+  doc.setFillColor(...BRAND_RED_TINT)
+  doc.roundedRect(14, y, boxWidth, boxHeight, 2, 2, 'FD')
+  doc.setLineWidth(0.2) // volta à espessura padrão usada pelas outras caixas
+
+  sectionTitle(doc, title, 18, y + 6)
+
+  doc.setFont(BRAND_FONT, 'normal')
+  doc.setFontSize(9.5)
+  doc.setTextColor(...BRAND_RED)
+  let textY = y + 13
+  for (const w of wrapped) {
+    for (const subLine of w) { doc.text(subLine, 18, textY); textY += lineHeight }
+  }
+  doc.setTextColor(0, 0, 0)
+
+  return y + boxHeight + 10
+}
+
 /** Bloco de assinatura / aprovação do cliente. */
 function drawSignatureBlock(doc: jsPDF, y: number, approvedBy?: string, approvedAt?: Date | null): number {
   const pageWidth = doc.internal.pageSize.getWidth()
@@ -641,11 +676,17 @@ class PdfService {
       quote.paymentTerms ? `Pagamento: ${quote.paymentTerms}` : '',
       quote.deliveryTime ? `Prazo de entrega: ${quote.deliveryTime}` : '',
       quote.validity ? `Validade da proposta: ${quote.validity}` : '',
-      // Dados Bancários (Configurações > Empresa) — cadastrados uma vez, aparecem em todo orçamento.
-      ...(company.bankData ? ['Dados Bancários:', ...company.bankData.split('\n').map((l) => l.trim()).filter(Boolean)] : []),
     ].filter(Boolean)
     const noteLines = [quote.notes || quote.generalConditions || 'Nenhuma observação adicional.']
     y = drawTwoColumnBoxes(doc, y, 'CONDIÇÕES COMERCIAIS', conditionLines.length ? conditionLines : ['A combinar'], 'OBSERVAÇÕES', noteLines)
+
+    // Dados Bancários (Configurações > Empresa) — caixa em destaque (cor da marca), pra saltar aos
+    // olhos de quem vai pagar, em vez de dividir uma caixa neutra com Pagamento/Prazo/Validade.
+    if (company.bankData) {
+      y = ensureSpace(doc, y, 30)
+      const bankLines = company.bankData.split('\n').map((l) => l.trim()).filter(Boolean)
+      y = drawHighlightBox(doc, y, 'DADOS BANCÁRIOS', bankLines)
+    }
 
     // Garantia numa caixa própria, largura cheia — texto longo demais (política de garantia, CDC)
     // pra dividir espaço com Pagamento/Prazo/Validade sem ficar amontoado.
