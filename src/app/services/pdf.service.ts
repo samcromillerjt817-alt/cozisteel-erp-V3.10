@@ -95,7 +95,7 @@ function registerBrandFont(doc: jsPDF) {
 interface CompanyInfo {
   name: string; tradeName: string; cnpj: string; ie: string
   address: string; neighborhood: string; cityState: string; cep: string
-  phone: string; email: string; contact: string
+  phone: string; email: string; contact: string; bankData: string
 }
 
 async function getCompanyInfo(): Promise<CompanyInfo> {
@@ -114,6 +114,7 @@ async function getCompanyInfo(): Promise<CompanyInfo> {
     phone: map['company.phone'] || '',
     email: map['company.email'] || '',
     contact: map['company.contact'] || '',
+    bankData: map['company.bankData'] || '',
   }
 }
 
@@ -611,6 +612,8 @@ class PdfService {
       quote.deliveryTime ? `Prazo de entrega: ${quote.deliveryTime}` : '',
       quote.warranty ? `Garantia: ${quote.warranty}` : '',
       quote.validity ? `Validade da proposta: ${quote.validity}` : '',
+      // Dados Bancários (Configurações > Empresa) — cadastrados uma vez, aparecem em todo orçamento.
+      ...(company.bankData ? ['Dados Bancários:', ...company.bankData.split('\n').map((l) => l.trim()).filter(Boolean)] : []),
     ].filter(Boolean)
     const noteLines = [quote.notes || quote.generalConditions || 'Nenhuma observação adicional.']
     y = drawTwoColumnBoxes(doc, y, 'CONDIÇÕES COMERCIAIS', conditionLines.length ? conditionLines : ['A combinar'], 'OBSERVAÇÕES', noteLines)

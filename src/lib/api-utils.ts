@@ -81,6 +81,21 @@ export function noContent() {
   return new NextResponse(null, { status: 204 })
 }
 
+/**
+ * Nome de arquivo do PDF (ex.: "ORC-000031 - Blas Olivares.pdf") — sempre número do documento +
+ * nome do cliente, nunca o cuid interno. `filename*=UTF-8''` cobre acentuação (Blás, José, ...) para
+ * navegadores modernos; o `filename=` puro é o fallback ASCII para os que ainda não leem o `*`.
+ */
+export function pdfResponse(buffer: Buffer, ...nameParts: string[]): NextResponse {
+  const label = nameParts.filter(Boolean).join(' - ').replace(/[\\/:*?"<>|]/g, '').trim() || 'documento'
+  const asciiFallback = label.replace(/[^\x20-\x7E]/g, '_')
+  const headers = new Headers({
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': `inline; filename="${asciiFallback}.pdf"; filename*=UTF-8''${encodeURIComponent(label)}.pdf`,
+  })
+  return new NextResponse(new Uint8Array(buffer), { status: 200, headers })
+}
+
 export class UnauthorizedError extends Error {
   constructor() {
     super('Não autorizado')
