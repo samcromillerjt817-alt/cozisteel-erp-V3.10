@@ -614,9 +614,12 @@ export function OrcamentosPage({ onDataChanged, onNavigateToPedidos, onNavigateT
                   <SelectContent>{PAYMENT_TERMS_OPTIONS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5"><Label>Garantia</Label><Input value={form.warranty} onChange={(e) => setForm({ ...form, warranty: e.target.value })} /></div>
               <div className="space-y-1.5"><Label>Validade</Label><DatePicker value={form.validity} onChange={(v) => setForm({ ...form, validity: v })} /></div>
               <div className="space-y-1.5"><Label>Prazo Entrega</Label><DatePicker value={form.deliveryTime} onChange={(v) => setForm({ ...form, deliveryTime: v })} /></div>
+            </div>
+            <div className="mt-3 space-y-1.5">
+              <Label>Garantia</Label>
+              <Textarea rows={3} value={form.warranty} onChange={(e) => setForm({ ...form, warranty: e.target.value })} />
             </div>
             <div className="mt-3 space-y-1.5">
               <Label>Observações</Label>

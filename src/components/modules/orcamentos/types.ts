@@ -66,12 +66,21 @@ export type QuoteFormData = {
   status: string
 }
 
+// Texto padrão de garantia (política comercial fixa da Mobsteel) — pré-preenchido em todo orçamento
+// novo, mas continua editável no campo "Garantia" caso um orçamento específico precise de outro termo.
+export const DEFAULT_WARRANTY_TEXT =
+  'Duração de 06 meses contra eventuais defeitos de fabricação conforme "termo de garantia" que se ' +
+  'inicia a partir da data de emissão da nota fiscal, nos termos da Lei 8078 de 11 de setembro de ' +
+  '1.990, sabendo-se que todos os produtos fabricados pela Mobsteel são testados e garantidos através ' +
+  'da sua fábrica e de empresas autorizadas. A manutenção dos equipamentos efetuada por outros que não ' +
+  'sejam nossos técnicos ou empresas credenciadas (RESULTARÁ NA PERDA DA GARANTIA).'
+
 export const emptyQuoteForm = (): QuoteFormData => ({
   clientId: '', clientName: '', clientCnpj: '', clientContact: '', clientPhone: '', clientEmail: '',
   clientAddress: '', clientNeighborhood: '', clientCep: '',
   items: [emptyQuoteItem()],
   discountType: 'value', discountValue: 0, freightMode: 'combined', freightValue: 0, freightText: 'A COMBINAR',
-  paymentTerms: '', warranty: '', validity: '', deliveryTime: '', notes: '', status: 'draft',
+  paymentTerms: '', warranty: DEFAULT_WARRANTY_TEXT, validity: '', deliveryTime: '', notes: '', status: 'draft',
 })
 
 export interface QuoteListRow {
