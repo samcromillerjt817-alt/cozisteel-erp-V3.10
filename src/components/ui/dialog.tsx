@@ -56,23 +56,25 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
-  // Evita que o Dialog feche quando o clique/interação "fora" na verdade aconteceu
-  // dentro de um popover portalizado do Radix (Select, DropdownMenu, Popover, etc.),
-  // que tecnicamente vive fora da árvore DOM do DialogContent.
-  const isInsideRadixPopper = (target: EventTarget | null) =>
-    target instanceof Element && !!target.closest('[data-radix-popper-content-wrapper], [data-slot="select-content"]')
-
+  // O Dialog nunca fecha por clique/interação "fora" — só por Escape ou pelo botão de
+  // fechar/Cancelar explícito. Antes só cobria o clique DENTRO de um popover portalizado do
+  // Radix (Select, DropdownMenu, etc.), que vive fora da árvore DOM do DialogContent; mas o
+  // clique pra DISPENSAR o popover (fora da lista suspensa, ainda perto/dentro do diálogo)
+  // continuava contando como "fora" do Dialog e fechava o formulário inteiro, derrubando tudo
+  // que o usuário tinha preenchido (achado do usuário — vale pra qualquer campo com lista
+  // suspensa aberta). `onPointerDownOutside`/`onInteractOutside` continuam repassados pra quem
+  // passar um handler próprio, só que agora depois do preventDefault, nunca no lugar dele.
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         onPointerDownOutside={(e) => {
-          if (isInsideRadixPopper(e.target)) { e.preventDefault(); return }
+          e.preventDefault()
           onPointerDownOutside?.(e)
         }}
         onInteractOutside={(e) => {
-          if (isInsideRadixPopper(e.target)) { e.preventDefault(); return }
+          e.preventDefault()
           onInteractOutside?.(e)
         }}
         className={cn(

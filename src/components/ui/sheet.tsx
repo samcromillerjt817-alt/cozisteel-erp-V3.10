@@ -48,6 +48,8 @@ function SheetContent({
   className,
   children,
   side = "right",
+  onPointerDownOutside,
+  onInteractOutside,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
@@ -57,6 +59,16 @@ function SheetContent({
       <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
+        // Mesmo motivo do Dialog (ver dialog.tsx) — clique fora de uma lista suspensa aberta
+        // dentro do Sheet não pode fechar o Sheet inteiro e derrubar o formulário.
+        onPointerDownOutside={(e) => {
+          e.preventDefault()
+          onPointerDownOutside?.(e)
+        }}
+        onInteractOutside={(e) => {
+          e.preventDefault()
+          onInteractOutside?.(e)
+        }}
         className={cn(
           "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
           side === "right" &&
