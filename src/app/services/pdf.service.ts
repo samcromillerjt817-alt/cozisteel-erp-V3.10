@@ -13,7 +13,6 @@ const BRAND_DARK: [number, number, number] = [26, 26, 26]      // "card" escuro 
 const BRAND_GRAY: [number, number, number] = [100, 100, 100]
 const BRAND_LIGHT: [number, number, number] = [247, 247, 247]  // fundo do card claro (dados do cliente)
 const BRAND_BORDER: [number, number, number] = [225, 225, 225]
-const BRAND_RED_TINT: [number, number, number] = [252, 237, 235] // fundo leve de BRAND_RED — destaque de Dados Bancários sem pesar a página
 
 const PAGE_SAFE_Y = 252 // abaixo disso, reserva nova página pro fechamento do documento
 
@@ -474,10 +473,9 @@ function drawSingleBox(doc: jsPDF, y: number, title: string, lines: string[]): n
   return y + boxHeight + 10
 }
 
-/** Igual `drawSingleBox`, mas com fundo/borda na cor da marca — usado pra Dados Bancários, que
- * precisa saltar aos olhos de quem vai pagar (nunca compete visualmente com as caixas neutras de
- * Condições/Observações/Garantia ao redor). Título e primeira linha (rótulo do banco) em negrito
- * visual via tamanho maior — jsPDF não tem negrito sintético nesta fonte (só o peso Regular). */
+/** Igual `drawSingleBox`, mas com o texto/título na cor da marca — usado pra Dados Bancários, que
+ * precisa saltar aos olhos de quem vai pagar. Fundo e borda ficam neutros, iguais às outras caixas
+ * (Condições/Observações/Garantia) — só a cor da fonte carrega o destaque. */
 function drawHighlightBox(doc: jsPDF, y: number, title: string, lines: string[]): number {
   const pageWidth = doc.internal.pageSize.getWidth()
   const boxWidth = pageWidth - 28
@@ -488,11 +486,9 @@ function drawHighlightBox(doc: jsPDF, y: number, title: string, lines: string[])
   const lineCount = Math.max(wrapped.reduce((sum, w) => sum + w.length, 0), 1)
   const boxHeight = 12 + lineCount * lineHeight
 
-  doc.setDrawColor(...BRAND_RED)
-  doc.setLineWidth(0.6)
-  doc.setFillColor(...BRAND_RED_TINT)
+  doc.setDrawColor(...BRAND_BORDER)
+  doc.setFillColor(255, 255, 255)
   doc.roundedRect(14, y, boxWidth, boxHeight, 2, 2, 'FD')
-  doc.setLineWidth(0.2) // volta à espessura padrão usada pelas outras caixas
 
   sectionTitle(doc, title, 18, y + 6)
 
