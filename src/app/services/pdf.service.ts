@@ -443,6 +443,36 @@ function drawTwoColumnBoxes(doc: jsPDF, y: number, leftTitle: string, leftLines:
   return y + boxHeight + 10
 }
 
+/** Uma caixa só, largura cheia — usada pra Garantia (texto longo demais pra dividir espaço com
+ * Pagamento/Prazo/Validade na mesma caixa de CONDIÇÕES COMERCIAIS, como ficava antes). */
+function drawSingleBox(doc: jsPDF, y: number, title: string, lines: string[]): number {
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const boxWidth = pageWidth - 28
+  const lineHeight = 4.4
+  const textWidth = boxWidth - 8
+
+  const wrapped = lines.map((line) => doc.splitTextToSize(line, textWidth) as string[])
+  const lineCount = Math.max(wrapped.reduce((sum, w) => sum + w.length, 0), 1)
+  const boxHeight = 12 + lineCount * lineHeight
+
+  doc.setDrawColor(...BRAND_BORDER)
+  doc.setFillColor(255, 255, 255)
+  doc.roundedRect(14, y, boxWidth, boxHeight, 2, 2, 'FD')
+
+  sectionTitle(doc, title, 18, y + 6)
+
+  doc.setFont(BRAND_FONT, 'normal')
+  doc.setFontSize(8.5)
+  doc.setTextColor(50, 50, 50)
+  let textY = y + 13
+  for (const w of wrapped) {
+    for (const subLine of w) { doc.text(subLine, 18, textY); textY += lineHeight }
+  }
+  doc.setTextColor(0, 0, 0)
+
+  return y + boxHeight + 10
+}
+
 /** Bloco de assinatura / aprovação do cliente. */
 function drawSignatureBlock(doc: jsPDF, y: number, approvedBy?: string, approvedAt?: Date | null): number {
   const pageWidth = doc.internal.pageSize.getWidth()
@@ -610,13 +640,19 @@ class PdfService {
     const conditionLines = [
       quote.paymentTerms ? `Pagamento: ${quote.paymentTerms}` : '',
       quote.deliveryTime ? `Prazo de entrega: ${quote.deliveryTime}` : '',
-      quote.warranty ? `Garantia: ${quote.warranty}` : '',
       quote.validity ? `Validade da proposta: ${quote.validity}` : '',
       // Dados Bancários (Configurações > Empresa) — cadastrados uma vez, aparecem em todo orçamento.
       ...(company.bankData ? ['Dados Bancários:', ...company.bankData.split('\n').map((l) => l.trim()).filter(Boolean)] : []),
     ].filter(Boolean)
     const noteLines = [quote.notes || quote.generalConditions || 'Nenhuma observação adicional.']
     y = drawTwoColumnBoxes(doc, y, 'CONDIÇÕES COMERCIAIS', conditionLines.length ? conditionLines : ['A combinar'], 'OBSERVAÇÕES', noteLines)
+
+    // Garantia numa caixa própria, largura cheia — texto longo demais (política de garantia, CDC)
+    // pra dividir espaço com Pagamento/Prazo/Validade sem ficar amontoado.
+    if (quote.warranty) {
+      y = ensureSpace(doc, y, 30)
+      y = drawSingleBox(doc, y, 'GARANTIA', [quote.warranty])
+    }
 
     y = ensureSpace(doc, y, 35)
     y = drawSignatureBlock(doc, y, quote.approvedBy || undefined, quote.approvedAt)
