@@ -10,12 +10,6 @@ export function formatCurrency(value: number | null | undefined): string {
   })}`
 }
 
-export function parseCurrencyInput(val: string): number {
-  const cleaned = val.replace(/[R$\s.]/g, '').replace(',', '.')
-  const num = parseFloat(cleaned)
-  return isNaN(num) ? 0 : num
-}
-
 /**
  * Formata quantidade de estoque (saldo de matéria-prima/produto, quantidade de movimentação) —
  * corta o ruído de ponto flutuante que se acumula depois de muitos incrementos/decrementos em
