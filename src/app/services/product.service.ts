@@ -89,6 +89,12 @@ class ProductService {
 
     const { category, material, bomItems, bomComponents, quoteItems, createdAt, updatedAt, id: _id, ...updateData } = body
 
+    // Select de categoria/material sem seleção manda '' (default do form, nunca null) — Prisma tenta
+    // gravar '' como FK literal e quebra com P2003 (nenhuma Category/Material tem id ''). create()
+    // já normalizava (`data.categoryId || null`); update() nunca tinha essa mesma normalização.
+    if (updateData.categoryId === '') updateData.categoryId = null
+    if (updateData.materialId === '') updateData.materialId = null
+
     const t = target as { width: number; height: number; length: number }
     const w = (updateData.width as number) ?? t.width
     const h = (updateData.height as number) ?? t.height
