@@ -44,13 +44,16 @@ const SECURITY_HEADERS: Record<string, string> = {
   // `next/font/google` (Inter, Space Grotesk) é auto-hospedado no build — nenhum recurso externo
   // (fonte/script/imagem) é carregado de fora deste próprio domínio, então `'self'` cobre tudo.
   // 'unsafe-inline' em script/style é necessário pro próprio hydration do Next.js.
+  // `connect-src` precisa da BrasilAPI e da ViaCEP além de 'self' — a busca automática por
+  // CNPJ/CEP (`src/lib/masks.ts::fetchCompanyByCnpj/fetchAddressByCep`) roda no browser, então é o
+  // CSP do navegador (não algo do servidor) que barra essas duas chamadas se ficarem de fora daqui.
   'Content-Security-Policy': [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
-    "connect-src 'self'",
+    "connect-src 'self' https://brasilapi.com.br https://viacep.com.br",
     "object-src 'none'",
     "base-uri 'self'",
     "frame-ancestors 'none'",
